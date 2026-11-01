@@ -1,4 +1,5 @@
 import { useState } from "react";
+import * as Linking from "expo-linking";
 import { TextInput } from "react-native";
 import { supabase } from "../src/supabase";
 import { useTheme } from "../src/theme";
@@ -15,11 +16,15 @@ export default function Login() {
 
   async function send() {
     setBusy(true);
-    const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true } });
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      // The emailed link opens the app at /auth-callback, which finishes sign-in.
+      options: { shouldCreateUser: true, emailRedirectTo: Linking.createURL("auth-callback") },
+    });
     setBusy(false);
     if (error) return setMsg({ text: error.message, err: true });
     setSent(true);
-    setMsg({ text: `We sent a 6-digit code to ${email.trim()}.` });
+    setMsg({ text: `We emailed a sign-in link to ${email.trim()}. Open it on this phone to finish signing in.` });
   }
   async function verify() {
     setBusy(true);
@@ -37,11 +42,11 @@ export default function Login() {
           <>
             <Label>Email</Label>
             <TextInput style={input} value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" placeholderTextColor={t.muted} placeholder="you@example.com" />
-            <Button title={busy ? "Sending…" : "Email me a code"} disabled={busy || !email.includes("@")} onPress={send} />
+            <Button title={busy ? "Sending…" : "Email me a sign-in link"} disabled={busy || !email.includes("@")} onPress={send} />
           </>
         ) : (
           <>
-            <Label>6-digit code</Label>
+            <Label>Or enter the code, if your email has one</Label>
             <TextInput style={input} value={code} onChangeText={(v) => setCode(v.replace(/\D/g, ""))} keyboardType="number-pad" maxLength={6} textContentType="oneTimeCode" autoComplete="one-time-code" />
             <Button title={busy ? "Checking…" : "Sign in"} disabled={busy || code.length < 6} onPress={verify} />
             <Button ghost title="Use a different email" onPress={() => { setSent(false); setCode(""); setMsg(null); }} />

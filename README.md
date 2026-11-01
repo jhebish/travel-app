@@ -76,16 +76,16 @@ You need: Node 20+, pnpm 10, a Supabase project, an Anthropic API key, a Google 
 
 ### 2. Sign-in (Supabase → Authentication)
 
-- **Email codes:** Providers → Email: enabled. In **Email Templates → Magic Link**, include the code so people can type it in:
-  ```html
-  <p>Your sign-in code is <strong>{{ .Token }}</strong></p>
-  ```
+- **Email links:** Sign In / Providers → Email: enabled. People sign in by clicking the link in Supabase's default email; no template change is needed.
+  - Supabase's built-in email sender is heavily rate-limited (a few emails per hour). Before launch, add your own sender under **Emails → SMTP Settings** (Resend, Postmark, SendGrid…). Once you have SMTP you can also add `{{ .Token }}` to the Magic Link template, and the app's "enter the code" box will work too.
 - **Google (web, optional):** Providers → Google: add your Google OAuth client id and secret.
-- **URL Configuration:** Site URL = your deployed web URL. Add `https://YOUR-APP/auth/callback` and `http://localhost:3000/auth/callback` to Redirect URLs.
+- **URL Configuration:** Site URL = your deployed web URL. Add these Redirect URLs:
+  - `https://YOUR-APP/auth/callback` and `http://localhost:3000/auth/callback` (web)
+  - `tripplanner://**` (mobile app) and `exp://**` (mobile, while testing in Expo Go)
 
 ### 3. Make yourself an admin
 
-Sign in once in the app, then run in the SQL Editor:
+Sign in once in the app (click the emailed link), then run in the SQL Editor:
 
 ```sql
 update public.profiles set role = 'admin'

@@ -17,11 +17,17 @@ function Login() {
   async function sendCode(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+    const { error } = await sb.auth.signInWithOtp({
+      email,
+      options: {
+        shouldCreateUser: true,
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+      },
+    });
     setBusy(false);
     if (error) return setMsg({ text: error.message, err: true });
     setSent(true);
-    setMsg({ text: `We sent a 6-digit code to ${email}.` });
+    setMsg({ text: `We emailed a sign-in link to ${email}. Open it in this browser to finish signing in.` });
   }
   async function verify(e: React.FormEvent) {
     e.preventDefault();
@@ -51,12 +57,12 @@ function Login() {
             <label className="label" htmlFor="email">Email</label>
             <input id="email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
-          <button className="btn" disabled={busy || !email}>{busy ? "Sending…" : "Email me a code"}</button>
+          <button className="btn" disabled={busy || !email}>{busy ? "Sending…" : "Email me a sign-in link"}</button>
         </form>
       ) : (
         <form className="stack" onSubmit={verify}>
           <div className="field">
-            <label className="label" htmlFor="code">6-digit code</label>
+            <label className="label" htmlFor="code">Or enter the code, if your email has one</label>
             <input id="code" type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} required value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
           </div>
           <button className="btn" disabled={busy || code.length < 6}>{busy ? "Checking…" : "Sign in"}</button>

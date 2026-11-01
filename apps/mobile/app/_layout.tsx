@@ -13,6 +13,7 @@ function Gate() {
   useEffect(() => {
     if (!ready) return;
     const onLogin = segments[0] === "login";
+    if (segments[0] === "auth-callback") return; // finishing a sign-in link
     if (!session && !onLogin) router.replace("/login");
     if (session && onLogin) router.replace("/");
   }, [session, ready, segments, router]);
@@ -28,6 +29,7 @@ function Gate() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ title: "Sign in", headerBackVisible: false }} />
       <Stack.Screen name="trip/[id]" options={{ title: "Trip" }} />
+      <Stack.Screen name="auth-callback" options={{ title: "Signing in", headerBackVisible: false }} />
     </Stack>
   );
 }
