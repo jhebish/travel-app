@@ -54,3 +54,12 @@ export interface AppConfigDTO {
   neverRecommend: string;
   updatedAt?: string;
 }
+
+/** Streamed while a trip is being built (newline-delimited JSON from POST /api/trips). */
+export type BuildEvent =
+  | { type: "progress"; pct: number; label: string }
+  | { type: "outline"; title: string; days: { label: string; theme: string }[]; hotels: boolean }
+  | { type: "day"; index: number }
+  | { type: "hotels" }
+  | { type: "done"; trip: Trip }
+  | { type: "error"; message: string; code?: string };

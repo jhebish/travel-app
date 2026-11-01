@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, type TextStyle, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "./theme";
@@ -119,6 +119,41 @@ export function Loading({ text }: { text: string }) {
     <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
       <ActivityIndicator color={t.accent} />
       <Text style={{ color: t.muted, fontSize: 14, flexShrink: 1 }}>{text}</Text>
+    </View>
+  );
+}
+
+/**
+ * Progress bar for trip building. The mobile app gets one response at the end (no streaming),
+ * so this estimates progress from elapsed time against a typical duration, eases toward 95%,
+ * and never claims to be done before the trip arrives.
+ */
+export function BuildBar({ days }: { days: number }) {
+  const t = useTheme();
+  const [start] = useState(Date.now());
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(id);
+  }, []);
+  const typical = 14_000 + days * 2_500; // days are planned in parallel, so this grows slowly
+  const elapsed = now - start;
+  const pct = Math.min(95, Math.round(95 * (1 - Math.exp(-elapsed / (typical / 1.6)))));
+  const label =
+    pct < 12 ? "Gathering local picks" : pct < 30 ? "Sketching the outline" : pct < 80 ? `Planning ${days === 1 ? "your day" : `all ${days} days at once`}` : "Checking every place";
+  const secs = Math.floor(elapsed / 1000);
+  return (
+    <View style={{ gap: 10 }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" }}>
+        <Text style={{ color: t.ink, fontSize: 15, fontWeight: "700", flexShrink: 1 }}>{label}</Text>
+        <Text style={{ color: t.accent, fontSize: 30, fontWeight: "800", letterSpacing: -1, fontVariant: ["tabular-nums"] }}>{pct}%</Text>
+      </View>
+      <View style={{ height: 12, borderRadius: 999, backgroundColor: t.sunk, overflow: "hidden" }} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: pct }}>
+        <View style={{ width: `${pct}%`, height: "100%", borderRadius: 999, backgroundColor: t.accent }} />
+      </View>
+      <Text style={{ color: t.muted, fontSize: 13, fontVariant: ["tabular-nums"] }}>
+        {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")} elapsed
+      </Text>
     </View>
   );
 }

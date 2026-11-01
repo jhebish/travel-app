@@ -16,7 +16,7 @@ import { Pressable, Switch, Text, TextInput, View } from "react-native";
 import { api } from "../../src/api";
 import { useTheme } from "../../src/theme";
 import { TripView } from "../../src/TripView";
-import { Button, Card, ChipRow, H1, Label, Loading, P, Screen, Status, styles } from "../../src/ui";
+import { Button, Card, ChipRow, H1, Label, BuildBar, Loading, P, Screen, Status, styles } from "../../src/ui";
 
 const ABOUT_LABELS = {
   "LGBTQ+ traveler": "LGBTQ+",
@@ -175,7 +175,7 @@ export default function Plan() {
           </>
         )}
         <Button title={busy ? "Building…" : "Build my trip"} disabled={busy} onPress={build} />
-        {busy ? <Loading text={`Finding local picks, building your ${req.days}-day plan and checking every place. This takes about a minute.`} /> : <Status text={msg?.text} err={msg?.err} />}
+        {busy ? <BuildBar days={req.days} /> : <Status text={msg?.text} err={msg?.err} />}
       </Card>
       {trip && <TripView trip={trip} />}
     </Screen>

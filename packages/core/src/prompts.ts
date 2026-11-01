@@ -104,9 +104,19 @@ export function buildHotelPrompt(
   candidates: Candidate[],
 ): string {
   const areas = [...new Set(itinerary.days.flatMap((d) => d.stops.map((s) => s.neighborhood)).filter(Boolean))].slice(0, 12);
+  return buildHotelPromptForAreas(req, eff, lists, areas, candidates);
+}
+
+export function buildHotelPromptForAreas(
+  req: TripRequest,
+  eff: EffectiveSources,
+  lists: CuratorLists,
+  areas: string[],
+  candidates: Candidate[],
+): string {
   return `${travelerBlock(req)}
 
-The trip already planned spends time in: ${areas.join(", ") || req.destination}.
+The trip spends time in: ${areas.join(", ") || req.destination}.
 
 ${sourceBlock(eff, lists)}
 
@@ -114,6 +124,7 @@ ${candidateBlock(candidates)}
 
 ${stayRules(req.stay)}
 - Set "candidateId" to the bracketed id you used, or null for a place you are highly confident exists.
+- Give approximate "lat" and "lng" for each hotel.
 - Every "source" must be one of: ${activeSources(eff).join(", ")}.
 
 Call submit_hotels with your three picks.`;
@@ -128,8 +139,8 @@ const sourceEnum = SOURCES.map((s) => s.id);
 const placeProps = {
   name: { type: "string" },
   neighborhood: { type: "string" },
-  why: { type: "string", description: "One sentence on why it fits this traveler." },
-  localTip: { type: "string", description: "One practical insider tip." },
+  why: { type: "string", description: "One short sentence (under 25 words) on why it fits this traveler." },
+  localTip: { type: "string", description: "One short practical insider tip (under 25 words)." },
   source: { type: "string", enum: sourceEnum },
   candidateId: { type: ["string", "null"], description: "Bracketed candidate id, or null." },
   lat: { type: "number", description: "Approximate latitude of the place." },
@@ -289,3 +300,103 @@ Call submit_day with the theme and stops in time order.`;
 
 export const stayLabel = (s: StayPrefs) =>
   `${(s.styles.length ? s.styles.join(" or ") : "any style").toLowerCase()} · ${s.price}/night`;
+
+// ---------------------------------------------------------------------------
+// Fast path: outline first, then every day planned in parallel
+// ---------------------------------------------------------------------------
+
+export interface OutlineDay {
+  label: string;
+  theme: string;
+  area: string;
+  candidateIds: string[];
+}
+export interface Outline {
+  title: string;
+  summary: string;
+  notes: string[];
+  days: OutlineDay[];
+}
+
+export const OUTLINE_TOOL = {
+  name: "submit_outline",
+  description: "Submit the trip outline: title, summary, notes, and one theme and area per day.",
+  input_schema: {
+    type: "object",
+    properties: {
+      title: { type: "string", description: "Short evocative trip title." },
+      summary: { type: "string", description: "Two sentences on the feel of the trip and why it fits." },
+      notes: { type: "array", items: { type: "string" }, description: "2–4 short practical notes." },
+      days: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            label: { type: "string", description: 'e.g. "Day 1"' },
+            theme: { type: "string", description: "Short theme for the day." },
+            area: { type: "string", description: "The neighborhood(s) the day stays in." },
+            candidateIds: { type: "array", items: { type: "string" }, description: "Bracketed ids of candidates that fit this day (3–6). Each id used on one day only." },
+          },
+          required: ["label", "theme", "area", "candidateIds"],
+        },
+      },
+    },
+    required: ["title", "summary", "notes", "days"],
+  },
+} as const;
+
+/** Step 1: a quick outline that splits the destination into one area per day and assigns candidates. */
+export function buildOutlinePrompt(req: TripRequest, eff: EffectiveSources, lists: CuratorLists, candidates: Candidate[]): string {
+  return `${travelerBlock(req)}
+
+${sourceBlock(eff, lists)}
+
+${candidateBlock(candidates)}
+
+TASK
+Outline a ${req.days}-day trip. Do not plan individual stops yet.
+- Give each day a different area (neighborhoods close together, so the day is walkable or one short ride) and a short theme that suits this traveler.
+- For each day, list the bracketed ids of 3–6 candidates that belong in that area and fit the traveler. Use each id on one day only. Favor higher-weight sources.
+- Notes: 2–4 short practical tips for this traveler in this place (safety, transit, customs, booking).
+${req.about.includes("LGBTQ+ traveler") ? "- If the destination warrants it, include a practical LGBTQ+ safety note.\n" : ""}
+Call submit_outline.`;
+}
+
+/** Step 2 (run for every day at once): plan one day's stops inside its area. */
+export function buildPlanDayPrompt(
+  req: TripRequest,
+  eff: EffectiveSources,
+  lists: CuratorLists,
+  outline: Outline,
+  day: number,
+  candidates: Candidate[],
+): string {
+  const d = outline.days[day]!;
+  const per = req.pace === "Slow" ? "3–4" : req.pace === "Packed" ? "5–6" : "4–5";
+  const mine = new Set(d.candidateIds);
+  const others = new Set(outline.days.flatMap((x, i) => (i === day ? [] : x.candidateIds)));
+  const pool = [...candidates.filter((c) => mine.has(c.id)), ...candidates.filter((c) => !mine.has(c.id) && !others.has(c.id))].slice(0, 30);
+  const otherDays = outline.days
+    .map((x, i) => (i === day ? null : `${x.label}: ${x.theme} (${x.area})`))
+    .filter(Boolean)
+    .join("; ");
+  return `${travelerBlock(req)}
+
+${sourceBlock(eff, lists)}
+
+${candidateBlock(pool)}
+
+TRIP: "${outline.title}"
+Other days (planned separately, don't repeat their areas or places): ${otherDays || "none"}
+
+TASK
+Plan ${d.label}: ${d.theme}, in ${d.area}. ${per} stops in time order, walkable or one short ride apart, with realistic 24h times.
+- Build it mainly from the candidates above and set "candidateId" to the bracketed id; the first ones were picked for this day.
+- Otherwise use places you are highly confident exist and are open, with candidateId null.
+- Tailor every pick to the traveler: respect halal, vegetarian, sober and accessibility needs; suit the age and party. At most one major landmark, with a local angle.
+- Mention booking, cash-only or closing days in the tip when relevant. Keep "why" and "localTip" to one short sentence each.
+- Give approximate "lat" and "lng" for every stop.
+- "source" must be one of: ${activeSources(eff).join(", ")}.
+
+Call submit_day with the theme and stops.`;
+}

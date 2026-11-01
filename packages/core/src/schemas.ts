@@ -190,3 +190,21 @@ export const LocalPickReviewSchema = z.object({
   source: z.enum(["locals", "hosts", "press", "indie", "reviews", "guidebooks", "social"]).optional(),
   note: z.string().trim().max(600).optional().nullable(),
 });
+
+/** Step 1 of the fast planner: the trip outline (no stops yet). */
+export const OutlineSchema = z.object({
+  title: clipReq(140),
+  summary: clip(600),
+  notes: z.array(clip(300)).transform((a) => a.slice(0, 6)).default([]),
+  days: z
+    .array(
+      z.object({
+        label: clip(40),
+        theme: clip(160),
+        area: clip(160).default(""),
+        candidateIds: z.array(z.string()).default([]),
+      }),
+    )
+    .min(1)
+    .transform((a) => a.slice(0, 7)),
+});

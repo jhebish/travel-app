@@ -8,6 +8,7 @@ import {
   PARTIES,
   STAY_PRICES,
   STAY_STYLES,
+  type BuildEvent,
   type TripRequest,
 } from "@travel/core";
 import Link from "next/link";
@@ -16,7 +17,8 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { Chips, SingleChips } from "@/components/Chips";
 import { TripView } from "@/components/TripView";
 import { useMe } from "@/components/useMe";
-import { api } from "@/lib/api";
+import { api, streamEvents } from "@/lib/api";
+import { BuildProgress, initialBuild, type BuildState } from "@/components/BuildProgress";
 import type { Trip } from "@/lib/trips";
 
 const ABOUT_LABELS: Record<string, string> = {
@@ -52,6 +54,8 @@ function Planner() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ text: string; err?: boolean } | null>(null);
   const [trip, setTrip] = useState<Trip | null>(null);
+  const [build, setBuild] = useState<BuildState | null>(null);
+  const progressRef = useRef<HTMLDivElement>(null);
   const [customMix, setCustomMix] = useState<boolean | null>(null);
   const tripRef = useRef<HTMLDivElement>(null);
   const set = <K extends keyof TripRequest>(k: K, v: TripRequest[K]) => setReq((r) => ({ ...r, [k]: v }));
@@ -71,7 +75,31 @@ function Planner() {
         .catch(() => {});
   }, [me?.user, params]);
 
-  async function build(e: React.FormEvent) {
+  function onEvent(e: BuildEvent) {
+    setBuild((b) => {
+      if (!b) return b;
+      switch (e.type) {
+        case "progress":
+          return { ...b, pct: Math.max(b.pct, e.pct), label: e.label };
+        case "outline":
+          return {
+            ...b,
+            title: e.title,
+            outlineDone: true,
+            days: e.days.map((d) => ({ ...d, done: false })),
+            hotels: e.hotels ? { done: false } : null,
+          };
+        case "day":
+          return { ...b, days: b.days.map((d, i) => (i === e.index ? { ...d, done: true } : d)) };
+        case "hotels":
+          return { ...b, hotels: b.hotels ? { done: true } : null };
+        default:
+          return b;
+      }
+    });
+  }
+
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!req.destination.trim()) {
       setStatus({ text: "Add a destination first.", err: true });
@@ -79,14 +107,30 @@ function Planner() {
     }
     setBusy(true);
     setStatus(null);
+    setTrip(null);
+    setBuild({ ...initialBuild(), hotels: req.stay.on ? { done: false } : null });
+    setTimeout(() => progressRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+    let finished: Trip | null = null;
+    let failure: string | null = null;
     try {
-      const { trip } = await api<{ trip: Trip }>("/api/trips", { method: "POST", json: req });
-      setTrip(trip);
-      setTimeout(() => tripRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+      await streamEvents<BuildEvent>("/api/trips", req, (ev) => {
+        if (ev.type === "done") finished = ev.trip;
+        else if (ev.type === "error") failure = ev.message;
+        else onEvent(ev);
+      });
+      if (finished) {
+        setBuild((b) => (b ? { ...b, pct: 100, label: "Done" } : b));
+        await new Promise((r) => setTimeout(r, 450)); // let the bar land at 100%
+        setTrip(finished);
+        setTimeout(() => tripRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+      } else {
+        setStatus({ text: failure ?? "The connection dropped before your trip finished. Try again.", err: true });
+      }
     } catch (err) {
       setStatus({ text: (err as Error).message, err: true });
     } finally {
       setBusy(false);
+      setBuild(null);
     }
   }
 
@@ -94,7 +138,7 @@ function Planner() {
 
   return (
     <>
-      <form className="stack" style={{ gap: 28 }} onSubmit={build} autoComplete="off">
+      <form className="stack" style={{ gap: 28 }} onSubmit={submit} autoComplete="off">
         <div className="where">
           <label htmlFor="dest">
             <h1>Where to?</h1>
@@ -203,18 +247,12 @@ function Planner() {
           </button>
         )}
         <p className={`status${status?.err ? " err" : ""}`} role="status" aria-live="polite">
-          {busy ? (
-            <span className="thinking">
-              <span className="dot" />
-              Finding local picks, planning {req.days} {req.days === 1 ? "day" : "days"} and checking every place. This takes about a minute.
-            </span>
-          ) : (
-            status?.text
-          )}
+          {busy ? "" : status?.text}
         </p>
         </div>
       </form>
 
+      <div ref={progressRef}>{build && <BuildProgress state={build} destination={req.destination.trim()} daysRequested={req.days} />}</div>
       <div ref={tripRef}>{trip && <TripView trip={trip} />}</div>
       {trip && (
         <p className="hint" style={{ textAlign: "center" }}>

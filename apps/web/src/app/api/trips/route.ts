@@ -1,7 +1,7 @@
-import { TripRequestSchema } from "@travel/core";
+import { TripRequestSchema, type BuildEvent } from "@travel/core";
 import { requireUser } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { handler, json, parseBody } from "@/lib/http";
+import { HttpError, handler, json, parseBody } from "@/lib/http";
 import { clientIp } from "@/lib/ip";
 import { generateTrip } from "@/lib/pipeline";
 import { toSummary, type TripRow } from "@/lib/trips";
@@ -26,10 +26,53 @@ export const GET = handler(async (req: Request) => {
   return json({ trips: (data as TripRow[]).map(toSummary) });
 });
 
-/** Build a new trip. */
+/**
+ * Build a new trip.
+ * Clients that send `Accept: application/x-ndjson` get live progress: one JSON event per line
+ * (progress, outline, day, hotels) and finally `{type:"done", trip}` or `{type:"error"}`.
+ * Other clients (the mobile app) get a single JSON response as before.
+ */
 export const POST = handler(async (req: Request) => {
   const ctx = await requireUser(req);
   const body = await parseBody(req, TripRequestSchema);
-  const trip = await generateTrip(ctx, body, { ip: clientIp(req), tripsPerHour: env.tripsPerHour() });
-  return json({ trip }, 201);
+  const opts = { ip: clientIp(req), tripsPerHour: env.tripsPerHour() };
+
+  if (!(req.headers.get("accept") ?? "").includes("application/x-ndjson")) {
+    const trip = await generateTrip(ctx, body, opts);
+    return json({ trip }, 201);
+  }
+
+  const enc = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (e: BuildEvent) => {
+        try {
+          controller.enqueue(enc.encode(JSON.stringify(e) + "\n"));
+        } catch {
+          /* client went away */
+        }
+      };
+      try {
+        const trip = await generateTrip(ctx, body, opts, send);
+        send({ type: "done", trip });
+      } catch (e) {
+        if (!(e instanceof HttpError)) console.error(e);
+        send({
+          type: "error",
+          message: e instanceof HttpError ? e.message : "Something went wrong. Try again.",
+          code: e instanceof HttpError ? e.code : "server_error",
+        });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+    },
+  });
 });

@@ -6,17 +6,22 @@ import {
   buildSwapPrompt,
   HOTELS_TOOL,
   HotelSchema,
-  ITINERARY_TOOL,
   ItinerarySchema,
+  OUTLINE_TOOL,
+  OutlineSchema,
   blendWeights,
   buildHotelPrompt,
-  buildTripPrompt,
+  buildHotelPromptForAreas,
+  buildOutlinePrompt,
+  buildPlanDayPrompt,
   isSourceId,
   placesQueries,
   selectCandidates,
   stayLabel,
+  type BuildEvent,
   type Candidate,
   type EffectiveSources,
+  type Outline,
   type Hotel,
   type Itinerary,
   type StayPrefs,
@@ -165,22 +170,115 @@ async function checkRateLimit(ctx: Ctx, limit: number) {
 // ---------------------------------------------------------------------------
 // Public pipeline
 // ---------------------------------------------------------------------------
-export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: string; tripsPerHour: number }) {
+export type Emit = (e: BuildEvent) => void;
+
+const DayResultSchema = z.object({
+  theme: z.string().transform((v) => v.slice(0, 160)).optional(),
+  stops: z.array(StopSchema).min(1).transform((a) => a.slice(0, 8)),
+});
+
+/** Run a model step, retrying once if the answer doesn't validate. */
+async function step<T>(
+  label: string,
+  run: () => Promise<{ input: unknown; model: string }>,
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+): Promise<{ data: T; model: string }> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { input, model } = await run();
+    const parsed = schema.safeParse(input);
+    if (parsed.success) return { data: parsed.data, model };
+    console.error(`${label} failed validation (attempt ${attempt + 1})`, parsed.error.issues.slice(0, 4));
+  }
+  throw new HttpError(502, "The plan came back incomplete. Try again.", "bad_output");
+}
+
+/** Remove a place that appears on more than one day (days are planned in parallel). */
+function dedupeAcrossDays(itin: Itinerary) {
+  const seen = new Set<string>();
+  const key = (s: Stop) => (s.candidateId || s.name).toLowerCase().replace(/[^a-z0-9]/g, "");
+  itin.days = itin.days.map((d) => {
+    const stops = d.stops.filter((s) => {
+      const k = key(s);
+      if (seen.has(k) && d.stops.length > 2) return false;
+      seen.add(k);
+      return true;
+    });
+    return { ...d, stops };
+  });
+}
+
+/**
+ * Build a trip. Fast path: one short outline call (title, notes, an area per day), then every
+ * day and the hotels are planned at the same time. Progress is reported through `emit`.
+ */
+export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: string; tripsPerHour: number }, emit: Emit = () => {}) {
+  const progress = (pct: number, label: string) => emit({ type: "progress", pct, label });
+  progress(3, "Reading your request");
   await checkRateLimit(ctx, opts.tripsPerHour);
   const { eff, lists } = await loadSources(ctx);
+
+  progress(8, "Gathering local picks");
   const cands = selectCandidates(await gatherCandidates(req), eff, req);
-  const { input, model } = await callTool(buildTripPrompt(req, eff, lists, cands), ITINERARY_TOOL);
-  const parsed = ItinerarySchema.safeParse(input);
-  if (!parsed.success) {
-    console.error("itinerary failed validation", parsed.error.issues.slice(0, 5));
-    throw new HttpError(502, "The plan came back incomplete. Try again.", "bad_output");
-  }
-  const itin = parsed.data;
-  itin.hotels = req.stay.on ? itin.hotels.slice(0, 3) : [];
+
+  progress(15, `Sketching your ${req.days}-day outline`);
+  const { data: outline, model } = await step(
+    "outline",
+    () => callTool(buildOutlinePrompt(req, eff, lists, cands), OUTLINE_TOOL, 3000),
+    OutlineSchema,
+  );
+  const o: Outline = { ...outline, days: outline.days.slice(0, req.days) };
+  emit({ type: "outline", title: o.title, days: o.days.map((d) => ({ label: d.label, theme: d.theme })), hotels: req.stay.on });
+
+  // Parallel: every day, plus hotels.
+  const jobs = o.days.length + (req.stay.on ? 1 : 0);
+  let finished = 0;
+  const tick = (label: string) => {
+    finished++;
+    progress(30 + Math.round((finished / jobs) * 55), label);
+  };
+  progress(30, "Planning every day at once");
+
+  const dayJobs = o.days.map(async (d, i) => {
+    const { data } = await step(
+      `day ${i + 1}`,
+      () => callTool(buildPlanDayPrompt(req, eff, lists, o, i, cands), DAY_TOOL, 4000),
+      DayResultSchema,
+    );
+    emit({ type: "day", index: i });
+    tick(`${d.label} planned`);
+    return { label: d.label || `Day ${i + 1}`, theme: data.theme || d.theme, stops: data.stops };
+  });
+  const hotelJob = req.stay.on
+    ? (async () => {
+        const stayCands = cands.filter((c) => c.category === "stay");
+        const areas = o.days.map((d) => d.area).filter(Boolean);
+        try {
+          const { data } = await step(
+            "hotels",
+            () => callTool(buildHotelPromptForAreas(req, eff, lists, areas, stayCands), HOTELS_TOOL, 3000),
+            z.object({ hotels: z.array(HotelSchema).min(1) }),
+          );
+          return data.hotels.slice(0, 3);
+        } catch (e) {
+          console.error("hotels step failed; trip continues without hotels", e);
+          return [];
+        } finally {
+          emit({ type: "hotels" });
+          tick("Places to stay picked");
+        }
+      })()
+    : Promise.resolve([] as Hotel[]);
+
+  const [days, hotels] = await Promise.all([Promise.all(dayJobs), hotelJob]);
+  const itin: Itinerary = ItinerarySchema.parse({ title: o.title, summary: o.summary, notes: o.notes, days, hotels, replaced: [] });
   if (itin.hotels.length) itin.stayLabel = stayLabel(req.stay);
+  dedupeAcrossDays(itin);
+
+  progress(88, placesEnabled() ? "Checking every place on the map" : "Finishing touches");
   await groundItinerary(itin, cands, req.destination);
   await attachLiveRates(itin.hotels, req.startDate, req.days, adultsFor(req.party), opts.ip);
 
+  progress(96, "Saving your trip");
   const { data, error } = await ctx.db
     .from("trips")
     .insert({
@@ -197,6 +295,7 @@ export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: strin
     .select("*")
     .single();
   if (error || !data) throw new HttpError(500, "Your trip was built but couldn't be saved. Try again.");
+  progress(100, "Done");
   return toTrip(data as TripRow);
 }
 
