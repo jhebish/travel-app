@@ -11,12 +11,13 @@ const TOKEN = /^[A-Za-z0-9_-]{12,40}$/;
  */
 export async function getSharedTrip(token: string): Promise<SharedTrip | null> {
   if (!TOKEN.test(token)) return null;
-  const { data } = await supabaseAdmin()
+  const { data, error } = await supabaseAdmin()
     .from("trips")
     .select("title, destination, request, itinerary, created_at, shared, share_token")
     .eq("share_token", token)
     .eq("shared", true)
     .maybeSingle();
+  if (error) console.error("shared trip lookup failed", error.message);
   if (!data) return null;
   const row = data as Pick<TripRow, "title" | "destination" | "request" | "itinerary" | "created_at">;
   const { replaced: _replaced, ...itinerary } = row.itinerary;
