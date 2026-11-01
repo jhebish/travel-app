@@ -206,3 +206,27 @@ describe("replaced votes", () => {
     expect(fb.source_votes.social).toEqual({ up: 0, down: 1 });
   });
 });
+
+import { ItinerarySchema as ItinSchema2, normalizeModelOutput } from "../src";
+
+describe("normalizeModelOutput", () => {
+  it("unwraps JSON-encoded lists and drops nulls so validation passes", () => {
+    const raw = {
+      title: "T",
+      summary: "S",
+      days: JSON.stringify([{ label: "Day 1", theme: "A", stops: JSON.stringify([{ time: "09:00", name: "X", neighborhood: null, why: "w", localTip: null, source: "locals", candidateId: null }]) }]),
+      hotels: "[]",
+      notes: '["Bring shoes"]',
+    };
+    const out = normalizeModelOutput(raw) as Record<string, unknown>;
+    const parsed = ItinSchema2.safeParse(out);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.days[0]!.stops[0]!.neighborhood).toBe("");
+      expect(parsed.data.notes).toEqual(["Bring shoes"]);
+    }
+  });
+  it("leaves ordinary strings alone", () => {
+    expect(normalizeModelOutput({ why: "[sic] a great spot" })).toEqual({ why: "[sic] a great spot" });
+  });
+});

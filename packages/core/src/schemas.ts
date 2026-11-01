@@ -66,19 +66,23 @@ export const PlaceVerificationSchema = z.object({
 });
 export type PlaceVerification = z.infer<typeof PlaceVerificationSchema>;
 
+/** Model-written text: trim to the limit instead of rejecting the whole plan. */
+const clip = (max: number) => z.string().transform((v) => v.slice(0, max));
+const clipReq = (max: number) => z.string().trim().min(1).transform((v) => v.slice(0, max));
+
 export const StopSchema = z.object({
-  time: z.string().max(20),
-  name: z.string().min(1).max(160),
-  neighborhood: z.string().max(120).default(""),
-  why: z.string().max(400),
-  localTip: z.string().max(400).default(""),
+  time: clip(20),
+  name: clipReq(160),
+  neighborhood: clip(120).default(""),
+  why: clip(400),
+  localTip: clip(400).default(""),
   source: sourceId,
   candidateId: z.string().nullable().optional(),
   /** Where the pick really came from: a vetted local pick, a Places result, or the model's own knowledge. */
   origin: z.enum(["local_pick", "google", "ai"]).optional(),
   /** Approximate coordinates from the model; replaced by verified ones when Places finds the stop. */
-  lat: z.number().min(-90).max(90).nullable().optional(),
-  lng: z.number().min(-180).max(180).nullable().optional(),
+  lat: z.number().min(-90).max(90).nullable().optional().catch(undefined),
+  lng: z.number().min(-180).max(180).nullable().optional().catch(undefined),
   /** The traveler locked this stop: it survives day regeneration. */
   locked: z.boolean().optional(),
   place: PlaceVerificationSchema.optional(),
@@ -95,35 +99,35 @@ export const LiveRateSchema = z.object({
 });
 
 export const HotelSchema = z.object({
-  name: z.string().min(1).max(160),
-  neighborhood: z.string().max(120).default(""),
-  style: z.string().max(60).default(""),
-  nightly: z.string().max(40).default(""),
-  why: z.string().max(400),
-  localTip: z.string().max(400).default(""),
+  name: clipReq(160),
+  neighborhood: clip(120).default(""),
+  style: clip(60).default(""),
+  nightly: clip(40).default(""),
+  why: clip(400),
+  localTip: clip(400).default(""),
   source: sourceId,
   candidateId: z.string().nullable().optional(),
   origin: z.enum(["local_pick", "google", "ai"]).optional(),
   expediaPropertyId: z.string().nullable().optional(),
-  lat: z.number().min(-90).max(90).nullable().optional(),
-  lng: z.number().min(-180).max(180).nullable().optional(),
+  lat: z.number().min(-90).max(90).nullable().optional().catch(undefined),
+  lng: z.number().min(-180).max(180).nullable().optional().catch(undefined),
   place: PlaceVerificationSchema.optional(),
   liveRate: LiveRateSchema.optional(),
 });
 export type Hotel = z.infer<typeof HotelSchema>;
 
 export const DaySchema = z.object({
-  label: z.string().max(40),
-  theme: z.string().max(160),
-  stops: z.array(StopSchema).min(1).max(8),
+  label: clip(40),
+  theme: clip(160),
+  stops: z.array(StopSchema).min(1).transform((a) => a.slice(0, 8)),
 });
 
 export const ItinerarySchema = z.object({
-  title: z.string().min(1).max(140),
-  summary: z.string().max(600),
-  days: z.array(DaySchema).min(1).max(7),
-  hotels: z.array(HotelSchema).max(5).default([]),
-  notes: z.array(z.string().max(300)).max(6).default([]),
+  title: clipReq(140),
+  summary: clip(600),
+  days: z.array(DaySchema).min(1).transform((a) => a.slice(0, 7)),
+  hotels: z.array(HotelSchema).transform((a) => a.slice(0, 5)).default([]),
+  notes: z.array(clip(300)).transform((a) => a.slice(0, 6)).default([]),
   stayLabel: z.string().optional(),
   /** Votes on stops the traveler swapped out, kept so the training signal isn't lost. */
   replaced: z.array(z.object({ source: sourceId, vote: z.union([z.literal(1), z.literal(-1)]) })).max(200).default([]),

@@ -300,7 +300,7 @@ export async function regenerateDay(ctx: Ctx, row: TripRow, day: number, hint: s
     (c) => c.category !== "stay" && !otherDays.has(c.name.toLowerCase()),
   );
   const { input } = await callTool(buildDayPrompt(req, eff, lists, row.itinerary, day, hint, cands), DAY_TOOL, 8000);
-  const parsed = z.object({ theme: z.string().max(160), stops: z.array(StopSchema).min(1).max(8) }).safeParse(input);
+  const parsed = z.object({ theme: z.string().transform((v) => v.slice(0, 160)), stops: z.array(StopSchema).min(1).transform((a) => a.slice(0, 8)) }).safeParse(input);
   if (!parsed.success) throw new HttpError(502, "The new day came back incomplete. Try again.", "bad_output");
 
   // Locked stops are kept exactly, whatever the model returned.

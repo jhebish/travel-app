@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { SYSTEM_PROMPT } from "@travel/core";
+import { SYSTEM_PROMPT, normalizeModelOutput } from "@travel/core";
 import { env } from "./env";
 import { HttpError } from "./http";
 
@@ -57,12 +57,12 @@ export async function callTool(prompt: string, tool: ToolDef, maxTokens = 16000)
     throw e;
   }
   const block = res.content.find((b) => b.type === "tool_use" && b.name === tool.name);
-  if (block && block.type === "tool_use") return { input: block.input, model: res.model };
+  if (block && block.type === "tool_use") return { input: normalizeModelOutput(block.input), model: res.model };
 
   if (res.stop_reason === "max_tokens") throw new HttpError(502, "The plan was too long. Try fewer days.", "too_long");
   const text = res.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
   const parsed = extractJson(text);
-  if (parsed) return { input: parsed, model: res.model };
+  if (parsed) return { input: normalizeModelOutput(parsed), model: res.model };
   console.error("Model answered without a tool call", res.stop_reason, text.slice(0, 500));
   throw new HttpError(502, "The planner returned an unexpected answer. Try again.", "bad_output");
 }
