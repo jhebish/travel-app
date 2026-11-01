@@ -236,6 +236,11 @@ details.more[open] summary { margin-bottom: 18px; }
 
 .map { height: 280px; border-radius: 20px; overflow: hidden; background: var(--sunk); border: 1px solid var(--line); position: relative; z-index: 0; }
 .map-note { font-size: 13px; color: var(--muted); margin: -16px 0 0; }
+/* Mute the street map so the numbered pins carry the color. */
+.map .leaflet-tile-pane { filter: saturate(.3) contrast(1.02) brightness(1.04); }
+@media (prefers-color-scheme: dark) {
+  .map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) saturate(.25) brightness(.8) contrast(.95); }
+}
 .pin {
   width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
   background: var(--accent); color: var(--accent-ink); font: 700 13px var(--font);

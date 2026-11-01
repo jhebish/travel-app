@@ -5,7 +5,10 @@ import { useEffect, useRef } from "react";
 
 /**
  * Map of one day's stops, numbered in order and joined by a line.
- * Uses CARTO basemaps (free, attribution required). Stops without coordinates are skipped.
+ * Tiles: OpenStreetMap by default (free, no key, attribution required; fine for modest traffic).
+ * For production volume set NEXT_PUBLIC_MAP_TILE_URL (and NEXT_PUBLIC_MAP_ATTRIBUTION) to a keyed
+ * provider such as MapTiler or Stadia. The tiles are muted in CSS to match the app's look.
+ * Stops without coordinates are skipped.
  */
 export function DayMap({ stops, onPick }: { stops: Stop[]; onPick?: (index: number) => void }) {
   const el = useRef<HTMLDivElement>(null);
@@ -21,11 +24,11 @@ export function DayMap({ stops, onPick }: { stops: Stop[]; onPick?: (index: numb
         .map((s, i) => ({ s, i, c: coordsOf(s) }))
         .filter((p): p is { s: Stop; i: number; c: NonNullable<ReturnType<typeof coordsOf>> } => !!p.c);
       if (!pts.length) return;
-      const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
       map = L.map(el.current, { zoomControl: true, scrollWheelZoom: false, attributionControl: true });
-      L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark ? "dark_all" : "light_all"}/{z}/{x}/{y}{r}.png`, {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: "abcd",
+      L.tileLayer(process.env.NEXT_PUBLIC_MAP_TILE_URL || "https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution:
+          process.env.NEXT_PUBLIC_MAP_ATTRIBUTION ||
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 19,
       }).addTo(map);
       const latlngs = pts.map((p) => [p.c.lat, p.c.lng] as [number, number]);
