@@ -21,5 +21,5 @@ export async function syncFeedback(row: TripRow): Promise<void> {
     ...t,
   });
   const { error } = await db.from("trip_feedback").upsert({ trip_id: row.id, ...fb });
-  if (error) console.error("feedback sync failed", error.message);
+  if (error) console.error("feedback sync failed", error.code ?? "", (error.message ?? "").slice(0, 80).replace(/sb_[A-Za-z0-9_]+/g, "[key]"));
 }

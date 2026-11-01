@@ -17,7 +17,7 @@ export async function getSharedTrip(token: string): Promise<SharedTrip | null> {
     .eq("share_token", token)
     .eq("shared", true)
     .maybeSingle();
-  if (error) console.error("shared trip lookup failed", error.message);
+  if (error) console.error("shared trip lookup failed", error.code ?? "", (error.message ?? "").slice(0, 80).replace(/sb_[A-Za-z0-9_]+/g, "[key]"));
   if (!data) return null;
   const row = data as Pick<TripRow, "title" | "destination" | "request" | "itinerary" | "created_at">;
   const { replaced: _replaced, ...itinerary } = row.itinerary;
