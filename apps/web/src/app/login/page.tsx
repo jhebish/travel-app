@@ -17,13 +17,18 @@ function Login() {
   async function sendCode(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    const { error } = await sb.auth.signInWithOtp({
-      email,
-      options: {
-        shouldCreateUser: true,
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
-      },
-    });
+    const redirect = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
+    // A guest who signs in keeps their trips: attach the email to the guest account.
+    // If that email already has an account, sign in to that account instead.
+    const { data: current } = await sb.auth.getUser();
+    const otp = () => sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: redirect } });
+    let error: { message: string } | null = null;
+    if (current.user?.is_anonymous) {
+      const linked = await sb.auth.updateUser({ email }, { emailRedirectTo: redirect });
+      error = linked.error ? (await otp()).error : null;
+    } else {
+      error = (await otp()).error;
+    }
     setBusy(false);
     if (error) return setMsg({ text: error.message, err: true });
     setSent(true);
@@ -49,7 +54,7 @@ function Login() {
     <div className="card">
       <div className="head">
         <h1>Sign in</h1>
-        <p className="lede">Sign in to build trips, keep your history, and set your own source mix.</p>
+        <p className="lede">Optional. Signing in keeps your trips and source mix across devices and browsers.</p>
       </div>
       {!sent ? (
         <form className="stack" onSubmit={sendCode}>

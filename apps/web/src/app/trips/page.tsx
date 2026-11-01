@@ -41,6 +41,11 @@ export default function TripsPage() {
         <h1>My trips</h1>
         <p className="lede">Every trip you build is kept here, private to you. Save the keepers and rate them so future trips get better.</p>
       </div>
+      {me?.user?.isGuest && (
+        <p className="note">
+          Your trips are saved in this browser. <Link href="/login?next=/trips">Sign in</Link> to keep them across devices.
+        </p>
+      )}
       {me && !me.user ? (
         <div className="empty">
           <b>Sign in to see your trips</b>

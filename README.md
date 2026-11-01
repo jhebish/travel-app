@@ -1,4 +1,4 @@
-# Trip Planner
+# Ayoush
 
 A locals-first travel planner. Travelers answer a few quick questions and get a bespoke itinerary with places to stay, built mostly from picks by locals and hosts. Every recommendation is tagged with its source, and both the app's curators and each traveler can tune how heavily each source counts. Trips are saved and rated, and those ratings feed back into the default source weights.
 
@@ -82,6 +82,8 @@ You need: Node 20+, pnpm 10, a Supabase project, an Anthropic API key, a Google 
 - **URL Configuration:** Site URL = your deployed web URL. Add these Redirect URLs:
   - `https://YOUR-APP/auth/callback` and `http://localhost:3000/auth/callback` (web)
   - `tripplanner://**` (mobile app) and `exp://**` (mobile, while testing in Expo Go)
+
+- **Guest access:** Sign In / Providers → turn on **Allow anonymous sign-ins**. Visitors then use the app without signing in; each browser or phone gets a private guest account, and signing in later keeps their trips.
 
 ### 3. Make yourself an admin
 

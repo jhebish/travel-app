@@ -3,7 +3,7 @@ import "./globals.css";
 import { Nav } from "@/components/Nav";
 
 export const metadata: Metadata = {
-  title: "Trip Planner",
+  title: "Ayoush",
   description: "Locals-first trips, built around you.",
 };
 

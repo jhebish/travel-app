@@ -18,7 +18,7 @@ export function Nav() {
   return (
     <header className="topbar">
       <Link href="/" className="brand">
-        Trip Planner
+        Ayoush
       </Link>
       <nav className="nav" aria-label="Main">
         {links.map((l) => (
@@ -28,7 +28,7 @@ export function Nav() {
         ))}
       </nav>
       <div className="account">
-        {me?.user ? (
+        {me?.user && !me.user.isGuest ? (
           <>
             <span>{me.user.email}</span>
             <button
@@ -43,7 +43,9 @@ export function Nav() {
             </button>
           </>
         ) : me ? (
-          <Link href="/login">Sign in</Link>
+          <Link href="/login" title="Optional: keep your trips across devices">
+            Sign in
+          </Link>
         ) : null}
       </div>
     </header>

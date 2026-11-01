@@ -1,21 +1,23 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { ensureSession } from "@/lib/session";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 
 export type Role = "traveler" | "local" | "curator" | "admin";
 export interface Me {
-  user: { id: string; email?: string } | null;
+  user: { id: string; email?: string; isGuest: boolean } | null;
   role: Role;
 }
 
-/** Current user and role; refreshes when the auth state changes. undefined while loading. */
+/** Current user and role; starts a guest session if needed. undefined while loading. */
 export function useMe(): Me | undefined {
   const [me, setMe] = useState<Me | undefined>(undefined);
   useEffect(() => {
     let alive = true;
     const load = () => {
-      api<Me>("/api/me")
+      ensureSession()
+        .then(() => api<Me>("/api/me"))
         .then((m) => {
           if (alive) setMe(m);
         })
@@ -24,8 +26,8 @@ export function useMe(): Me | undefined {
         });
     };
     load();
-    const { data } = supabaseBrowser().auth.onAuthStateChange(() => {
-      load();
+    const { data } = supabaseBrowser().auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN" || event === "SIGNED_OUT" || event === "USER_UPDATED") load();
     });
     return () => {
       alive = false;

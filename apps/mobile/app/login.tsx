@@ -16,11 +16,20 @@ export default function Login() {
 
   async function send() {
     setBusy(true);
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      // The emailed link opens the app at /auth-callback, which finishes sign-in.
-      options: { shouldCreateUser: true, emailRedirectTo: Linking.createURL("auth-callback") },
-    });
+    const addr = email.trim();
+    // The emailed link opens the app at /auth-callback, which finishes sign-in.
+    const redirect = Linking.createURL("auth-callback");
+    const otp = () => supabase.auth.signInWithOtp({ email: addr, options: { shouldCreateUser: true, emailRedirectTo: redirect } });
+    // A guest keeps their trips by attaching the email to the guest account;
+    // if that email already has an account, sign in to it instead.
+    const { data: current } = await supabase.auth.getUser();
+    let error: { message: string } | null;
+    if (current.user?.is_anonymous) {
+      const linked = await supabase.auth.updateUser({ email: addr }, { emailRedirectTo: redirect });
+      error = linked.error ? (await otp()).error : null;
+    } else {
+      error = (await otp()).error;
+    }
     setBusy(false);
     if (error) return setMsg({ text: error.message, err: true });
     setSent(true);
@@ -37,7 +46,7 @@ export default function Login() {
     <Screen>
       <Card>
         <H1>Sign in</H1>
-        <P muted>Sign in to build trips, keep your history, and set your own source mix.</P>
+        <P muted>Optional. Signing in keeps your trips and source mix across devices.</P>
         {!sent ? (
           <>
             <Label>Email</Label>

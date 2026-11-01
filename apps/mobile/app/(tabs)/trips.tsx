@@ -3,6 +3,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { api } from "../../src/api";
+import { useAuth } from "../../src/auth";
 import { supabase } from "../../src/supabase";
 import { useTheme } from "../../src/theme";
 import { Button, Card, Chip, H1, Loading, P, Screen, Status, styles } from "../../src/ui";
@@ -13,6 +14,8 @@ const fmt = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month
 export default function Trips() {
   const t = useTheme();
   const router = useRouter();
+  const { session } = useAuth();
+  const isGuest = !!session?.user.is_anonymous;
   const [filter, setFilter] = useState<Filter>("all");
   const [trips, setTrips] = useState<TripSummary[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -79,7 +82,11 @@ export default function Trips() {
           ))
         )}
       </Card>
-      <Button ghost title="Sign out" onPress={() => supabase.auth.signOut()} />
+      {isGuest ? (
+        <Button ghost title="Sign in to keep trips across devices" onPress={() => router.push("/login")} />
+      ) : (
+        <Button ghost title="Sign out" onPress={() => supabase.auth.signOut()} />
+      )}
     </Screen>
   );
 }
