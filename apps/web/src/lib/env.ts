@@ -13,6 +13,8 @@ export const env = {
   supabaseServiceKey: () => required("SUPABASE_SERVICE_ROLE_KEY"),
   anthropicKey: () => required("ANTHROPIC_API_KEY"),
   claudeModel: () => clean(process.env.CLAUDE_MODEL) || "claude-sonnet-5-5",
+  /** Faster model for the parallel per-day, hotel and swap calls. Set to the main model to turn off. */
+  fastModel: () => clean(process.env.CLAUDE_FAST_MODEL) || "claude-haiku-5-5",
   placesKey: () => clean(process.env.GOOGLE_PLACES_API_KEY),
   expedia: () => ({
     apiKey: clean(process.env.EXPEDIA_RAPID_API_KEY),

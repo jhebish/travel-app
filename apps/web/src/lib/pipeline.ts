@@ -212,6 +212,7 @@ function dedupeAcrossDays(itin: Itinerary) {
  * day and the hotels are planned at the same time. Progress is reported through `emit`.
  */
 export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: string; tripsPerHour: number }, emit: Emit = () => {}) {
+  const t0 = Date.now();
   const progress = (pct: number, label: string) => emit({ type: "progress", pct, label });
   progress(3, "Reading your request");
   await checkRateLimit(ctx, opts.tripsPerHour);
@@ -223,7 +224,7 @@ export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: strin
   progress(15, `Sketching your ${req.days}-day outline`);
   const { data: outline, model } = await step(
     "outline",
-    () => callTool(buildOutlinePrompt(req, eff, lists, cands), OUTLINE_TOOL, 3000),
+    () => callTool(buildOutlinePrompt(req, eff, lists, cands), OUTLINE_TOOL, 2500),
     OutlineSchema,
   );
   const o: Outline = { ...outline, days: outline.days.slice(0, req.days) };
@@ -241,7 +242,7 @@ export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: strin
   const dayJobs = o.days.map(async (d, i) => {
     const { data } = await step(
       `day ${i + 1}`,
-      () => callTool(buildPlanDayPrompt(req, eff, lists, o, i, cands), DAY_TOOL, 4000),
+      () => callTool(buildPlanDayPrompt(req, eff, lists, o, i, cands), DAY_TOOL, 4000, { fast: true }),
       DayResultSchema,
     );
     emit({ type: "day", index: i });
@@ -255,7 +256,7 @@ export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: strin
         try {
           const { data } = await step(
             "hotels",
-            () => callTool(buildHotelPromptForAreas(req, eff, lists, areas, stayCands), HOTELS_TOOL, 3000),
+            () => callTool(buildHotelPromptForAreas(req, eff, lists, areas, stayCands), HOTELS_TOOL, 3000, { fast: true }),
             z.object({ hotels: z.array(HotelSchema).min(1) }),
           );
           return data.hotels.slice(0, 3);
@@ -274,6 +275,7 @@ export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: strin
   if (itin.hotels.length) itin.stayLabel = stayLabel(req.stay);
   dedupeAcrossDays(itin);
 
+  console.log(`[build] model calls done ${Date.now() - t0}ms`);
   progress(88, placesEnabled() ? "Checking every place on the map" : "Finishing touches");
   await groundItinerary(itin, cands, req.destination);
   await attachLiveRates(itin.hotels, req.startDate, req.days, adultsFor(req.party), opts.ip);
@@ -295,6 +297,7 @@ export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: strin
     .select("*")
     .single();
   if (error || !data) throw new HttpError(500, "Your trip was built but couldn't be saved. Try again.");
+  console.log(`[build] total ${Date.now() - t0}ms`);
   progress(100, "Done");
   return toTrip(data as TripRow);
 }
@@ -372,7 +375,7 @@ export async function swapStop(ctx: Ctx, row: TripRow, day: number, index: numbe
   const cands = selectCandidates(await gatherCandidates(req), eff, req).filter(
     (c) => c.category !== "stay" && !inTrip.has(c.name.toLowerCase()),
   );
-  const { input } = await callTool(buildSwapPrompt(req, eff, lists, row.itinerary, day, index, hint, cands), STOP_TOOL, 4000);
+  const { input } = await callTool(buildSwapPrompt(req, eff, lists, row.itinerary, day, index, hint, cands), STOP_TOOL, 2000, { fast: true });
   const parsed = z.object({ stop: StopSchema }).safeParse(input);
   if (!parsed.success) throw new HttpError(502, "The replacement came back incomplete. Try again.", "bad_output");
   const stop = parsed.data.stop;
