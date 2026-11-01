@@ -94,17 +94,15 @@ function Planner() {
 
   return (
     <>
-      <form className="card" onSubmit={build} autoComplete="off">
-        <div className="head">
-          <h1>Where are you headed?</h1>
-          <p className="lede">Tell us a little about you. We&apos;ll build a trip around what locals actually do.</p>
-        </div>
-        <div className="field">
-          <label className="label" htmlFor="dest">
-            Destination
+      <form className="stack" style={{ gap: 28 }} onSubmit={build} autoComplete="off">
+        <div className="where">
+          <label htmlFor="dest">
+            <h1>Where to?</h1>
           </label>
-          <input id="dest" type="text" placeholder="City or region, e.g. Mexico City" value={req.destination} onChange={(e) => set("destination", e.target.value)} />
+          <input id="dest" type="text" placeholder="Lisbon, Oaxaca, Kyoto…" value={req.destination} onChange={(e) => set("destination", e.target.value)} />
+          <p className="lede">Tell us who&apos;s coming and what you&apos;re into. Your plan is built from the places locals actually go.</p>
         </div>
+        <div className="card">
         <div className="two">
           <div className="field">
             <span className="label">Days</span>
@@ -192,7 +190,7 @@ function Planner() {
 
         {me?.user && (
           <p className="hint">
-            Sources: <b>{customMix ? "Your own mix" : "App defaults"}</b> · <Link href="/sources">Adjust my mix</Link>
+            Using {customMix ? "your own source mix" : "the app's default sources"}. <Link href="/sources">Adjust my mix</Link>
           </p>
         )}
         {signedOut ? (
@@ -201,19 +199,20 @@ function Planner() {
           </Link>
         ) : (
           <button className="btn" type="submit" disabled={busy || !me}>
-            {busy ? "Building…" : "Build my trip"}
+            {busy ? "Building your trip" : "Build my trip"}
           </button>
         )}
         <p className={`status${status?.err ? " err" : ""}`} role="status" aria-live="polite">
           {busy ? (
             <span className="thinking">
               <span className="dot" />
-              Finding local picks, building your {req.days}-day plan and checking every place. This takes about a minute.
+              Finding local picks, planning {req.days} {req.days === 1 ? "day" : "days"} and checking every place. This takes about a minute.
             </span>
           ) : (
             status?.text
           )}
         </p>
+        </div>
       </form>
 
       <div ref={tripRef}>{trip && <TripView trip={trip} />}</div>

@@ -76,13 +76,13 @@ export default function TripsPage() {
               {trips.map((t) => (
                 <li key={t.id}>
                   <div className="list-top">
-                    <div className="list-title">{t.title}</div>
+                    <div className="list-title"><Link href={`/trips/${t.id}`}>{t.title}</Link></div>
                     {t.saved && <span className="tag">Saved</span>}
                   </div>
                   <div className="meta">
-                    {t.destination} · {t.days} {t.days === 1 ? "day" : "days"} · {fmt(t.createdAt)}
-                    {t.hasHotels ? " · with hotels" : ""}
-                    {t.customMix ? " · your mix" : ""}
+                    {t.days} {t.days === 1 ? "day" : "days"} in {t.destination}, planned {fmt(t.createdAt)}
+                    {t.hasHotels ? ". Includes hotels" : ""}
+                    {t.customMix ? ". Built with your source mix" : ""}
                   </div>
                   {t.rating > 0 && (
                     <div className="stars" aria-label={`Rated ${t.rating} of 5`}>

@@ -76,6 +76,11 @@ export const StopSchema = z.object({
   candidateId: z.string().nullable().optional(),
   /** Where the pick really came from: a vetted local pick, a Places result, or the model's own knowledge. */
   origin: z.enum(["local_pick", "google", "ai"]).optional(),
+  /** Approximate coordinates from the model; replaced by verified ones when Places finds the stop. */
+  lat: z.number().min(-90).max(90).nullable().optional(),
+  lng: z.number().min(-180).max(180).nullable().optional(),
+  /** The traveler locked this stop: it survives day regeneration. */
+  locked: z.boolean().optional(),
   place: PlaceVerificationSchema.optional(),
 });
 export type Stop = z.infer<typeof StopSchema>;
@@ -100,6 +105,8 @@ export const HotelSchema = z.object({
   candidateId: z.string().nullable().optional(),
   origin: z.enum(["local_pick", "google", "ai"]).optional(),
   expediaPropertyId: z.string().nullable().optional(),
+  lat: z.number().min(-90).max(90).nullable().optional(),
+  lng: z.number().min(-180).max(180).nullable().optional(),
   place: PlaceVerificationSchema.optional(),
   liveRate: LiveRateSchema.optional(),
 });
@@ -118,8 +125,17 @@ export const ItinerarySchema = z.object({
   hotels: z.array(HotelSchema).max(5).default([]),
   notes: z.array(z.string().max(300)).max(6).default([]),
   stayLabel: z.string().optional(),
+  /** Votes on stops the traveler swapped out, kept so the training signal isn't lost. */
+  replaced: z.array(z.object({ source: sourceId, vote: z.union([z.literal(1), z.literal(-1)]) })).max(200).default([]),
 });
 export type Itinerary = z.infer<typeof ItinerarySchema>;
+
+export const EditSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("swap"), day: z.number().int().min(0).max(6), index: z.number().int().min(0).max(7), hint: z.string().trim().max(200).default("") }),
+  z.object({ action: z.literal("regenerate_day"), day: z.number().int().min(0).max(6), hint: z.string().trim().max(200).default("") }),
+  z.object({ action: z.literal("lock"), day: z.number().int().min(0).max(6), index: z.number().int().min(0).max(7), locked: z.boolean() }),
+]);
+export type EditRequest = z.infer<typeof EditSchema>;
 
 export const VotesSchema = z.record(
   z.string().regex(/^(\d+-\d+|h-\d+)$/),

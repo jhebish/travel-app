@@ -16,7 +16,7 @@ export default function TripPage({ params }: { params: { id: string } }) {
   return (
     <>
       <div className="row">
-        <Link href="/trips">← My trips</Link>
+        <Link href="/trips">Back to My trips</Link>
         {trip && <Link href={`/?from=${trip.id}`}>Plan again</Link>}
       </div>
       {error ? (

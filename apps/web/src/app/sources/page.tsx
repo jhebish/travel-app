@@ -218,7 +218,7 @@ function InsightsView({ insights, draft, onApply }: { insights: Insights; draft:
                     {r.suggested == null || r.suggested === cur ? (
                       <span className="sugg">{cur}</span>
                     ) : (
-                      <span className={`sugg ${r.suggested > cur ? "raise" : "lower"}`}>{cur} → {r.suggested}</span>
+                      <span className={`sugg ${r.suggested > cur ? "raise" : "lower"}`}>{cur} to {r.suggested}</span>
                     )}
                   </td>
                 </tr>

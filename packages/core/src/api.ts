@@ -15,6 +15,18 @@ export interface Trip {
   saved: boolean;
   rating: number;
   votes: Votes;
+  /** Present while the trip has a public link. */
+  shareToken?: string | null;
+}
+
+/** What a public share link shows: the plan, without the traveler's personal details. */
+export interface SharedTrip {
+  title: string;
+  destination: string;
+  days: number;
+  party: string;
+  itinerary: Itinerary;
+  createdAt: string;
 }
 
 export interface TripSummary {

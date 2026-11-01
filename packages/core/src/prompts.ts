@@ -90,6 +90,7 @@ RULES
 - Tailor everything to the traveler. If they are LGBTQ+, favor welcoming venues and add a practical safety note if the destination warrants it. Respect halal, vegetarian, sober and accessibility needs in every food and venue pick. Suit the age and party.
 - Group each day geographically so it is walkable or one short ride. Give realistic times. Mention when a place needs booking, is cash only, or is closed on certain days.
 - At most one major landmark per day, with a local angle on it.
+- Give approximate "lat" and "lng" for every stop and hotel.
 - Every "source" must be one of: ${activeSources(eff).join(", ")}.
 ${req.stay.on ? `\n${stayRules(req.stay)}\n` : ""}
 Call submit_itinerary with the finished plan.`;
@@ -131,6 +132,8 @@ const placeProps = {
   localTip: { type: "string", description: "One practical insider tip." },
   source: { type: "string", enum: sourceEnum },
   candidateId: { type: ["string", "null"], description: "Bracketed candidate id, or null." },
+  lat: { type: "number", description: "Approximate latitude of the place." },
+  lng: { type: "number", description: "Approximate longitude of the place." },
 };
 
 export const HOTEL_JSON_SCHEMA = {
@@ -141,6 +144,12 @@ export const HOTEL_JSON_SCHEMA = {
     nightly: { type: "string", description: 'Approximate USD range, e.g. "$180–240".' },
   },
   required: ["name", "neighborhood", "style", "nightly", "why", "localTip", "source", "candidateId"],
+} as const;
+
+export const STOP_JSON_SCHEMA = {
+  type: "object",
+  properties: { time: { type: "string", description: '24h, e.g. "09:30"' }, ...placeProps },
+  required: ["time", "name", "neighborhood", "why", "localTip", "source", "candidateId"],
 } as const;
 
 export const ITINERARY_TOOL = {
@@ -160,11 +169,7 @@ export const ITINERARY_TOOL = {
             theme: { type: "string", description: "Neighborhood or theme." },
             stops: {
               type: "array",
-              items: {
-                type: "object",
-                properties: { time: { type: "string", description: '24h, e.g. "09:30"' }, ...placeProps },
-                required: ["time", "name", "neighborhood", "why", "localTip", "source", "candidateId"],
-              },
+              items: STOP_JSON_SCHEMA,
             },
           },
           required: ["label", "theme", "stops"],
@@ -186,6 +191,101 @@ export const HOTELS_TOOL = {
     required: ["hotels"],
   },
 } as const;
+
+export const STOP_TOOL = {
+  name: "submit_stop",
+  description: "Submit one replacement stop.",
+  input_schema: { type: "object", properties: { stop: STOP_JSON_SCHEMA }, required: ["stop"] },
+} as const;
+
+export const DAY_TOOL = {
+  name: "submit_day",
+  description: "Submit the rebuilt day.",
+  input_schema: {
+    type: "object",
+    properties: {
+      theme: { type: "string", description: "Neighborhood or theme." },
+      stops: { type: "array", items: STOP_JSON_SCHEMA },
+    },
+    required: ["theme", "stops"],
+  },
+} as const;
+
+const dayText = (it: Itinerary, d: number) =>
+  it.days[d]!.stops.map((s, i) => `${i + 1}. ${s.time} ${s.name} (${s.neighborhood || "?"})${s.locked ? " [LOCKED]" : ""}`).join("\n");
+
+const elsewhere = (it: Itinerary, d: number) =>
+  it.days
+    .flatMap((day, i) => (i === d ? [] : day.stops.map((s) => s.name)))
+    .concat(it.hotels.map((h) => h.name));
+
+/** Replace one stop: keep the day's flow, avoid every place already in the trip. */
+export function buildSwapPrompt(
+  req: TripRequest,
+  eff: EffectiveSources,
+  lists: CuratorLists,
+  it: Itinerary,
+  day: number,
+  index: number,
+  hint: string,
+  candidates: Candidate[],
+): string {
+  const old = it.days[day]!.stops[index]!;
+  return `${travelerBlock(req)}
+
+${sourceBlock(eff, lists)}
+
+${candidateBlock(candidates)}
+
+THE DAY SO FAR (${it.days[day]!.label}: ${it.days[day]!.theme})
+${dayText(it, day)}
+
+TASK
+Replace stop ${index + 1} ("${old.name}" at ${old.time}) with a different place that fills the same slot in the day: similar time and role (a meal stays a meal unless asked otherwise), close to the neighboring stops.
+${hint ? `The traveler asked: "${hint}".` : "The traveler wants a different option."}
+- Do not suggest ${old.name} or any place already in the trip: ${[...it.days[day]!.stops.map((s) => s.name), ...elsewhere(it, day)].join(", ")}.
+- Prefer a candidate (set "candidateId"); otherwise a place you are highly confident exists, with candidateId null.
+- Keep the time "${old.time}" unless the new place needs a different time.
+- "source" must be one of: ${activeSources(eff).join(", ")}.
+
+Call submit_stop with the replacement.`;
+}
+
+/** Rebuild one day, keeping the traveler's locked stops exactly as they are. */
+export function buildDayPrompt(
+  req: TripRequest,
+  eff: EffectiveSources,
+  lists: CuratorLists,
+  it: Itinerary,
+  day: number,
+  hint: string,
+  candidates: Candidate[],
+): string {
+  const locked = it.days[day]!.stops.filter((s) => s.locked);
+  const per = req.pace === "Slow" ? "3–4" : req.pace === "Packed" ? "5–6" : "4–5";
+  return `${travelerBlock(req)}
+
+${sourceBlock(eff, lists)}
+
+${candidateBlock(candidates)}
+
+CURRENT ${it.days[day]!.label.toUpperCase()} (${it.days[day]!.theme})
+${dayText(it, day)}
+
+TASK
+Build a fresh version of this day with ${per} stops, walkable or one short ride apart, with realistic times.
+${hint ? `The traveler asked: "${hint}".` : "Make it meaningfully different from the current version."}
+${
+  locked.length
+    ? `- Keep these LOCKED stops exactly (same name and time), and plan around them:\n${locked.map((s) => `  - ${s.time} ${s.name}`).join("\n")}`
+    : "- No stops are locked."
+}
+- Do not reuse places from other days: ${elsewhere(it, day).join(", ") || "none"}.
+- Prefer candidates (set "candidateId"); otherwise places you are highly confident exist, with candidateId null.
+- "source" must be one of: ${activeSources(eff).join(", ")}.
+
+Call submit_day with the theme and stops in time order.`;
+}
 
 export const stayLabel = (s: StayPrefs) =>
   `${(s.styles.length ? s.styles.join(" or ") : "any style").toLowerCase()} · ${s.price}/night`;

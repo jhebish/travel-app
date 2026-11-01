@@ -15,8 +15,10 @@ export function useMe(): Me | undefined {
   const [me, setMe] = useState<Me | undefined>(undefined);
   useEffect(() => {
     let alive = true;
+    // People opening a shared trip link just read it; don't create a guest account for them.
+    const publicPage = window.location.pathname.startsWith("/t/");
     const load = () => {
-      ensureSession()
+      (publicPage ? Promise.resolve() : ensureSession())
         .then(() => api<Me>("/api/me"))
         .then((m) => {
           if (alive) setMe(m);

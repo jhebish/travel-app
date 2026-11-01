@@ -57,6 +57,13 @@ export function buildFeedback(t: TripForFeedback): FeedbackRow {
   t.itinerary.days.forEach((d, di) => d.stops.forEach((s, si) => count(s.source, `${di}-${si}`)));
   (t.itinerary.hotels ?? []).forEach((h, hi) => count(h.source, `h-${hi}`));
   for (const k of Object.keys(shares)) shares[k] = Math.round((shares[k]! / Math.max(1, n)) * 1000) / 1000;
+  // Stops the traveler swapped out still count: a thumbs-down that led to a swap is a strong signal.
+  for (const r of t.itinerary.replaced ?? []) {
+    const src = isSourceId(r.source) ? r.source : "other";
+    votes[src] ??= { up: 0, down: 0 };
+    if (r.vote > 0) votes[src]!.up++;
+    else votes[src]!.down++;
+  }
 
   const hotel_votes = Object.entries(t.votes ?? {})
     .filter(([k]) => k.startsWith("h-"))

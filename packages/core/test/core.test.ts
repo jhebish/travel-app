@@ -107,6 +107,7 @@ const itinerary: Itinerary = {
   ],
   hotels: [{ name: "H", neighborhood: "", style: "Boutique", nightly: "$200", why: "", localTip: "", source: "hosts" }],
   notes: [],
+  replaced: [],
 };
 
 describe("feedback", () => {
@@ -139,5 +140,69 @@ describe("feedback", () => {
     expect(locals.suggested).toBe(10);
     expect(reviews.suggested).toBeLessThan(3);
     expect(many.hotelStyles[0]).toEqual({ style: "Boutique", rated: 6, upRate: 1 });
+  });
+});
+
+import { buildDayPrompt, buildIcs, buildSwapPrompt, googleMapsDayUrl, legBetween } from "../src";
+
+describe("editing prompts", () => {
+  const eff = blendWeights(app);
+  const it2: Itinerary = JSON.parse(JSON.stringify(itinerary));
+  it2.days[0]!.stops[1]!.locked = true;
+  it("swap excludes places already in the trip", () => {
+    const p = buildSwapPrompt(req, eff, { alwaysFeature: "", neverRecommend: "" }, it2, 0, 0, "cheaper", []);
+    expect(p).toContain('Replace stop 1 ("A"');
+    expect(p).toContain('"cheaper"');
+    expect(p).toMatch(/Do not suggest A or any place already in the trip: A, B, H/);
+  });
+  it("day rebuild keeps locked stops", () => {
+    const p = buildDayPrompt(req, eff, { alwaysFeature: "", neverRecommend: "" }, it2, 0, "", []);
+    expect(p).toContain("Keep these LOCKED stops exactly");
+    expect(p).toContain("11:00 B");
+  });
+});
+
+describe("maps and calendar", () => {
+  const a = { time: "09:00", name: "A", neighborhood: "Alfama", why: "", localTip: "", source: "locals" as const, lat: 38.711, lng: -9.13 };
+  const b = { ...a, name: "B", lat: 38.713, lng: -9.135 };
+  const far = { ...a, name: "C", lat: 38.75, lng: -9.2 };
+  it("estimates walks and rides", () => {
+    const walk = legBetween(a, b)!;
+    expect(walk.mode).toBe("walk");
+    expect(walk.approximate).toBe(true);
+    expect(walk.minutes).toBeGreaterThan(2);
+    expect(legBetween(a, far)!.mode).toBe("ride");
+    expect(legBetween({ ...a, lat: null, lng: null }, b)).toBeNull();
+  });
+  it("builds a Google Maps directions link", () => {
+    const url = googleMapsDayUrl([a, b, far], "Lisbon");
+    expect(url).toContain("https://www.google.com/maps/dir/?api=1");
+    const q = new URL(url).searchParams;
+    expect(q.get("origin")).toBe("A, Alfama, Lisbon");
+    expect(q.get("waypoints")).toBe("B, Alfama, Lisbon");
+    expect(q.get("destination")).toBe("C, Alfama, Lisbon");
+  });
+  it("builds a valid calendar", () => {
+    const ics = buildIcs(itinerary, "Lisbon", "2026-12-01");
+    expect(ics).toContain("BEGIN:VCALENDAR");
+    expect(ics.match(/BEGIN:VEVENT/g)!.length).toBe(2);
+    expect(ics).toContain("DTSTART:20261201T090000");
+    expect(ics).toContain("DTEND:20261201T110000");
+    expect(ics.split("\r\n").every((l) => l.length <= 75)).toBe(true);
+  });
+});
+
+describe("replaced votes", () => {
+  it("count toward source feedback", () => {
+    const fb = buildFeedback({
+      request: req,
+      itinerary: { ...itinerary, replaced: [{ source: "social", vote: -1 }] },
+      weights: defaultWeights(),
+      custom_mix: false,
+      saved: false,
+      rating: 0,
+      votes: {},
+    });
+    expect(fb.source_votes.social).toEqual({ up: 0, down: 1 });
   });
 });

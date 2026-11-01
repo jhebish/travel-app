@@ -18,6 +18,8 @@ export interface TripRow {
   rating: number;
   votes: Votes;
   model: string | null;
+  shared?: boolean;
+  share_token?: string | null;
 }
 
 export const toTrip = (r: TripRow): Trip => ({
@@ -32,6 +34,7 @@ export const toTrip = (r: TripRow): Trip => ({
   saved: r.saved,
   rating: r.rating,
   votes: r.votes ?? {},
+  shareToken: r.shared ? (r.share_token ?? null) : null,
 });
 
 export const toSummary = (r: TripRow): TripSummary => ({

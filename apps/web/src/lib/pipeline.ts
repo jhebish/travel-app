@@ -1,4 +1,9 @@
 import {
+  DAY_TOOL,
+  STOP_TOOL,
+  StopSchema,
+  buildDayPrompt,
+  buildSwapPrompt,
   HOTELS_TOOL,
   HotelSchema,
   ITINERARY_TOOL,
@@ -221,4 +226,110 @@ export async function generateHotels(ctx: Ctx, row: TripRow, stay: StayPrefs, op
   if (error || !data) throw new HttpError(500, "Hotels were found but couldn't be saved. Try again.");
   await syncFeedback(data as TripRow);
   return toTrip(data as TripRow);
+}
+
+// ---------------------------------------------------------------------------
+// Editing: swap one stop, rebuild one day, lock a stop
+// ---------------------------------------------------------------------------
+const sortByTime = (stops: Stop[]) =>
+  [...stops].sort((a, b) => (a.time || "").localeCompare(b.time || "", undefined, { numeric: true }));
+
+/** Move votes for stops being replaced into itinerary.replaced so the training signal survives. */
+function retireVotes(row: TripRow, keys: string[], itin: Itinerary) {
+  const votes = { ...(row.votes ?? {}) };
+  const replaced = [...(itin.replaced ?? [])];
+  for (const k of keys) {
+    const v = votes[k];
+    if (!v) continue;
+    const [d, i] = k.split("-").map(Number) as [number, number];
+    const stop = row.itinerary.days[d]?.stops[i];
+    if (stop) replaced.push({ source: stop.source, vote: v });
+    delete votes[k];
+  }
+  return { votes, replaced: replaced.slice(-200) };
+}
+
+async function saveEdit(ctx: Ctx, row: TripRow, itinerary: Itinerary, votes: TripRow["votes"]) {
+  const { data, error } = await ctx.db.from("trips").update({ itinerary, votes }).eq("id", row.id).select("*").single();
+  if (error || !data) throw new HttpError(500, "Your change was made but couldn't be saved. Try again.");
+  await syncFeedback(data as TripRow);
+  return toTrip(data as TripRow);
+}
+
+function editContext(row: TripRow) {
+  const req: TripRequest = row.request;
+  const eff: EffectiveSources = { weights: row.weights, blocked: (row.blocked ?? []).filter(isSourceId), custom: row.custom_mix };
+  const inTrip = new Set(
+    [...row.itinerary.days.flatMap((d) => d.stops), ...(row.itinerary.hotels ?? [])].map((p) => p.name.toLowerCase()),
+  );
+  return { req, eff, inTrip };
+}
+
+export async function swapStop(ctx: Ctx, row: TripRow, day: number, index: number, hint: string) {
+  const old = row.itinerary.days[day]?.stops[index];
+  if (!old) throw new HttpError(404, "That stop isn't in this trip anymore. Reload and try again.");
+  const { req, eff, inTrip } = editContext(row);
+  const { lists } = await loadSources(ctx);
+  const cands = selectCandidates(await gatherCandidates(req), eff, req).filter(
+    (c) => c.category !== "stay" && !inTrip.has(c.name.toLowerCase()),
+  );
+  const { input } = await callTool(buildSwapPrompt(req, eff, lists, row.itinerary, day, index, hint, cands), STOP_TOOL, 4000);
+  const parsed = z.object({ stop: StopSchema }).safeParse(input);
+  if (!parsed.success) throw new HttpError(502, "The replacement came back incomplete. Try again.", "bad_output");
+  const stop = parsed.data.stop;
+  if (inTrip.has(stop.name.toLowerCase())) throw new HttpError(502, "The planner suggested a place already in your trip. Try again.", "duplicate");
+  const drop = await ground([stop], cands, req.destination);
+  if (drop.has(stop)) throw new HttpError(502, "We couldn't verify the replacement. Try again.", "unverified");
+
+  const itinerary: Itinerary = structuredClone(row.itinerary);
+  const { votes, replaced } = retireVotes(row, [`${day}-${index}`], itinerary);
+  itinerary.replaced = replaced;
+  itinerary.days[day]!.stops[index] = { ...stop, locked: false };
+  return saveEdit(ctx, row, itinerary, votes);
+}
+
+export async function regenerateDay(ctx: Ctx, row: TripRow, day: number, hint: string) {
+  const current = row.itinerary.days[day];
+  if (!current) throw new HttpError(404, "That day isn't in this trip anymore. Reload and try again.");
+  const { req, eff } = editContext(row);
+  const { lists } = await loadSources(ctx);
+  const otherDays = new Set(
+    [...row.itinerary.days.flatMap((d, i) => (i === day ? [] : d.stops)), ...(row.itinerary.hotels ?? [])].map((p) => p.name.toLowerCase()),
+  );
+  const cands = selectCandidates(await gatherCandidates(req), eff, req).filter(
+    (c) => c.category !== "stay" && !otherDays.has(c.name.toLowerCase()),
+  );
+  const { input } = await callTool(buildDayPrompt(req, eff, lists, row.itinerary, day, hint, cands), DAY_TOOL, 8000);
+  const parsed = z.object({ theme: z.string().max(160), stops: z.array(StopSchema).min(1).max(8) }).safeParse(input);
+  if (!parsed.success) throw new HttpError(502, "The new day came back incomplete. Try again.", "bad_output");
+
+  // Locked stops are kept exactly, whatever the model returned.
+  const locked = current.stops.filter((s) => s.locked);
+  const lockedNames = new Set(locked.map((s) => s.name.toLowerCase()));
+  const fresh = parsed.data.stops
+    .filter((s) => !lockedNames.has(s.name.toLowerCase()) && !otherDays.has(s.name.toLowerCase()))
+    .map((s) => ({ ...s, locked: false }));
+  const drop = await ground(fresh, cands, req.destination);
+  const stops = sortByTime([...locked, ...fresh.filter((s) => !drop.has(s))]);
+  if (!stops.length) throw new HttpError(502, "We couldn't verify places for the new day. Try again.", "unverified");
+
+  const itinerary: Itinerary = structuredClone(row.itinerary);
+  // Votes on replaced stops are retired; locked stops keep theirs at their new positions.
+  const replacedKeys = current.stops.map((s, i) => (s.locked ? null : `${day}-${i}`)).filter((k): k is string => !!k);
+  const { votes: afterRetire, replaced } = retireVotes(row, replacedKeys, itinerary);
+  const votes = Object.fromEntries(Object.entries(afterRetire).filter(([k]) => !k.startsWith(`${day}-`)));
+  current.stops.forEach((s, i) => {
+    const v = row.votes?.[`${day}-${i}`];
+    if (s.locked && v) votes[`${day}-${stops.indexOf(s)}`] = v;
+  });
+  itinerary.replaced = replaced;
+  itinerary.days[day] = { ...current, theme: parsed.data.theme || current.theme, stops };
+  return saveEdit(ctx, row, itinerary, votes);
+}
+
+export async function setLocked(ctx: Ctx, row: TripRow, day: number, index: number, locked: boolean) {
+  if (!row.itinerary.days[day]?.stops[index]) throw new HttpError(404, "That stop isn't in this trip anymore. Reload and try again.");
+  const itinerary: Itinerary = structuredClone(row.itinerary);
+  itinerary.days[day]!.stops[index]!.locked = locked;
+  return saveEdit(ctx, row, itinerary, row.votes ?? {});
 }

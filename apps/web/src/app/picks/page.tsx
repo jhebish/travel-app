@@ -175,11 +175,10 @@ function PickRow({ p, curator, onReview }: { p: Pick; curator: boolean; onReview
         <span className="tag">{p.status}</span>
       </div>
       <div className="meta">
-        {p.city}
-        {p.neighborhood ? ` · ${p.neighborhood}` : ""} · {p.category}
-        {p.stay_style ? ` · ${p.stay_style}` : ""}
-        {p.price_band ? ` · ${p.price_band}` : ""} · {SOURCES.find((s) => s.id === p.source)?.name ?? p.source}
-        {p.google_place_id ? " · on Google Maps" : " · not matched on Maps"}
+        {[p.neighborhood, p.city].filter(Boolean).join(", ")}. {p.category[0]!.toUpperCase() + p.category.slice(1)}
+        {p.stay_style ? `, ${p.stay_style.toLowerCase()}` : ""}
+        {p.price_band ? `, ${p.price_band} a night` : ""}. From {SOURCES.find((s) => s.id === p.source)?.name.toLowerCase() ?? p.source}.{" "}
+        {p.google_place_id ? "Found on Google Maps." : "Not matched on Google Maps yet."}
       </div>
       {p.note && <p className="why">{p.note}</p>}
       {!!p.tags?.length && <div className="meta">Tags: {p.tags.join(", ")}</div>}
