@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "Trip Planner",
+    "slug": "trip-planner",
+    "scheme": "tripplanner",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.example.tripplanner"
+    },
+    "android": {
+      "package": "com.example.tripplanner"
+    },
+    "plugins": ["expo-router", "expo-secure-store"],
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}

@@ -1,4 +1,6 @@
-import type { Itinerary, TripRequest, Votes, Weights } from "@travel/core";
+import type { Itinerary, Trip, TripRequest, TripSummary, Votes, Weights } from "@travel/core";
+
+export type { Trip, TripSummary };
 
 export interface TripRow {
   id: string;
@@ -16,33 +18,6 @@ export interface TripRow {
   rating: number;
   votes: Votes;
   model: string | null;
-}
-
-/** Shape sent to clients (web and mobile). */
-export interface Trip {
-  id: string;
-  createdAt: string;
-  destination: string;
-  title: string;
-  request: TripRequest;
-  weights: Weights;
-  customMix: boolean;
-  itinerary: Itinerary;
-  saved: boolean;
-  rating: number;
-  votes: Votes;
-}
-
-export interface TripSummary {
-  id: string;
-  createdAt: string;
-  destination: string;
-  title: string;
-  days: number;
-  saved: boolean;
-  rating: number;
-  customMix: boolean;
-  hasHotels: boolean;
 }
 
 export const toTrip = (r: TripRow): Trip => ({
