@@ -1,0 +1,72 @@
+import type { Itinerary, TripRequest, Votes, Weights } from "@travel/core";
+
+export interface TripRow {
+  id: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+  destination: string;
+  title: string;
+  request: TripRequest;
+  weights: Weights;
+  blocked: string[];
+  custom_mix: boolean;
+  itinerary: Itinerary;
+  saved: boolean;
+  rating: number;
+  votes: Votes;
+  model: string | null;
+}
+
+/** Shape sent to clients (web and mobile). */
+export interface Trip {
+  id: string;
+  createdAt: string;
+  destination: string;
+  title: string;
+  request: TripRequest;
+  weights: Weights;
+  customMix: boolean;
+  itinerary: Itinerary;
+  saved: boolean;
+  rating: number;
+  votes: Votes;
+}
+
+export interface TripSummary {
+  id: string;
+  createdAt: string;
+  destination: string;
+  title: string;
+  days: number;
+  saved: boolean;
+  rating: number;
+  customMix: boolean;
+  hasHotels: boolean;
+}
+
+export const toTrip = (r: TripRow): Trip => ({
+  id: r.id,
+  createdAt: r.created_at,
+  destination: r.destination,
+  title: r.title,
+  request: r.request,
+  weights: r.weights,
+  customMix: r.custom_mix,
+  itinerary: r.itinerary,
+  saved: r.saved,
+  rating: r.rating,
+  votes: r.votes ?? {},
+});
+
+export const toSummary = (r: TripRow): TripSummary => ({
+  id: r.id,
+  createdAt: r.created_at,
+  destination: r.destination,
+  title: r.title,
+  days: r.request?.days ?? r.itinerary?.days?.length ?? 0,
+  saved: r.saved,
+  rating: r.rating,
+  customMix: r.custom_mix,
+  hasHotels: (r.itinerary?.hotels?.length ?? 0) > 0,
+});

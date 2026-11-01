@@ -1,0 +1,17 @@
+{
+  "name": "travel-app",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.28.0",
+  "scripts": {
+    "dev": "pnpm --filter @travel/web dev",
+    "dev:mobile": "pnpm --filter @travel/mobile start",
+    "build": "pnpm --filter @travel/web build",
+    "test": "pnpm --filter @travel/core test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm --filter @travel/web lint"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
