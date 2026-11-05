@@ -175,3 +175,13 @@ Web requests authenticate with Supabase cookies; the mobile app sends `Authoriza
 - Google Places lookups are cached for 14 days in `places_cache` to control cost; watch your Places quota as usage grows.
 - The rate limit is per traveler per hour (`TRIPS_PER_HOUR`). Add a global budget alert in the Anthropic console.
 - Local picks are matched to a destination by city name. Normalizing cities (or using Places' locality ids) would make matching sturdier.
+
+## Typeform intake (optional)
+
+The home page can use a Typeform instead of the built-in form. Answers are matched by each question's fixed `ref`, so you can reword, reorder or restyle the form in Typeform without breaking anything.
+
+1. In Typeform → Settings → Personal tokens, create a token with scopes **forms:write, themes:write, responses:read**. Add it in Vercel as `TYPEFORM_TOKEN` and redeploy.
+2. Create the form: `POST https://<your-app>/api/typeform/setup` (allowed once, while no form is configured). It returns the form id and link.
+3. Add the id in Vercel as `TYPEFORM_FORM_ID` and redeploy. The home page now shows the Typeform, with a link to the quick form.
+
+How it works: the embed passes the visitor's user id as a hidden `uid` field. On submit, the app fetches that response from the Typeform Responses API, checks the `uid`, maps the answers to a trip request (`packages/core/src/typeform.ts`) and streams the build with the usual progress bar. The mobile app keeps its native form.

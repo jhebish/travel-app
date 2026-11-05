@@ -387,3 +387,16 @@ td { padding: 10px 8px; border-bottom: 1px solid var(--line); text-align: right;
   .build h2.shimmer { animation: none; color: var(--muted); background: none; }
   .bar > span::after, .spin, .bstep.done .bstep-icon { animation: none; }
 }
+
+/* Typeform intake */
+.tf-wrap {
+  height: min(620px, 78vh); min-height: 460px; border-radius: 20px; overflow: hidden;
+  border: 1px solid var(--line); background: var(--surface); box-shadow: 0 1px 2px rgba(17, 19, 26, 0.04), 0 12px 32px -18px rgba(17, 19, 26, 0.18);
+}
+.tf-widget, .tf-widget > div, .tf-widget iframe { width: 100%; height: 100%; border: 0; }
+.tf-loading {
+  background: linear-gradient(100deg, var(--surface) 30%, color-mix(in srgb, var(--line) 55%, var(--surface)) 50%, var(--surface) 70%);
+  background-size: 200% 100%; animation: tfpulse 1.4s ease-in-out infinite;
+}
+@keyframes tfpulse { from { background-position: 120% 0; } to { background-position: -20% 0; } }
+@media (prefers-reduced-motion: reduce) { .tf-loading { animation: none; } }

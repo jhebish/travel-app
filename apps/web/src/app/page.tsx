@@ -11,6 +11,7 @@ import {
   type BuildEvent,
   type TripRequest,
 } from "@travel/core";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
@@ -20,6 +21,11 @@ import { useMe } from "@/components/useMe";
 import { api, streamEvents } from "@/lib/api";
 import { BuildProgress, initialBuild, type BuildState } from "@/components/BuildProgress";
 import type { Trip } from "@/lib/trips";
+
+const TypeformIntake = dynamic(() => import("@/components/TypeformIntake"), {
+  ssr: false,
+  loading: () => <div className="tf-wrap tf-loading" aria-busy="true" />,
+});
 
 const ABOUT_LABELS: Record<string, string> = {
   "LGBTQ+ traveler": "LGBTQ+",
@@ -58,7 +64,18 @@ function Planner() {
   const progressRef = useRef<HTMLDivElement>(null);
   const [customMix, setCustomMix] = useState<boolean | null>(null);
   const tripRef = useRef<HTMLDivElement>(null);
+  // Typeform intake: undefined while checking, null when it isn't set up.
+  const [tfForm, setTfForm] = useState<string | null | undefined>(undefined);
+  const [mode, setMode] = useState<"typeform" | "quick">("typeform");
+  const [tfKey, setTfKey] = useState(0);
+  const [building, setBuilding] = useState<{ destination: string; days: number }>({ destination: "", days: 3 });
   const set = <K extends keyof TripRequest>(k: K, v: TripRequest[K]) => setReq((r) => ({ ...r, [k]: v }));
+
+  useEffect(() => {
+    api<{ formId: string | null }>("/api/typeform")
+      .then((r) => setTfForm(r.formId))
+      .catch(() => setTfForm(null));
+  }, []);
 
   useEffect(() => {
     if (!me?.user) return;
@@ -69,6 +86,7 @@ function Planner() {
     if (from)
       api<{ trip: Trip }>(`/api/trips/${from}`)
         .then(({ trip }) => {
+          setMode("quick");
           setReq({ ...blank, ...trip.request, startDate: null });
           setStatus({ text: "Loaded your earlier request. Adjust anything, then build." });
         })
@@ -81,6 +99,8 @@ function Planner() {
       switch (e.type) {
         case "progress":
           return { ...b, pct: Math.max(b.pct, e.pct), label: e.label };
+        case "request":
+          return { ...b, hotels: e.request.stay.on ? { done: false } : null };
         case "outline":
           return {
             ...b,
@@ -99,24 +119,24 @@ function Planner() {
     });
   }
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!req.destination.trim()) {
-      setStatus({ text: "Add a destination first.", err: true });
-      return;
-    }
+  /** Stream a build from `path` and show live progress, then the finished trip. */
+  async function runBuild(path: string, body: unknown, info: { destination: string; days: number; hotels: boolean }) {
     setBusy(true);
     setStatus(null);
     setTrip(null);
-    setBuild({ ...initialBuild(), hotels: req.stay.on ? { done: false } : null });
+    setBuilding({ destination: info.destination, days: info.days });
+    setBuild({ ...initialBuild(), hotels: info.hotels ? { done: false } : null });
     setTimeout(() => progressRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
     let finished: Trip | null = null;
     let failure: string | null = null;
     try {
-      await streamEvents<BuildEvent>("/api/trips", req, (ev) => {
+      await streamEvents<BuildEvent>(path, body, (ev) => {
         if (ev.type === "done") finished = ev.trip;
         else if (ev.type === "error") failure = ev.message;
-        else onEvent(ev);
+        else {
+          if (ev.type === "request") setBuilding({ destination: ev.request.destination, days: ev.request.days });
+          onEvent(ev);
+        }
       });
       if (finished) {
         setBuild((b) => (b ? { ...b, pct: 100, label: "Done" } : b));
@@ -134,10 +154,80 @@ function Planner() {
     }
   }
 
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!req.destination.trim()) {
+      setStatus({ text: "Add a destination first.", err: true });
+      return;
+    }
+    await runBuild("/api/trips", req, { destination: req.destination.trim(), days: req.days, hotels: req.stay.on });
+  }
+
+  function onTypeformSubmit(responseId: string) {
+    void runBuild("/api/typeform/build", { responseId }, { destination: "", days: 3, hotels: false });
+  }
+
   const signedOut = me && !me.user;
+
+  const useTypeform = !!tfForm && mode === "typeform";
+  const modeSwitch = tfForm ? (
+    <p className="hint" style={{ textAlign: "center" }}>
+      {useTypeform ? (
+        <button type="button" className="linkbtn" onClick={() => setMode("quick")}>
+          Prefer a quick one-page form?
+        </button>
+      ) : (
+        <button type="button" className="linkbtn" onClick={() => setMode("typeform")}>
+          Answer one question at a time instead
+        </button>
+      )}
+    </p>
+  ) : null;
 
   return (
     <>
+      {useTypeform && (
+        <section className="stack" style={{ gap: 14 }}>
+          <div className="where">
+            <h1>Where to?</h1>
+            <p className="lede">A minute of questions about who&apos;s coming and what you&apos;re into. Your plan is built from the places locals actually go.</p>
+          </div>
+          {me?.user ? (
+            busy || trip ? (
+              !busy && (
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={() => {
+                    setTrip(null);
+                    setStatus(null);
+                    setTfKey((k) => k + 1);
+                  }}
+                >
+                  Plan another trip
+                </button>
+              )
+            ) : (
+              <TypeformIntake key={tfKey} formId={tfForm!} uid={me.user.id} onSubmit={onTypeformSubmit} />
+            )
+          ) : (
+            <div className="tf-wrap tf-loading" aria-busy="true" />
+          )}
+          {status?.err && !busy && (
+            <>
+              <p className="status err" role="status">
+                {status.text}
+              </p>
+              <button type="button" className="btn ghost" onClick={() => { setStatus(null); setTfKey((k) => k + 1); }}>
+                Start the form again
+              </button>
+            </>
+          )}
+          {modeSwitch}
+        </section>
+      )}
+
+      {!useTypeform && tfForm !== undefined && (
       <form className="stack" style={{ gap: 28 }} onSubmit={submit} autoComplete="off">
         <div className="where">
           <label htmlFor="dest">
@@ -250,9 +340,11 @@ function Planner() {
           {busy ? "" : status?.text}
         </p>
         </div>
+        {modeSwitch}
       </form>
+      )}
 
-      <div ref={progressRef}>{build && <BuildProgress state={build} destination={req.destination.trim()} daysRequested={req.days} />}</div>
+      <div ref={progressRef}>{build && <BuildProgress state={build} destination={building.destination || "your destination"} daysRequested={building.days} />}</div>
       <div ref={tripRef}>{trip && <TripView trip={trip} />}</div>
       {trip && (
         <p className="hint" style={{ textAlign: "center" }}>

@@ -21,5 +21,11 @@ export const env = {
     secret: clean(process.env.EXPEDIA_RAPID_SHARED_SECRET),
     baseUrl: clean(process.env.EXPEDIA_RAPID_BASE_URL) || "https://test.ean.com",
   }),
+  /** Typeform personal access token (scopes: forms:write, themes:write, responses:read). */
+  typeformToken: () => clean(process.env.TYPEFORM_TOKEN),
+  /** The intake form's id (the part after /to/ in its link). Empty = Typeform intake off. */
+  typeformFormId: () => clean(process.env.TYPEFORM_FORM_ID),
+  /** api.typeform.com, or api.eu.typeform.com for EU data-center accounts. */
+  typeformApi: () => clean(process.env.TYPEFORM_API_BASE) || "https://api.typeform.com",
   tripsPerHour: () => Number(clean(process.env.TRIPS_PER_HOUR) || 10),
 };

@@ -58,6 +58,8 @@ export interface AppConfigDTO {
 /** Streamed while a trip is being built (newline-delimited JSON from POST /api/trips). */
 export type BuildEvent =
   | { type: "progress"; pct: number; label: string }
+  /** Sent first when the request came from somewhere else (a Typeform), so the client knows what's being built. */
+  | { type: "request"; request: TripRequest }
   | { type: "outline"; title: string; days: { label: string; theme: string }[]; hotels: boolean }
   | { type: "day"; index: number }
   | { type: "hotels" }

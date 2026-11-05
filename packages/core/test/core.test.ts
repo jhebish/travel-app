@@ -263,3 +263,57 @@ describe("tolerant plan validation", () => {
     expect(HotelSchema.parse({ name: "Memmo", source: "press", candidateId: "[c7]" }).candidateId).toBe("c7");
   });
 });
+
+describe("typeform intake", () => {
+  it("defines unique refs for every field and choice", async () => {
+    const { typeformDefinition } = await import("../src/typeform");
+    const def = typeformDefinition();
+    const refs = def.fields.map((f) => f.ref);
+    expect(new Set(refs).size).toBe(refs.length);
+    for (const f of def.fields) {
+      const cs = (f as { properties?: { choices?: { ref: string }[] } }).properties?.choices ?? [];
+      expect(new Set(cs.map((c) => c.ref)).size).toBe(cs.length);
+      for (const c of cs) expect(c.ref).toMatch(/^[a-z0-9_]+$/);
+    }
+  });
+  it("maps a full response by refs", async () => {
+    const { typeformToRequest } = await import("../src/typeform");
+    const r = typeformToRequest([
+      { field: { ref: "destination" }, type: "text", text: " Lisbon " },
+      { field: { ref: "days" }, type: "number", number: 9 },
+      { field: { ref: "start_date" }, type: "date", date: "2026-12-01T00:00:00Z" },
+      { field: { ref: "party" }, type: "choice", choice: { ref: "party_solo", label: "Just me" } },
+      { field: { ref: "budget" }, type: "choice", choice: { ref: "budget_splurge", label: "Splurge ($$$)" } },
+      { field: { ref: "interests" }, type: "choices", choices: { refs: ["interests_food", "interests_live_music"], labels: ["Food", "Live music"] } },
+      { field: { ref: "about" }, type: "choices", choices: { refs: ["about_eats_halal"], labels: ["Eats halal"] } },
+      { field: { ref: "stay_on" }, type: "boolean", boolean: true },
+      { field: { ref: "stay_price" }, type: "choice", choice: { ref: "stay_price_300_600", label: "$300–600" } },
+      { field: { ref: "stay_styles" }, type: "choices", choices: { refs: ["stay_styles_boutique"], labels: ["Boutique"] } },
+    ]);
+    expect(r).toMatchObject({
+      destination: "Lisbon",
+      days: 7,
+      startDate: "2026-12-01",
+      party: "Solo",
+      budget: "Splurge",
+      interests: ["Food", "Live music"],
+      about: ["Eats halal"],
+      stay: { on: true, styles: ["Boutique"], price: "$300–600" },
+    });
+  });
+  it("falls back to labels when choices were added by hand, and defaults the rest", async () => {
+    const { typeformToRequest } = await import("../src/typeform");
+    const r = typeformToRequest([
+      { field: { ref: "destination" }, type: "text", text: "Oaxaca" },
+      { field: { ref: "party" }, type: "choice", choice: { label: "As a couple" } },
+      { field: { ref: "budget" }, type: "choice", choice: { label: "Keep it cheap ($)" } },
+      { field: { ref: "pace" }, type: "choice", choice: { label: "Packed: see as much as we can" } },
+      { field: { ref: "stay_on" }, type: "boolean", boolean: false },
+    ]);
+    expect(r).toMatchObject({ destination: "Oaxaca", days: 3, party: "Couple", budget: "Budget", pace: "Packed", stay: { on: false } });
+  });
+  it("rejects a response with no destination", async () => {
+    const { typeformToRequest } = await import("../src/typeform");
+    expect(() => typeformToRequest([{ field: { ref: "days" }, type: "number", number: 2 }])).toThrow(/destination/);
+  });
+});

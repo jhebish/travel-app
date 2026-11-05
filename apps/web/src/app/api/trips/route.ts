@@ -1,9 +1,10 @@
-import { TripRequestSchema, type BuildEvent } from "@travel/core";
+import { TripRequestSchema } from "@travel/core";
 import { requireUser } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { HttpError, handler, json, parseBody } from "@/lib/http";
+import { handler, json, parseBody } from "@/lib/http";
 import { clientIp } from "@/lib/ip";
 import { generateTrip } from "@/lib/pipeline";
+import { ndjsonResponse } from "@/lib/stream";
 import { toSummary, type TripRow } from "@/lib/trips";
 
 export const runtime = "nodejs";
@@ -42,37 +43,5 @@ export const POST = handler(async (req: Request) => {
     return json({ trip }, 201);
   }
 
-  const enc = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const send = (e: BuildEvent) => {
-        try {
-          controller.enqueue(enc.encode(JSON.stringify(e) + "\n"));
-        } catch {
-          /* client went away */
-        }
-      };
-      try {
-        const trip = await generateTrip(ctx, body, opts, send);
-        send({ type: "done", trip });
-      } catch (e) {
-        if (!(e instanceof HttpError)) console.error(e);
-        send({
-          type: "error",
-          message: e instanceof HttpError ? e.message : "Something went wrong. Try again.",
-          code: e instanceof HttpError ? e.code : "server_error",
-        });
-      } finally {
-        controller.close();
-      }
-    },
-  });
-  return new Response(stream, {
-    status: 200,
-    headers: {
-      "Content-Type": "application/x-ndjson; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      "X-Accel-Buffering": "no",
-    },
-  });
+  return ndjsonResponse((send) => generateTrip(ctx, body, opts, send));
 });
