@@ -2,6 +2,31 @@ import { z } from "zod";
 import { SOURCE_IDS, STAY_PRICES, STAY_STYLES } from "./sources";
 
 const sourceId = z.enum(SOURCE_IDS);
+
+/** Map loose source labels from the model ("Local", "local_picks", "Press coverage") onto real ids. */
+const SOURCE_ALIASES: [RegExp, (typeof SOURCE_IDS)[number]][] = [
+  [/local/, "locals"],
+  [/host|concierge|airbnb/, "hosts"],
+  [/press|editor|magazine|news|journal/, "press"],
+  [/indie|blog|independent|newsletter/, "indie"],
+  [/review|google|yelp|tripadvisor|rating/, "reviews"],
+  [/guide|book|lonely|fodor|rick/, "guidebooks"],
+  [/social|insta|tiktok|influenc/, "social"],
+  [/sponsor|paid|ad\b/, "sponsored"],
+];
+const looseSource = z.preprocess((v) => {
+  const s = String(v ?? "").trim().toLowerCase();
+  if ((SOURCE_IDS as readonly string[]).includes(s)) return s;
+  for (const [re, id] of SOURCE_ALIASES) if (re.test(s)) return id;
+  return "guidebooks"; // unknown label: neutral, and grounding replaces it with the real origin when it can
+}, sourceId);
+
+/** Text the model might send as a number or leave out. */
+const toText = (v: unknown) => (v == null ? undefined : typeof v === "number" || typeof v === "boolean" ? String(v) : v);
+const looseId = z.preprocess(
+  (v) => (v == null || v === "" ? null : String(v).replace(/^\[|\]$/g, "").trim() || null),
+  z.string().nullable(),
+).optional();
 const weight = z.number().int().min(0).max(10);
 export const WeightsSchema = z.record(sourceId, weight);
 
@@ -67,24 +92,46 @@ export const PlaceVerificationSchema = z.object({
 export type PlaceVerification = z.infer<typeof PlaceVerificationSchema>;
 
 /** Model-written text: trim to the limit instead of rejecting the whole plan. */
-const clip = (max: number) => z.string().transform((v) => v.slice(0, max));
-const clipReq = (max: number) => z.string().trim().min(1).transform((v) => v.slice(0, max));
+const clip = (max: number) => z.preprocess(toText, z.string().transform((v) => v.slice(0, max)));
+const clipReq = (max: number) => z.preprocess(toText, z.string().trim().min(1).transform((v) => v.slice(0, max)));
+const coord = (lim: number) => z.preprocess((v) => (typeof v === "string" ? Number(v) : v), z.number().min(-lim).max(lim)).nullable().optional().catch(undefined);
+
+/**
+ * A list of model-written items: keep the ones that validate and drop the rest,
+ * so one malformed entry doesn't sink the whole plan. Fails only if fewer than `min` survive.
+ */
+export function salvage<T extends z.ZodTypeAny>(item: T, min = 0, max = 50) {
+  return z
+    .array(z.unknown())
+    .transform((arr, ctx) => {
+      const ok: z.output<T>[] = [];
+      for (const raw of arr) {
+        const r = item.safeParse(raw);
+        if (r.success) ok.push(r.data);
+      }
+      if (ok.length < min) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `only ${ok.length} of ${arr.length} items were usable` });
+        return z.NEVER;
+      }
+      return ok.slice(0, max);
+    });
+}
 
 export const StopSchema = z.object({
-  time: clip(20),
+  time: clip(20).default(""),
   name: clipReq(160),
   neighborhood: clip(120).default(""),
-  why: clip(400),
+  why: clip(400).default(""),
   localTip: clip(400).default(""),
-  source: sourceId,
-  candidateId: z.string().nullable().optional(),
+  source: looseSource,
+  candidateId: looseId,
   /** Where the pick really came from: a vetted local pick, a Places result, or the model's own knowledge. */
   origin: z.enum(["local_pick", "google", "ai"]).optional(),
   /** Approximate coordinates from the model; replaced by verified ones when Places finds the stop. */
-  lat: z.number().min(-90).max(90).nullable().optional().catch(undefined),
-  lng: z.number().min(-180).max(180).nullable().optional().catch(undefined),
+  lat: coord(90),
+  lng: coord(180),
   /** The traveler locked this stop: it survives day regeneration. */
-  locked: z.boolean().optional(),
+  locked: z.boolean().optional().catch(undefined),
   place: PlaceVerificationSchema.optional(),
 });
 export type Stop = z.infer<typeof StopSchema>;
@@ -103,31 +150,31 @@ export const HotelSchema = z.object({
   neighborhood: clip(120).default(""),
   style: clip(60).default(""),
   nightly: clip(40).default(""),
-  why: clip(400),
+  why: clip(400).default(""),
   localTip: clip(400).default(""),
-  source: sourceId,
-  candidateId: z.string().nullable().optional(),
+  source: looseSource,
+  candidateId: looseId,
   origin: z.enum(["local_pick", "google", "ai"]).optional(),
-  expediaPropertyId: z.string().nullable().optional(),
-  lat: z.number().min(-90).max(90).nullable().optional().catch(undefined),
-  lng: z.number().min(-180).max(180).nullable().optional().catch(undefined),
+  expediaPropertyId: looseId,
+  lat: coord(90),
+  lng: coord(180),
   place: PlaceVerificationSchema.optional(),
   liveRate: LiveRateSchema.optional(),
 });
 export type Hotel = z.infer<typeof HotelSchema>;
 
 export const DaySchema = z.object({
-  label: clip(40),
-  theme: clip(160),
-  stops: z.array(StopSchema).min(1).transform((a) => a.slice(0, 8)),
+  label: clip(40).default(""),
+  theme: clip(160).default(""),
+  stops: salvage(StopSchema, 1, 8),
 });
 
 export const ItinerarySchema = z.object({
   title: clipReq(140),
-  summary: clip(600),
-  days: z.array(DaySchema).min(1).transform((a) => a.slice(0, 7)),
-  hotels: z.array(HotelSchema).transform((a) => a.slice(0, 5)).default([]),
-  notes: z.array(clip(300)).transform((a) => a.slice(0, 6)).default([]),
+  summary: clip(600).default(""),
+  days: salvage(DaySchema, 1, 7),
+  hotels: salvage(HotelSchema, 0, 5).default([]),
+  notes: salvage(clip(300), 0, 6).default([]),
   stayLabel: z.string().optional(),
   /** Votes on stops the traveler swapped out, kept so the training signal isn't lost. */
   replaced: z.array(z.object({ source: sourceId, vote: z.union([z.literal(1), z.literal(-1)]) })).max(200).default([]),
@@ -194,17 +241,16 @@ export const LocalPickReviewSchema = z.object({
 /** Step 1 of the fast planner: the trip outline (no stops yet). */
 export const OutlineSchema = z.object({
   title: clipReq(140),
-  summary: clip(600),
-  notes: z.array(clip(300)).transform((a) => a.slice(0, 6)).default([]),
-  days: z
-    .array(
-      z.object({
-        label: clip(40),
-        theme: clip(160),
-        area: clip(160).default(""),
-        candidateIds: z.array(z.string()).default([]),
-      }),
-    )
-    .min(1)
-    .transform((a) => a.slice(0, 7)),
+  summary: clip(600).default(""),
+  notes: salvage(clip(300), 0, 6).default([]),
+  days: salvage(
+    z.object({
+      label: clip(40).default(""),
+      theme: clip(160).default(""),
+      area: clip(160).default(""),
+      candidateIds: salvage(z.preprocess(toText, z.string()), 0, 30).default([]),
+    }),
+    1,
+    7,
+  ),
 });

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   TripRequestSchema,
+  DaySchema,
+  OutlineSchema,
+  HotelSchema,
   aggregateInsights,
   blendWeights,
   buildFeedback,
@@ -228,5 +231,35 @@ describe("normalizeModelOutput", () => {
   });
   it("leaves ordinary strings alone", () => {
     expect(normalizeModelOutput({ why: "[sic] a great spot" })).toEqual({ why: "[sic] a great spot" });
+  });
+});
+
+describe("tolerant plan validation", () => {
+  const good = { time: "09:30", name: "Manteigaria", neighborhood: "Chiado", why: "Nata.", localTip: "", source: "locals", candidateId: null };
+  it("keeps a day when one stop is malformed", () => {
+    const r = DaySchema.safeParse({ label: "Day 1", theme: "x", stops: [good, { why: "no name" }, { ...good, name: "Ribeira" }] });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.stops.map((s) => s.name)).toEqual(["Manteigaria", "Ribeira"]);
+  });
+  it("maps loose source labels and coerces ids, times and coordinates", () => {
+    const r = DaySchema.parse({
+      label: "Day 1",
+      theme: "x",
+      stops: [{ name: "A", source: "Local friends", candidateId: 12, lat: "38.71", lng: -9.1 }, { name: "B", source: "Lonely Planet" }, { name: "C", source: "???" }],
+    });
+    expect(r.stops.map((s) => s.source)).toEqual(["locals", "guidebooks", "guidebooks"]);
+    expect(r.stops[0]!.candidateId).toBe("12");
+    expect(r.stops[0]!.lat).toBeCloseTo(38.71);
+    expect(r.stops[0]!.time).toBe("");
+  });
+  it("still rejects a day with no usable stops", () => {
+    expect(DaySchema.safeParse({ label: "Day 1", theme: "x", stops: [{ why: "?" }] }).success).toBe(false);
+  });
+  it("accepts an outline with numeric candidate ids and no summary", () => {
+    const r = OutlineSchema.safeParse({ title: "T", days: [{ label: "Day 1", theme: "t", candidateIds: [3, "c4"] }] });
+    expect(r.success).toBe(true);
+  });
+  it("accepts a hotel with a bracketed candidate id", () => {
+    expect(HotelSchema.parse({ name: "Memmo", source: "press", candidateId: "[c7]" }).candidateId).toBe("c7");
   });
 });

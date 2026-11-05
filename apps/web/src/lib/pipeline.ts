@@ -28,6 +28,7 @@ import {
   type Stop,
   type TripRequest,
   type Weights,
+  salvage,
 } from "@travel/core";
 import { z } from "zod";
 import type { Ctx } from "./auth";
@@ -173,22 +174,31 @@ async function checkRateLimit(ctx: Ctx, limit: number) {
 export type Emit = (e: BuildEvent) => void;
 
 const DayResultSchema = z.object({
-  theme: z.string().transform((v) => v.slice(0, 160)).optional(),
-  stops: z.array(StopSchema).min(1).transform((a) => a.slice(0, 8)),
+  theme: z.preprocess((v) => (typeof v === "string" ? v.slice(0, 160) : undefined), z.string().optional()),
+  stops: salvage(StopSchema, 1, 8),
 });
 
 /** Run a model step, retrying once if the answer doesn't validate. */
 async function step<T>(
   label: string,
-  run: () => Promise<{ input: unknown; model: string }>,
+  run: (attempt: number) => Promise<{ input: unknown; model: string }>,
   schema: z.ZodType<T, z.ZodTypeDef, unknown>,
 ): Promise<{ data: T; model: string }> {
+  let lastErr: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const { input, model } = await run();
-    const parsed = schema.safeParse(input);
-    if (parsed.success) return { data: parsed.data, model };
-    console.error(`${label} failed validation (attempt ${attempt + 1})`, parsed.error.issues.slice(0, 4));
+    try {
+      const { input, model } = await run(attempt);
+      const parsed = schema.safeParse(input);
+      if (parsed.success) return { data: parsed.data, model };
+      console.error(`${label} failed validation (attempt ${attempt + 1})`, JSON.stringify(parsed.error.issues.slice(0, 4)), JSON.stringify(input).slice(0, 600));
+    } catch (e) {
+      // A bad or cut-off answer gets one more try; outages and auth errors don't.
+      if (!(e instanceof HttpError) || !["bad_output", "too_long"].includes(e.code ?? "")) throw e;
+      console.error(`${label} attempt ${attempt + 1}: ${e.code}`);
+      lastErr = e;
+    }
   }
+  if (lastErr instanceof HttpError && lastErr.code === "too_long") throw lastErr;
   throw new HttpError(502, "The plan came back incomplete. Try again.", "bad_output");
 }
 
@@ -224,7 +234,7 @@ export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: strin
   progress(15, `Sketching your ${req.days}-day outline`);
   const { data: outline, model } = await step(
     "outline",
-    () => callTool(buildOutlinePrompt(req, eff, lists, cands), OUTLINE_TOOL, 2500),
+    (attempt) => callTool(buildOutlinePrompt(req, eff, lists, cands), OUTLINE_TOOL, attempt ? 5000 : 3000),
     OutlineSchema,
   );
   const o: Outline = { ...outline, days: outline.days.slice(0, req.days) };
@@ -242,7 +252,7 @@ export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: strin
   const dayJobs = o.days.map(async (d, i) => {
     const { data } = await step(
       `day ${i + 1}`,
-      () => callTool(buildPlanDayPrompt(req, eff, lists, o, i, cands), DAY_TOOL, 4000, { fast: true }),
+      (attempt) => callTool(buildPlanDayPrompt(req, eff, lists, o, i, cands), DAY_TOOL, attempt ? 6000 : 4000, { fast: attempt === 0 }),
       DayResultSchema,
     );
     emit({ type: "day", index: i });
@@ -256,8 +266,8 @@ export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: strin
         try {
           const { data } = await step(
             "hotels",
-            () => callTool(buildHotelPromptForAreas(req, eff, lists, areas, stayCands), HOTELS_TOOL, 3000, { fast: true }),
-            z.object({ hotels: z.array(HotelSchema).min(1) }),
+            (attempt) => callTool(buildHotelPromptForAreas(req, eff, lists, areas, stayCands), HOTELS_TOOL, 3000, { fast: attempt === 0 }),
+            z.object({ hotels: salvage(HotelSchema, 1, 5) }),
           );
           return data.hotels.slice(0, 3);
         } catch (e) {
