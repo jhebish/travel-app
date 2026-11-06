@@ -592,3 +592,38 @@ describe("pick names", () => {
     expect(pickKey("Casa Guedes")).not.toBe(pickKey("Casa Lusitana"));
   });
 });
+
+describe("trips from imported places", () => {
+  it("makes one trip per city and year, skipping places without a country or date", async () => {
+    const { tripsFromSignals } = await import("../src");
+    const trips = tripsFromSignals([
+      { kind: "city", name: "Lisbon", city: null, countryCode: "PT", date: "2024-05-02" },
+      { kind: "food", name: "Taberna da Rua das Flores", city: "Lisbon", countryCode: "PT", date: "2024-05-03" },
+      { kind: "stay", name: "Hoshinoya", city: "Kyoto", countryCode: "JP", date: "2023-11-20" },
+      { kind: "food", name: "Somewhere", city: "Nowhere", countryCode: null, date: "2023-01-01" },
+      { kind: "food", name: "Undated", city: "Paris", countryCode: "FR", date: null },
+    ]);
+    expect(trips.map((t) => `${t.city} ${t.countryCode} ${t.year}-${t.month}`)).toEqual(["Lisbon PT 2024-5", "Kyoto JP 2023-11"]);
+  });
+});
+
+describe("trips from photo locations", () => {
+  it("finds home, then each place visited away from it", async () => {
+    const { photoStays } = await import("../src");
+    const home = { lat: 40.72, lng: -73.99 }; // New York
+    const days = (from: string, n: number, at: { lat: number; lng: number }) =>
+      Array.from({ length: n }, (_, i) => ({ day: new Date(Date.parse(from) + i * 864e5).toISOString().slice(0, 10), lat: at.lat + i * 0.001, lng: at.lng }));
+    const points = [
+      ...days("2024-01-01", 60, home),
+      ...days("2024-05-01", 3, { lat: 41.9, lng: 12.5 }), // Rome
+      ...days("2024-05-04", 2, { lat: 43.77, lng: 11.25 }), // Florence, straight after
+      ...days("2024-08-10", 1, { lat: 40.73, lng: -73.6 }), // a day 33 km out: still home
+      ...days("2025-02-01", 4, { lat: 38.72, lng: -9.14 }), // Lisbon
+    ];
+    const stays = photoStays(points);
+    expect(stays.map((s) => `${s.start}+${s.days}`)).toEqual(["2024-05-01+3", "2024-05-04+2", "2025-02-01+4"]);
+    expect(stays[0]).toMatchObject({ lat: 41.9, lng: 12.5 });
+    // Centres are rounded to about 1 km.
+    expect(stays.every((s) => Math.round(s.lat * 100) / 100 === s.lat)).toBe(true);
+  });
+});

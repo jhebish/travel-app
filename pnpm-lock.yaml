@@ -22,12 +22,18 @@ importers:
       expo:
         specifier: 51.0.39
         version: 51.0.39(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(react-native@0.74.5(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)
+      expo-calendar:
+        specifier: 13.0.5
+        version: 13.0.5(expo@51.0.39(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(react-native@0.74.5(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0))
       expo-constants:
         specifier: 16.0.2
         version: 16.0.2(expo@51.0.39(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(react-native@0.74.5(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0))
       expo-linking:
         specifier: 6.3.1
         version: 6.3.1(expo@51.0.39(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(react-native@0.74.5(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0))
+      expo-media-library:
+        specifier: 16.0.5
+        version: 16.0.5(expo@51.0.39(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(react-native@0.74.5(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0))
       expo-router:
         specifier: 3.5.24
         version: 3.5.24(6321941dc5ca831f26588a6a78218cfa)
@@ -86,9 +92,6 @@ importers:
       d3-geo:
         specifier: 3.1.1
         version: 3.1.1
-      fflate:
-        specifier: 0.8.2
-        version: 0.8.2
       leaflet:
         specifier: 1.9.4
         version: 1.9.4
@@ -2559,6 +2562,11 @@ packages:
     peerDependencies:
       expo: '*'
 
+  expo-calendar@13.0.5:
+    resolution: {integrity: sha512-Wkk7eHvlyhWz2csxU6guYA2HFcLUfYpmlsdMy4a6bneBmFqIZG/ldnLKq/lcQ+BCrfI3fOULt3aNdF6SlZtLlw==}
+    peerDependencies:
+      expo: '*'
+
   expo-constants@16.0.2:
     resolution: {integrity: sha512-9tNY3OVO0jfiMzl7ngb6IOyR5VFzNoN5OOazUWoeGfmMqVB5kltTemRvKraK9JRbBKIw+SOYLEmF0sEqgFZ6OQ==}
     peerDependencies:
@@ -2581,6 +2589,11 @@ packages:
 
   expo-linking@6.3.1:
     resolution: {integrity: sha512-xuZCntSBGWCD/95iZ+mTUGTwHdy8Sx+immCqbUBxdvZ2TN61P02kKg7SaLS8A4a/hLrSCwrg5tMMwu5wfKr35g==}
+
+  expo-media-library@16.0.5:
+    resolution: {integrity: sha512-O9RUqBWgJVRF0mO6EiLSBFyfb5wR1/ZqovbT43V0TAo5sgcjrHRs+0NID/U6BWDRuiFeX2AU516JgNDutNUFSw==}
+    peerDependencies:
+      expo: '*'
 
   expo-modules-autolinking@1.11.3:
     resolution: {integrity: sha512-oYh8EZEvYF5TYppxEKUTTJmbr8j7eRRnrIxzZtMvxLTXoujThVPMFS/cbnSnf2bFm1lq50TdDNABhmEi7z0ngQ==}
@@ -2660,9 +2673,6 @@ packages:
 
   fetch-retry@4.1.1:
     resolution: {integrity: sha512-e6eB7zN6UBSwGVwrbWVH+gdLnkW9WwHhmq2YDK1Sh30pzx1onRVGBvogTlUeWxwTa+L86NYdo4hFkh7O8ZjSnA==}
-
-  fflate@0.8.2:
-    resolution: {integrity: sha512-cPJU47OaAoCbg0pBvzsgpTPhmhqI5eJjh/JIu8tPj5q+T7iLvW/JAYUqmE7KOB4R1ZyEhzBaIQpQpardBF5z8A==}
 
   fill-range@7.1.1:
     resolution: {integrity: sha512-YsGpe3WHLK8ZYi4tWDg2Jy3ebRz2rXowDxnld4bkQB00cc/1Zw9AWnC0i9ztDJitivtQvaI9KaLyKrc+hBW0yg==}
@@ -8075,6 +8085,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  expo-calendar@13.0.5(expo@51.0.39(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(react-native@0.74.5(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)):
+    dependencies:
+      expo: 51.0.39(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(react-native@0.74.5(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)
+
   expo-constants@16.0.2(expo@51.0.39(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(react-native@0.74.5(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)):
     dependencies:
       '@expo/config': 9.0.4
@@ -8103,6 +8117,10 @@ snapshots:
     transitivePeerDependencies:
       - expo
       - supports-color
+
+  expo-media-library@16.0.5(expo@51.0.39(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(react-native@0.74.5(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)):
+    dependencies:
+      expo: 51.0.39(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(react-native@0.74.5(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)
 
   expo-modules-autolinking@1.11.3:
     dependencies:
@@ -8233,8 +8251,6 @@ snapshots:
       - encoding
 
   fetch-retry@4.1.1: {}
-
-  fflate@0.8.2: {}
 
   fill-range@7.1.1:
     dependencies:

@@ -208,14 +208,16 @@ Run `supabase/migrations/20261107000000_taste_together.sql` after deploying this
 works before it, with these features off). It also stops travelers' browsers from writing trips
 directly: trips are now inserted and edited only by the server, which checks who is asking.
 
-- **Past trips: what you did.** On the You page (`/profile`), each logged trip can list where you
-  stayed, ate and went, with a thumbs up or down. Logging a Pylos trip ("I went") offers its hotels
-  and stops as "did you go?" chips.
-- **Taste profile.** Those places, imports and your thumbs on Pylos plans become `taste_signals`.
+- **Past trips: tick what you loved.** On the You page (`/profile`), type a city, tick the places you
+  loved from a ready-made list of its best-known stays, restaurants, bars and sights, hit Next
+  (`components/QuickLog.tsx`). The list is written once per city by the fast model, in two halves
+  at once, and cached in `places_cache` (`citypicks1:<city>`). "I went" on a Pylos trip puts that
+  plan's places first. Each logged trip can still be edited with more detail.
+- **Taste profile.** Those places, sign-in and phone imports and your thumbs on Pylos plans become `taste_signals`.
   The fast model turns them into a cached profile (`taste_profiles`); the planner gets a TASTE
   section (profile plus your strongest favourites, nearest to the trip first) for days, swaps,
   rebuilt days and hotels, and marks matching picks "For you".
-- **Connected accounts and imports** (`components/connect.tsx`):
+- **Connected accounts: sign in or allow, nothing to download.** On the web (`components/connect.tsx`):
   - Google Calendar: a one-time read of past trips, hotel stays and dinner reservations (Resy and
     OpenTable bookings land in calendars). Set `GOOGLE_OAUTH_CLIENT_ID` and
     `GOOGLE_OAUTH_CLIENT_SECRET` (Google Cloud → APIs & Services → Credentials → OAuth client,
@@ -224,10 +226,14 @@ directly: trips are now inserted and edited only by the server, which checks who
     the test users you add on the consent screen can connect.
   - Facebook: check-ins and tagged places with `META_APP_ID` / `META_APP_SECRET` (redirect URI
     `/api/connect/facebook/callback`; `user_posts` and `user_tagged_places` need Meta app review).
-  - Files read in the browser (zips too): Google Maps Takeout, Instagram and Facebook data
-    downloads, Swarm exports, .ics calendars. Only the places found are sent to the server.
-  - Pasted text (Resy/OpenTable history, Beli lists, notes) → `/api/taste/extract`.
+  - Both add the cities and years they find to Places you've been (`tripsFromSignals`).
   - Access tokens are used once and revoked; none are stored (`connections` keeps only dates/counts).
+  - In the phone app (You tab, `apps/mobile/src/deviceImports.ts`), with the person's permission:
+    the calendars on the phone (iCloud, Google, Outlook; read on the phone with `calendarSignals`)
+    and photo locations (days away from home become trips with `photoStays`; only rough centres
+    and dates are sent, and `/api/taste/photo-trips` names the places). Instagram doesn't let
+    apps read personal accounts any more, and Resy and OpenTable have no sign-in for other apps:
+    their bookings come in through the calendar.
 - **Photos.** Google Places photos are captured when places are verified and served through
   `/api/photo` (a cached redirect; author credited). Needs `GOOGLE_PLACES_API_KEY` with the Places
   API (New) enabled; each photo size is fetched from Google about once a week.
@@ -239,4 +245,12 @@ directly: trips are now inserted and edited only by the server, which checks who
   (`fitItineraryToDays`); for more days, destinations use a longer version planned once
   (`/api/browse/<key>/sample?long=1`) and trimmed the same way.
 - **Rate limits** are recorded in `rate_events` before the work starts (builds, edits, hotel
-  searches, imports, taste refreshes), so parallel requests count against each other.
+  searches, city lists and photo scans, taste refreshes), so parallel requests count against each other.
+
+## Multi-city routes by season, and swapping a stop
+
+The plan form asks **When** (a month, defaulting to the weeks ahead; "Not sure yet" plans a route
+that works most of the year). The route picks stops for that month (beach towns only in beach
+season) and gives each stop a `season` line and 2–3 `alternatives`. On the trip, each stop shows
+them; swapping (`swap_city` edit) re-plans that stop's days, its hotels if it had them, the
+transfers either side and the trip title, and keeps the old town as a one-tap swap back.

@@ -20,21 +20,26 @@ export const SIGNAL_KIND_LABELS: Record<SignalKind, string> = {
   city: "Visited",
 };
 
+/**
+ * Where a signal came from. New ones only come from typing them in, signing in (Google Calendar,
+ * Facebook) or allowing the phone's calendar ("ics"). The others are kept for places saved by
+ * earlier file imports; the database accepts the same list.
+ */
 export const SIGNAL_SOURCES = [
   "manual", // typed into Pylos
-  "google_calendar", // connected Google Calendar (trips, hotel stays, dinner reservations)
-  "ics", // an uploaded calendar file
-  "google_takeout", // Google Maps reviews and saved places
-  "instagram", // connected account or data download
-  "facebook", // connected account or data download
-  "swarm", // Foursquare / Swarm check-ins export
-  "paste", // pasted text (Resy or OpenTable history, Beli lists, notes)
+  "google_calendar", // signed-in Google Calendar (trips, hotel stays, dinner reservations)
+  "ics", // the calendars on the person's phone, read in the app with their permission
+  "google_takeout", // earlier imports only
+  "instagram", // earlier imports only
+  "facebook", // signed-in Facebook (check-ins, tagged places)
+  "swarm", // earlier imports only
+  "paste", // earlier imports only
 ] as const;
 export type SignalSource = (typeof SIGNAL_SOURCES)[number];
 export const SIGNAL_SOURCE_LABELS: Record<SignalSource, string> = {
   manual: "Added by you",
   google_calendar: "Google Calendar",
-  ics: "Calendar file",
+  ics: "Phone calendar",
   google_takeout: "Google Maps",
   instagram: "Instagram",
   facebook: "Facebook",

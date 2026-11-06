@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { isCountryCode } from "./countries";
 import type { Itinerary } from "./schemas";
+import type { TasteSignal } from "./taste";
 
 export const VISIBILITIES = ["private", "followers", "public"] as const;
 export type Visibility = (typeof VISIBILITIES)[number];
@@ -62,6 +63,26 @@ export const PastTripInputSchema = z.object({
   tripId: z.string().uuid().nullable().default(null),
 });
 export type PastTripInput = z.infer<typeof PastTripInputSchema>;
+
+/**
+ * The trips (a city in a year) implied by places someone has been: a flight into Lisbon, a hotel
+ * night in Kyoto, a dinner in Paris. For "Places you've been" after a calendar or account import.
+ */
+export function tripsFromSignals(signals: Pick<TasteSignal, "kind" | "name" | "city" | "countryCode" | "date">[], max = 100): PastTripInput[] {
+  const by = new Map<string, PastTripInput>();
+  for (const s of signals) {
+    const city = (s.kind === "city" ? s.name : s.city)?.trim();
+    if (!city || !s.countryCode || !isCountryCode(s.countryCode) || !s.date) continue;
+    const year = Number(s.date.slice(0, 4));
+    if (!(year >= 1950 && year <= new Date().getUTCFullYear() + 1)) continue;
+    const month = Number(s.date.slice(5, 7));
+    const key = `${cityKey(city)}|${year}`;
+    if (!by.has(key)) {
+      by.set(key, { city: city.slice(0, 80), countryCode: s.countryCode.toUpperCase(), year, month: month >= 1 && month <= 12 ? month : null, days: null, rating: null, highlights: "", tripId: null });
+    }
+  }
+  return [...by.values()].slice(0, max);
+}
 
 export interface PastTrip {
   id: string;

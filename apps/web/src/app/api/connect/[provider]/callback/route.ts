@@ -1,7 +1,8 @@
-import { calendarSignals, dedupeSignals, guessKind } from "@travel/core";
+import { calendarSignals, dedupeSignals, guessKind, tripsFromSignals } from "@travel/core";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getCtx } from "@/lib/auth";
+import { addPlacesBulk } from "@/lib/community";
 import { OAUTH_COOKIE, facebookPlaces, facebookSignals, googleCalendarEvents, isProvider, type OAuthCookie } from "@/lib/connect";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { signalRow } from "@/lib/taste";
@@ -10,7 +11,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-/** Back from Google or Facebook: read once, keep only the places we find, give the access back. */
+/** Back from Google or Facebook: read once, keep only the places and trips we find, give the access back. */
 export async function GET(req: Request, { params }: { params: { provider: string } }) {
   const url = new URL(req.url);
   const back = (q: string) => {
@@ -50,10 +51,13 @@ export async function GET(req: Request, { params }: { params: { provider: string
       if (error) throw error;
       added += data?.length ?? 0;
     }
+    // The cities and years they were in become past trips (ones already logged are skipped).
+    const trips = tripsFromSignals(signals);
+    const { added: tripsAdded } = trips.length ? await addPlacesBulk(ctx, trips).catch(() => ({ added: 0 })) : { added: 0 };
     await supabaseAdmin()
       .from("connections")
       .upsert({ user_id: ctx.user.id, provider, last_import_at: new Date().toISOString(), items_found: signals.length });
-    return back(`connected=${provider}&found=${signals.length}&added=${added}`);
+    return back(`connected=${provider}&found=${signals.length}&added=${added}&trips=${tripsAdded}`);
   } catch (e) {
     console.error(`connect ${provider} failed`, (e as Error).message);
     return back(`connect_error=failed&provider=${provider}`);

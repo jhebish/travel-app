@@ -13,7 +13,25 @@
     "android": {
       "package": "com.example.tripplanner"
     },
-    "plugins": ["expo-router", "expo-secure-store"],
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Pylos reads past events once to find your trips, hotel stays and restaurant reservations. Only the places it finds are saved.",
+          "remindersPermission": false
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Pylos looks at where and when your photos were taken to find the trips you've been on. Your photos never leave your phone.",
+          "savePhotosPermission": false,
+          "isAccessMediaLocationEnabled": true
+        }
+      ]
+    ],
     "experiments": {
       "typedRoutes": false
     }
