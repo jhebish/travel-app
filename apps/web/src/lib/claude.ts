@@ -42,6 +42,9 @@ export async function callTool(
   const model = opts.fast ? env.fastModel() : main;
   // Stay inside the routes' time limits (60–120 s): one retry, and a per-call timeout, so people
   // get our error message rather than a platform timeout. Callers retry malformed answers themselves.
+  // The tool call is forced: with "auto" the model wrote ~3x more text (thinking out loud before
+  // calling the tool), which was most of each day's 10–14 s. "auto" stays as a fallback.
+  let forced = true;
   const create = (m: string) =>
     anthropic().messages.create(
       {
@@ -49,7 +52,7 @@ export async function callTool(
         max_tokens: maxTokens,
         system: `${SYSTEM_PROMPT}\nAlways respond by calling the ${tool.name} tool exactly once with the complete result.`,
         tools: [tool as unknown as Anthropic.Tool],
-        tool_choice: { type: "auto" },
+        tool_choice: forced ? { type: "tool", name: tool.name } : { type: "auto" },
         messages: [{ role: "user", content: prompt }],
       },
       { timeout: m === main ? 90_000 : 45_000, maxRetries: 1 },
@@ -60,13 +63,18 @@ export async function callTool(
     try {
       res = await create(model);
     } catch (e) {
-      // If the fast model isn't available on this account, quietly use the main one.
-      if (model !== main && (e instanceof Anthropic.NotFoundError || e instanceof Anthropic.BadRequestError)) {
+      if (e instanceof Anthropic.BadRequestError && /tool_choice/i.test(e.message)) {
+        // This model won't take a forced tool call: let it choose.
+        forced = false;
+        res = await create(model);
+      } else if (model !== main && (e instanceof Anthropic.NotFoundError || e instanceof Anthropic.BadRequestError)) {
+        // If the fast model isn't available on this account, quietly use the main one.
         console.error(`Fast model ${model} unavailable (${(e as Error).message}); using ${main}`);
         res = await create(main);
       } else throw e;
     }
-    console.log(`[claude] ${tool.name} ${res.model} ${Date.now() - t0}ms out=${res.usage.output_tokens}`);
+    const textChars = res.content.reduce((n, b) => n + (b.type === "text" ? b.text.length : 0), 0);
+    console.log(`[claude] ${tool.name} ${res.model} ${Date.now() - t0}ms out=${res.usage.output_tokens}${textChars ? ` text=${textChars}` : ""}${forced ? "" : " auto"}`);
   } catch (e) {
     if (e instanceof Anthropic.RateLimitError) throw new HttpError(503, "The planner is busy right now. Try again in a minute.", "busy");
     if (e instanceof Anthropic.AuthenticationError) {
