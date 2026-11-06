@@ -82,6 +82,12 @@ function Planner() {
     api<{ prefs: { useCustom: boolean } | null }>("/api/prefs")
       .then((p) => setCustomMix(!!p.prefs?.useCustom))
       .catch(() => setCustomMix(false));
+    const dest = params.get("dest");
+    if (dest) {
+      const days = Number(params.get("days"));
+      setMode("quick");
+      setReq((r) => ({ ...r, destination: dest.slice(0, 120), days: days >= 1 && days <= 7 ? Math.round(days) : r.days }));
+    }
     const from = params.get("from");
     if (from)
       api<{ trip: Trip }>(`/api/trips/${from}`)

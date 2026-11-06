@@ -17,6 +17,8 @@ export interface Trip {
   votes: Votes;
   /** Present while the trip has a public link. */
   shareToken?: string | null;
+  /** Who can see it in the community. */
+  visibility?: "private" | "followers" | "public";
 }
 
 /** What a public share link shows: the plan, without the traveler's personal details. */

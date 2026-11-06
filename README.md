@@ -185,3 +185,13 @@ The home page can use a Typeform instead of the built-in form. Answers are match
 3. Add the id in Vercel as `TYPEFORM_FORM_ID` and redeploy. The home page now shows the Typeform, with a link to the quick form.
 
 How it works: the embed passes the visitor's user id as a hidden `uid` field. On submit, the app fetches that response from the Typeform Responses API, checks the `uid`, maps the answers to a trip request (`packages/core/src/typeform.ts`) and streams the build with the usual progress bar. The mobile app keeps its native form.
+
+## Community
+
+Follow friends, see their shared trips, browse the top-rated public trips in any city, and see who's the most travelled among the people you follow.
+
+- **Setup:** run `supabase/migrations/20261106000000_community.sql` in the Supabase SQL editor. Until then, community pages say so and trip building works as before.
+- **Joining** needs an email sign-in (guest accounts can log places but can't have a profile). People pick a handle on `/profile`.
+- **Visibility:** each trip is Only me, Followers, or Everyone (from its Share menu); new trips follow the profile's default. Other people's trips are served by the server with personal details removed (the "about you" answers, notes, dates and source mix).
+- **Places I've been** (`past_trips`): city, country, year, rating and highlights. They drive the friends leaderboard (countries, then cities) and feed the planner as a taste signal, so returning visitors get fewer first-timer sights.
+- **Top trips** rank public trips by likes from other people, then the owner's rating, with a small boost for recent ones.

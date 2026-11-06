@@ -13,8 +13,9 @@ import {
   type Stop,
   type Trip,
 } from "@travel/core";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { Chips, SingleChips } from "./Chips";
 import { DayMap } from "./DayMap";
 import {
@@ -74,7 +75,13 @@ function PlaceLinks({ p }: { p: Stop | Hotel }) {
   );
 }
 
-type Busy = null | { kind: "swap"; key: string } | { kind: "day"; day: number } | { kind: "hotels" } | { kind: "share" };
+type Busy = null | { kind: "swap"; key: string } | { kind: "day"; day: number } | { kind: "hotels" } | { kind: "share" } | { kind: "visibility" };
+type Vis = NonNullable<Trip["visibility"]>;
+const VIS: { value: Vis; label: string; hint: string }[] = [
+  { value: "private", label: "Only me", hint: "Hidden from the community." },
+  { value: "followers", label: "Followers", hint: "People who follow you see it in their feed and on your profile." },
+  { value: "public", label: "Everyone", hint: "Shown on your profile and can rank in the top trips for this city." },
+];
 
 /**
  * The full trip. `readOnly` is the public share view: no ratings, editing, or sharing controls.
@@ -199,6 +206,19 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
       setBusy(null);
     }
   }
+  const [visNote, setVisNote] = useState<{ text: string; code?: string } | null>(null);
+  async function setVisibility(visibility: Vis) {
+    setBusy({ kind: "visibility" });
+    setVisNote(null);
+    try {
+      await api(`/api/trips/${trip.id}/visibility`, { method: "PUT", json: { visibility } });
+      apply({ ...trip, visibility });
+    } catch (e) {
+      setVisNote({ text: (e as Error).message, code: e instanceof ApiError ? e.code : undefined });
+    } finally {
+      setBusy(null);
+    }
+  }
   const [copied, setCopied] = useState(false);
   async function copy(url: string) {
     try {
@@ -277,6 +297,11 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
             <IconCalendar />
             Add to calendar
           </button>
+          {!readOnly && (
+            <Link className="hbtn" href={`/profile?log=${trip.id}&city=${encodeURIComponent(city.split(",")[0]!.trim())}`} title="Add it to the places you've been">
+              I went
+            </Link>
+          )}
         </div>
       </header>
 
@@ -596,6 +621,32 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
                 )}
               </>
             )}
+            <div className="field" style={{ marginTop: 6 }}>
+              <span className="label">In the community</span>
+              <div className="seg" role="group" aria-label="Who can see this trip in the community">
+                {VIS.map((v) => (
+                  <button
+                    key={v.value}
+                    type="button"
+                    aria-pressed={(trip.visibility ?? "private") === v.value}
+                    disabled={busy?.kind === "visibility"}
+                    onClick={() => setVisibility(v.value)}
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+              <span className="hint">
+                {VIS.find((v) => v.value === (trip.visibility ?? "private"))!.hint} Your personal details stay private, but stop descriptions may reflect what you told us.
+              </span>
+              {visNote && (
+                <p className="status err" role="status">
+                  {visNote.text}{" "}
+                  {visNote.code === "needs_email" && <Link href={`/login?next=/trips/${trip.id}`}>Sign in</Link>}
+                  {visNote.code === "needs_profile" && <Link href="/profile">Create your profile</Link>}
+                </p>
+              )}
+            </div>
             <button type="button" className="linkbtn" style={{ alignSelf: "flex-start" }} onClick={() => shareDlg.current?.close()}>
               Done
             </button>

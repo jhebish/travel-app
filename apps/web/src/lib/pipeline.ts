@@ -29,6 +29,11 @@ import {
   type TripRequest,
   type Weights,
   salvage,
+  cityKey,
+  countryName,
+  historyForPrompt,
+  type PastTrip,
+  type Visibility,
 } from "@travel/core";
 import { z } from "zod";
 import type { Ctx } from "./auth";
@@ -221,12 +226,47 @@ function dedupeAcrossDays(itin: Itinerary) {
  * Build a trip. Fast path: one short outline call (title, notes, an area per day), then every
  * day and the hotels are planned at the same time. Progress is reported through `emit`.
  */
+/** The traveler's logged places, as a prompt block. Empty if none (or before the community migration). */
+export async function loadHistory(ctx: Ctx, destination: string): Promise<string> {
+  if (!ctx.user) return "";
+  const { data, error } = await ctx.db
+    .from("past_trips")
+    .select("id, city, country_code, year, month, days, rating, highlights, trip_id")
+    .eq("user_id", ctx.user.id)
+    .limit(200);
+  if (error || !data?.length) return "";
+  const places: PastTrip[] = data.map((r) => ({
+    id: r.id,
+    city: r.city,
+    countryCode: r.country_code,
+    year: r.year,
+    month: r.month,
+    days: r.days,
+    rating: r.rating,
+    highlights: r.highlights ?? "",
+    tripId: r.trip_id,
+  }));
+  return historyForPrompt(places, destination, countryName);
+}
+
+/** Visibility for a new trip: the owner's community default, or private. */
+async function defaultVisibility(ctx: Ctx): Promise<Visibility> {
+  if (!ctx.user) return "private";
+  const { data } = await ctx.db.from("community_profiles").select("default_visibility").eq("user_id", ctx.user.id).maybeSingle();
+  return (data?.default_visibility as Visibility | undefined) ?? "private";
+}
+
+const withHistory = (history: string, prompt: string) => (history ? `${history}\n\n${prompt}` : prompt);
+
+/** Postgres/PostgREST "column doesn't exist" — the community migration hasn't been run yet. */
+const missingColumn = (e: { code?: string } | null) => !!e && (e.code === "42703" || e.code === "PGRST204");
+
 export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: string; tripsPerHour: number }, emit: Emit = () => {}) {
   const t0 = Date.now();
   const progress = (pct: number, label: string) => emit({ type: "progress", pct, label });
   progress(3, "Reading your request");
   await checkRateLimit(ctx, opts.tripsPerHour);
-  const { eff, lists } = await loadSources(ctx);
+  const [{ eff, lists }, history, visibility] = await Promise.all([loadSources(ctx), loadHistory(ctx, req.destination), defaultVisibility(ctx)]);
 
   progress(8, "Gathering local picks");
   const cands = selectCandidates(await gatherCandidates(req), eff, req);
@@ -234,7 +274,7 @@ export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: strin
   progress(15, `Sketching your ${req.days}-day outline`);
   const { data: outline, model } = await step(
     "outline",
-    (attempt) => callTool(buildOutlinePrompt(req, eff, lists, cands), OUTLINE_TOOL, attempt ? 5000 : 3000),
+    (attempt) => callTool(withHistory(history, buildOutlinePrompt(req, eff, lists, cands)), OUTLINE_TOOL, attempt ? 5000 : 3000),
     OutlineSchema,
   );
   const o: Outline = { ...outline, days: outline.days.slice(0, req.days) };
@@ -252,7 +292,7 @@ export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: strin
   const dayJobs = o.days.map(async (d, i) => {
     const { data } = await step(
       `day ${i + 1}`,
-      (attempt) => callTool(buildPlanDayPrompt(req, eff, lists, o, i, cands), DAY_TOOL, attempt ? 6000 : 4000, { fast: attempt === 0 }),
+      (attempt) => callTool(withHistory(history, buildPlanDayPrompt(req, eff, lists, o, i, cands)), DAY_TOOL, attempt ? 6000 : 4000, { fast: attempt === 0 }),
       DayResultSchema,
     );
     emit({ type: "day", index: i });
@@ -291,21 +331,23 @@ export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: strin
   await attachLiveRates(itin.hotels, req.startDate, req.days, adultsFor(req.party), opts.ip);
 
   progress(96, "Saving your trip");
-  const { data, error } = await ctx.db
+  const row = {
+    user_id: ctx.user!.id,
+    destination: req.destination,
+    title: itin.title,
+    request: req,
+    weights: eff.weights,
+    blocked: eff.blocked,
+    custom_mix: eff.custom,
+    itinerary: itin,
+    model,
+  };
+  let { data, error } = await ctx.db
     .from("trips")
-    .insert({
-      user_id: ctx.user!.id,
-      destination: req.destination,
-      title: itin.title,
-      request: req,
-      weights: eff.weights,
-      blocked: eff.blocked,
-      custom_mix: eff.custom,
-      itinerary: itin,
-      model,
-    })
+    .insert({ ...row, city_key: cityKey(req.destination), visibility })
     .select("*")
     .single();
+  if (missingColumn(error)) ({ data, error } = await ctx.db.from("trips").insert(row).select("*").single());
   if (error || !data) throw new HttpError(500, "Your trip was built but couldn't be saved. Try again.");
   console.log(`[build] total ${Date.now() - t0}ms`);
   progress(100, "Done");
@@ -385,7 +427,8 @@ export async function swapStop(ctx: Ctx, row: TripRow, day: number, index: numbe
   const cands = selectCandidates(await gatherCandidates(req), eff, req).filter(
     (c) => c.category !== "stay" && !inTrip.has(c.name.toLowerCase()),
   );
-  const { input } = await callTool(buildSwapPrompt(req, eff, lists, row.itinerary, day, index, hint, cands), STOP_TOOL, 2000, { fast: true });
+  const history = await loadHistory(ctx, req.destination);
+  const { input } = await callTool(withHistory(history, buildSwapPrompt(req, eff, lists, row.itinerary, day, index, hint, cands)), STOP_TOOL, 2000, { fast: true });
   const parsed = z.object({ stop: StopSchema }).safeParse(input);
   if (!parsed.success) throw new HttpError(502, "The replacement came back incomplete. Try again.", "bad_output");
   const stop = parsed.data.stop;
@@ -411,8 +454,9 @@ export async function regenerateDay(ctx: Ctx, row: TripRow, day: number, hint: s
   const cands = selectCandidates(await gatherCandidates(req), eff, req).filter(
     (c) => c.category !== "stay" && !otherDays.has(c.name.toLowerCase()),
   );
-  const { input } = await callTool(buildDayPrompt(req, eff, lists, row.itinerary, day, hint, cands), DAY_TOOL, 8000);
-  const parsed = z.object({ theme: z.string().transform((v) => v.slice(0, 160)), stops: z.array(StopSchema).min(1).transform((a) => a.slice(0, 8)) }).safeParse(input);
+  const history = await loadHistory(ctx, req.destination);
+  const { input } = await callTool(withHistory(history, buildDayPrompt(req, eff, lists, row.itinerary, day, hint, cands)), DAY_TOOL, 8000);
+  const parsed = DayResultSchema.safeParse(input);
   if (!parsed.success) throw new HttpError(502, "The new day came back incomplete. Try again.", "bad_output");
 
   // Locked stops are kept exactly, whatever the model returned.

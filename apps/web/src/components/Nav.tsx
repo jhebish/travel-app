@@ -11,6 +11,7 @@ export function Nav() {
   const links = [
     { href: "/", label: "Plan" },
     { href: "/trips", label: "My trips" },
+    { href: "/community", label: "Community" },
     { href: "/sources", label: "Sources" },
     ...(canSubmitPicks(me?.role) ? [{ href: "/picks", label: "Local picks" }] : []),
   ];

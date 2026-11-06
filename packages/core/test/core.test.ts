@@ -317,3 +317,79 @@ describe("typeform intake", () => {
     expect(() => typeformToRequest([{ field: { ref: "days" }, type: "number", number: 2 }])).toThrow(/destination/);
   });
 });
+
+describe("community", () => {
+  it("groups destinations by city", async () => {
+    const { cityKey } = await import("../src/community");
+    expect(cityKey("Lisbon, Portugal")).toBe("lisbon");
+    expect(cityKey("  São Paulo ")).toBe("sao paulo");
+    expect(cityKey("MEXICO CITY")).toBe("mexico city");
+  });
+  it("counts distinct countries and cities and picks a level", async () => {
+    const { travelStats } = await import("../src/community");
+    const s = travelStats([
+      { city: "Lisbon", countryCode: "PT" },
+      { city: "lisbon", countryCode: "PT" },
+      { city: "Porto", countryCode: "PT" },
+      { city: "Kyoto", countryCode: "JP" },
+      { city: "Oaxaca", countryCode: "mx" },
+    ]);
+    expect(s).toMatchObject({ countries: 3, cities: 4, trips: 5 });
+    expect(s.level.name).toBe("Explorer");
+    expect(s.next).toMatchObject({ countriesToGo: 5 });
+  });
+  it("ranks travellers by countries, then cities, with ties sharing a rank", async () => {
+    const { rankTravellers } = await import("../src/community");
+    const r = rankTravellers([
+      { id: "a", stats: { countries: 3, cities: 5, trips: 6 } },
+      { id: "b", stats: { countries: 7, cities: 9, trips: 9 } },
+      { id: "c", stats: { countries: 3, cities: 5, trips: 6 } },
+      { id: "d", stats: { countries: 3, cities: 8, trips: 8 } },
+    ]);
+    expect(r.map((x) => [x.id, x.rank])).toEqual([["b", 1], ["d", 2], ["a", 3], ["c", 3]]);
+  });
+  it("validates places and profiles", async () => {
+    const { PastTripInputSchema, CommunityProfileInputSchema } = await import("../src/community");
+    expect(PastTripInputSchema.safeParse({ city: "Kyoto", countryCode: "jp" }).success).toBe(true);
+    expect(PastTripInputSchema.safeParse({ city: "Kyoto", countryCode: "ZZ" }).success).toBe(false);
+    expect(PastTripInputSchema.safeParse({ city: "Kyoto", countryCode: "JP", year: 3000 }).success).toBe(false);
+    expect(CommunityProfileInputSchema.safeParse({ handle: "James_H", displayName: "James" }).success).toBe(true);
+    expect(CommunityProfileInputSchema.safeParse({ handle: "admin", displayName: "x" }).success).toBe(false);
+    expect(CommunityProfileInputSchema.safeParse({ handle: "a b", displayName: "x" }).success).toBe(false);
+  });
+  it("writes a history block that flags a repeat visit", async () => {
+    const { historyForPrompt } = await import("../src/community");
+    const { countryName } = await import("../src/countries");
+    const h = historyForPrompt(
+      [
+        { id: "1", city: "Lisbon", countryCode: "PT", year: 2024, month: null, days: 4, rating: 5, highlights: "tascas and fado", tripId: null },
+        { id: "2", city: "Paris", countryCode: "FR", year: 2023, month: null, days: 3, rating: 2, highlights: "", tripId: null },
+      ],
+      "Lisbon, Portugal",
+      countryName,
+    );
+    expect(h).toContain("Lisbon, Portugal (2024), rated 5/5: loved tascas and fado");
+    expect(h).toContain("been to Lisbon before");
+    expect(historyForPrompt([], "Lisbon", countryName)).toBe("");
+  });
+  it("strips planner internals from shared itineraries", async () => {
+    const { publicItinerary } = await import("../src/community");
+    const it = publicItinerary({
+      title: "T",
+      summary: "",
+      notes: [],
+      replaced: [{ source: "locals", vote: 1 }],
+      days: [{ label: "Day 1", theme: "", stops: [{ time: "", name: "A", neighborhood: "", why: "", localTip: "", source: "locals", candidateId: "c1", locked: true }] }],
+      hotels: [{ name: "H", neighborhood: "", style: "", nightly: "", why: "", localTip: "", source: "press", candidateId: "c2", expediaPropertyId: "9" }],
+    });
+    expect(it.replaced).toEqual([]);
+    expect(it.days[0]!.stops[0]).not.toHaveProperty("candidateId");
+    expect(it.days[0]!.stops[0]).not.toHaveProperty("locked");
+    expect(it.hotels[0]).not.toHaveProperty("expediaPropertyId");
+  });
+  it("has unique country codes", async () => {
+    const { COUNTRIES, flag } = await import("../src/countries");
+    expect(new Set(COUNTRIES.map((c) => c[0])).size).toBe(COUNTRIES.length);
+    expect(flag("JP")).toBe("🇯🇵");
+  });
+});
