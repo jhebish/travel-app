@@ -1,4 +1,5 @@
 import type { TripRequest } from "./schemas";
+import type { PlaceVerification } from "./schemas";
 import { STAY_PRICE_RANGE, type SourceId, type StayPrice } from "./sources";
 import type { EffectiveSources } from "./weights";
 
@@ -21,6 +22,8 @@ export interface Candidate {
   stayStyle?: string | null;
   priceBand?: StayPrice | null;
   expediaPropertyId?: string | null;
+  /** Google Places details from the search that found it, so it needn't be looked up again. */
+  verification?: PlaceVerification;
 }
 
 const INTEREST_CATEGORIES: Record<string, CandidateCategory[]> = {

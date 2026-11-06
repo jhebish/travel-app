@@ -28,4 +28,11 @@ export const env = {
   /** api.typeform.com, or api.eu.typeform.com for EU data-center accounts. */
   typeformApi: () => clean(process.env.TYPEFORM_API_BASE) || "https://api.typeform.com",
   tripsPerHour: () => Number(clean(process.env.TRIPS_PER_HOUR) || 10),
+  /**
+   * Google OAuth client ("Web application") for the one-time Google Calendar import.
+   * Authorized redirect URI: <site>/api/connect/google_calendar/callback
+   */
+  googleOAuth: () => ({ id: clean(process.env.GOOGLE_OAUTH_CLIENT_ID), secret: clean(process.env.GOOGLE_OAUTH_CLIENT_SECRET) }),
+  /** Meta app (Facebook Login) for importing check-ins. Redirect URI: <site>/api/connect/facebook/callback */
+  meta: () => ({ id: clean(process.env.META_APP_ID), secret: clean(process.env.META_APP_SECRET) }),
 };

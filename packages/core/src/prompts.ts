@@ -98,16 +98,6 @@ ${req.stay.on ? `\n${stayRules(req.stay)}\n` : ""}
 Call submit_itinerary with the finished plan.`;
 }
 
-export function buildHotelPrompt(
-  req: TripRequest,
-  eff: EffectiveSources,
-  lists: CuratorLists,
-  itinerary: Itinerary,
-  candidates: Candidate[],
-): string {
-  const areas = [...new Set(itinerary.days.flatMap((d) => d.stops.map((s) => s.neighborhood)).filter(Boolean))].slice(0, 12);
-  return buildHotelPromptForAreas(req, eff, lists, areas, candidates);
-}
 
 export function buildHotelPromptForAreas(
   req: TripRequest,
@@ -144,6 +134,7 @@ const placeProps = {
   neighborhood: { type: "string" },
   why: { type: "string", description: "One short sentence (under 18 words) on why it fits this traveler." },
   localTip: { type: "string", description: "One practical insider tip (under 14 words)." },
+  forYou: { type: "string", description: "Only when a TASTE section is given and this pick clearly matches it: a few words naming the link. Otherwise empty." },
   source: { type: "string", enum: sourceEnum },
   candidateId: { type: ["string", "null"], description: "Bracketed candidate id, or null." },
   lat: { type: "number", description: "Approximate latitude of the place." },
@@ -166,35 +157,6 @@ export const STOP_JSON_SCHEMA = {
   required: ["time", "name", "neighborhood", "why", "localTip", "source", "candidateId"],
 } as const;
 
-export const ITINERARY_TOOL = {
-  name: "submit_itinerary",
-  description: "Submit the finished itinerary.",
-  input_schema: {
-    type: "object",
-    properties: {
-      title: { type: "string", description: "Short evocative trip title." },
-      summary: { type: "string", description: "Two sentences on the feel of the trip and why it fits." },
-      days: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            label: { type: "string", description: 'e.g. "Day 1"' },
-            theme: { type: "string", description: "Neighborhood or theme." },
-            stops: {
-              type: "array",
-              items: STOP_JSON_SCHEMA,
-            },
-          },
-          required: ["label", "theme", "stops"],
-        },
-      },
-      hotels: { type: "array", items: HOTEL_JSON_SCHEMA, description: "Exactly 3 if hotels were requested, otherwise empty." },
-      notes: { type: "array", items: { type: "string" }, description: "2–4 short practical notes." },
-    },
-    required: ["title", "summary", "days", "hotels", "notes"],
-  },
-} as const;
 
 export const HOTELS_TOOL = {
   name: "submit_hotels",

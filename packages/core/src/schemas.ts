@@ -84,11 +84,24 @@ export const TripRequestSchema = z.object({
   pace: z.enum(PACES),
   extra: z.string().trim().max(500).default(""),
   stay: StaySchema.default({ on: false, styles: [], price: "$150–300" }),
+  /** Friends (handles) planning this trip together: their taste is blended in and they can edit it. */
+  with: z.array(z.string().trim().toLowerCase().regex(/^[a-z0-9_]{3,24}$/)).max(7).default([]),
 }).transform((r) => (r.days > MAX_DAYS[r.mode] ? { ...r, days: MAX_DAYS[r.mode] } : r));
 export type TripRequest = z.infer<typeof TripRequestSchema>;
 
+/** A Google Maps photo of a place: a resource name we turn into an image URL, plus its author for credit. */
+export const PlacePhotoSchema = z.object({
+  name: z.string().regex(/^places\/[A-Za-z0-9_-]+\/photos\/[A-Za-z0-9_-]+$/),
+  w: z.number().int().positive().optional(),
+  h: z.number().int().positive().optional(),
+  by: z.string().max(120).optional(),
+  byUrl: z.string().url().max(500).optional(),
+});
+export type PlacePhoto = z.infer<typeof PlacePhotoSchema>;
+
 export const PlaceVerificationSchema = z.object({
   placeId: z.string(),
+  photos: z.array(PlacePhotoSchema).max(4).optional().catch(undefined),
   mapsUrl: z.string().url().optional(),
   address: z.string().optional(),
   lat: z.number().optional(),
@@ -130,6 +143,8 @@ export const StopSchema = z.object({
   neighborhood: clip(120).default(""),
   why: clip(400).default(""),
   localTip: clip(400).default(""),
+  /** When the pick matches the traveler's taste: a few words on why ("Like Septime: natural wine"). */
+  forYou: z.preprocess((v) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 100) : undefined), z.string().optional()).catch(undefined),
   source: looseSource,
   candidateId: looseId,
   /** Where the pick really came from: a vetted local pick, a Places result, or the model's own knowledge. */
@@ -161,6 +176,7 @@ export const HotelSchema = z.object({
   nightly: clip(40).default(""),
   why: clip(400).default(""),
   localTip: clip(400).default(""),
+  forYou: z.preprocess((v) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 100) : undefined), z.string().optional()).catch(undefined),
   source: looseSource,
   candidateId: looseId,
   origin: z.enum(["local_pick", "google", "ai"]).optional(),
@@ -206,8 +222,9 @@ export const ItinerarySchema = z.object({
   mode: z.enum(TRIP_MODES).optional().catch(undefined),
   /** Multi-city trips: the stops in order. */
   route: salvage(RouteLegSchema, 0, 8).optional(),
-  days: salvage(DaySchema, 1, 7),
-  hotels: salvage(HotelSchema, 0, 5).default([]),
+  // Up to two weeks (several stops) and two hotels per stop.
+  days: salvage(DaySchema, 1, MAX_DAYS.multi),
+  hotels: salvage(HotelSchema, 0, 16).default([]),
   notes: salvage(clip(300), 0, 6).default([]),
   stayLabel: z.string().optional(),
   /** Votes on stops the traveler swapped out, kept so the training signal isn't lost. */
@@ -216,9 +233,9 @@ export const ItinerarySchema = z.object({
 export type Itinerary = z.infer<typeof ItinerarySchema>;
 
 export const EditSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("swap"), day: z.number().int().min(0).max(6), index: z.number().int().min(0).max(7), hint: z.string().trim().max(200).default("") }),
-  z.object({ action: z.literal("regenerate_day"), day: z.number().int().min(0).max(6), hint: z.string().trim().max(200).default("") }),
-  z.object({ action: z.literal("lock"), day: z.number().int().min(0).max(6), index: z.number().int().min(0).max(7), locked: z.boolean() }),
+  z.object({ action: z.literal("swap"), day: z.number().int().min(0).max(MAX_DAYS.multi - 1), index: z.number().int().min(0).max(7), hint: z.string().trim().max(200).default("") }),
+  z.object({ action: z.literal("regenerate_day"), day: z.number().int().min(0).max(MAX_DAYS.multi - 1), hint: z.string().trim().max(200).default("") }),
+  z.object({ action: z.literal("lock"), day: z.number().int().min(0).max(MAX_DAYS.multi - 1), index: z.number().int().min(0).max(7), locked: z.boolean() }),
 ]);
 export type EditRequest = z.infer<typeof EditSchema>;
 

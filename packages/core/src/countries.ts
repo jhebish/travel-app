@@ -46,3 +46,20 @@ export const isCountryCode = (code: string) => NAME_BY_CODE.has(code.toUpperCase
 /** Flag emoji from a two-letter code. */
 export const flag = (code: string) =>
   /^[A-Za-z]{2}$/.test(code) ? String.fromCodePoint(...[...code.toUpperCase()].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65)) : "";
+
+const norm = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+const ALIASES: Record<string, string> = {
+  usa: "US", "united states of america": "US", us: "US", america: "US", uk: "GB", "great britain": "GB", england: "GB", scotland: "GB", wales: "GB",
+  "czech republic": "CZ", holland: "NL", "the netherlands": "NL", korea: "KR", "south korea": "KR", "republic of korea": "KR", russia: "RU",
+  "viet nam": "VN", turkiye: "TR", uae: "AE", "ivory coast": "CI", "cote d ivoire": "CI", burma: "MM", espana: "ES", deutschland: "DE", italia: "IT", brasil: "BR", mexico: "MX",
+};
+const CODE_BY_NAME = new Map([...COUNTRIES.map(([c, n]) => [norm(n), c] as const), ...Object.entries(ALIASES)]);
+/** "Portugal" → "PT", "United States" / "USA" → "US"; null when unknown. */
+export const countryCodeFor = (name: string | null | undefined): string | null => (name ? CODE_BY_NAME.get(norm(name)) ?? null : null);

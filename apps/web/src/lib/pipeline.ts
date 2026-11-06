@@ -47,6 +47,9 @@ import { adultsFor, attachLiveRates } from "./hotels";
 import { HttpError } from "./http";
 import { placeById, placesCandidates, placesEnabled, verifyPlace } from "./places";
 import { supabaseAdmin } from "./supabase/server";
+import { tasteBlock } from "./taste";
+import { addFriendsOnCreate, companionsFromHandles } from "./together";
+import { rateLimit, updateTrip } from "./tripAccess";
 import { toTrip, type TripRow } from "./trips";
 
 // ---------------------------------------------------------------------------
@@ -131,6 +134,10 @@ async function ground(picks: Pick[], cands: Candidate[], city: string): Promise<
   const byId = new Map(cands.map((c) => [c.id, c]));
   const drop = new Set<Pick>();
   await pool(picks, 6, async (p) => {
+    // Only verification below may set these; never trust the model's own values.
+    delete p.place;
+    delete (p as Hotel).liveRate;
+    p.expediaPropertyId = null;
     const cand = p.candidateId ? byId.get(p.candidateId) : undefined;
     if (cand) {
       p.origin = cand.origin;
@@ -141,7 +148,8 @@ async function ground(picks: Pick[], cands: Candidate[], city: string): Promise<
       p.origin = "ai";
     }
     try {
-      const v = cand?.placeId ? await placeById(cand.placeId) : await verifyPlace(p.name, p.neighborhood ?? "", city);
+      // A Google candidate already carries its details from the search; others are looked up.
+      const v = cand?.verification ?? (cand?.placeId ? await placeById(cand.placeId) : await verifyPlace(p.name, p.neighborhood ?? "", city));
       if (v) {
         if (v.status === "CLOSED_PERMANENTLY") drop.add(p);
         else p.place = v;
@@ -168,6 +176,7 @@ async function groundItinerary(itin: Itinerary, cands: Candidate[], city: string
 // Rate limit
 // ---------------------------------------------------------------------------
 async function checkRateLimit(ctx: Ctx, limit: number) {
+  await rateLimit(ctx, "build", limit, "You've built a lot of trips this hour. Try again a little later.");
   const since = new Date(Date.now() - 3600_000).toISOString();
   const { count } = await ctx.db
     .from("trips")
@@ -231,7 +240,32 @@ function dedupeAcrossDays(itin: Itinerary) {
 }
 
 /** The traveler's logged places, as a prompt block. Empty if none (or before the community migration). */
-export async function loadHistory(ctx: Ctx, destination: string): Promise<string> {
+/** Someone else planning this trip with the owner: their taste is blended into the plan. */
+export interface Companion {
+  userId: string;
+  label: string;
+}
+
+/**
+ * What the planner knows about the people on this trip: where the owner has been, and everyone's
+ * taste (profile + favorite places), so hotel and restaurant picks fit them.
+ * `ownerId` defaults to the caller; pass it when a friend edits someone else's trip.
+ */
+export async function loadHistory(ctx: Ctx, destination: string, people: { ownerId?: string; companions?: Companion[] } = {}): Promise<string> {
+  if (!ctx.user) return "";
+  const ownerId = people.ownerId ?? ctx.user.id;
+  const companions = (people.companions ?? []).filter((c) => c.userId !== ownerId);
+  const [history, taste] = await Promise.all([
+    ownerId === ctx.user.id ? pastTripsBlock(ctx, destination) : Promise.resolve(""),
+    tasteBlock([{ userId: ownerId, label: companions.length ? "Trip owner" : null }, ...companions], destination).catch((e) => {
+      console.error("taste block failed", e);
+      return "";
+    }),
+  ]);
+  return [history, taste].filter(Boolean).join("\n\n");
+}
+
+async function pastTripsBlock(ctx: Ctx, destination: string): Promise<string> {
   if (!ctx.user) return "";
   const { data, error } = await ctx.db
     .from("past_trips")
@@ -340,7 +374,7 @@ async function planSingle(req: TripRequest, { eff, lists, history }: PlanInputs,
     return day;
   });
   const hotelJob = req.stay.on
-    ? planHotels(req, eff, lists, o.days.map((d) => d.area).filter(Boolean), cands.filter((c) => c.category === "stay"), 3, emit, tick)
+    ? planHotels(req, eff, lists, history, o.days.map((d) => d.area).filter(Boolean), cands.filter((c) => c.category === "stay"), 3, emit, tick)
     : Promise.resolve([] as Hotel[]);
 
   const [days, hotels] = await Promise.all([Promise.all(dayJobs), hotelJob]);
@@ -353,6 +387,7 @@ async function planHotels(
   req: TripRequest,
   eff: EffectiveSources,
   lists: CuratorLists,
+  history: string,
   areas: string[],
   stayCands: Candidate[],
   count: number,
@@ -363,7 +398,7 @@ async function planHotels(
   try {
     const { data } = await step(
       `hotels${city ? ` ${city}` : ""}`,
-      (attempt) => callTool(buildHotelPromptForAreas(req, eff, lists, areas, stayCands, count), HOTELS_TOOL, 3000, fastThenMain(attempt)),
+      (attempt) => callTool(withHistory(history, buildHotelPromptForAreas(req, eff, lists, areas, stayCands, count)), HOTELS_TOOL, 3000, fastThenMain(attempt)),
       z.object({ hotels: salvage(HotelSchema, 1, 5) }),
     );
     const hotels = data.hotels.slice(0, count).map((h) => (city ? { ...h, city } : h));
@@ -477,6 +512,7 @@ async function planMulti(req: TripRequest, { eff, lists, history }: PlanInputs, 
           legReqs[li]!,
           eff,
           lists,
+          history,
           l.dayThemes.map((t) => t.area).filter(Boolean),
           legCands[li]!.filter((c) => c.category === "stay"),
           2,
@@ -525,10 +561,12 @@ async function groundByCity(itin: Itinerary, candsByCity: Map<string, Candidate[
 export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: string; tripsPerHour: number }, emit: Emit = () => {}) {
   const t0 = Date.now();
   emit({ type: "progress", pct: 3, label: "Reading your request" });
+  // Planning with friends: blend their taste in from the start.
+  const companions = await companionsFromHandles(ctx, req.with ?? []);
   const [, { eff, lists }, history, visibility] = await Promise.all([
     checkRateLimit(ctx, opts.tripsPerHour),
     loadSources(ctx),
-    loadHistory(ctx, req.destination),
+    loadHistory(ctx, req.destination, { companions }),
     defaultVisibility(ctx),
   ]);
 
@@ -548,13 +586,15 @@ export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: strin
     itinerary: itin,
     model,
   };
-  let { data, error } = await ctx.db
+  const admin = supabaseAdmin();
+  let { data, error } = await admin
     .from("trips")
     .insert({ ...row, city_key: cityKey(req.destination), visibility })
     .select("*")
     .single();
-  if (missingColumn(error)) ({ data, error } = await ctx.db.from("trips").insert(row).select("*").single());
+  if (missingColumn(error)) ({ data, error } = await admin.from("trips").insert(row).select("*").single());
   if (error || !data) throw new HttpError(500, "Your trip was built but couldn't be saved. Try again.");
+  if (companions.length) await addFriendsOnCreate(ctx, (data as TripRow).id, req.with ?? []);
   console.log(`[build] total ${Date.now() - t0}ms`);
   emit({ type: "progress", pct: 100, label: "Done" });
   return toTrip(data as TripRow);
@@ -562,7 +602,7 @@ export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: strin
 
 export async function generateHotels(ctx: Ctx, row: TripRow, stay: StayPrefs, opts: { ip: string }) {
   const req: TripRequest = { ...row.request, stay: { ...stay, on: true } };
-  const { lists } = await loadSources(ctx);
+  const [{ lists }, history] = await Promise.all([loadSources(ctx), loadHistory(ctx, req.destination)]);
   const eff: EffectiveSources = { weights: row.weights, blocked: (row.blocked ?? []).filter(isSourceId), custom: row.custom_mix };
   const route = row.itinerary.mode === "multi" ? row.itinerary.route ?? [] : [];
   // One place: three hotels. Several stops: two per stop, each checked against its own city.
@@ -582,7 +622,7 @@ export async function generateHotels(ctx: Ctx, row: TripRow, stay: StayPrefs, op
       ].slice(0, 12);
       const { data } = await step(
         `hotels${g.city ? ` ${g.city}` : ""}`,
-        (attempt) => callTool(buildHotelPromptForAreas(g.req, eff, lists, areas, cands, g.count), HOTELS_TOOL, 3000, fastThenMain(attempt)),
+        (attempt) => callTool(withHistory(history, buildHotelPromptForAreas(g.req, eff, lists, areas, cands, g.count)), HOTELS_TOOL, 3000, fastThenMain(attempt)),
         z.object({ hotels: salvage(HotelSchema, 1, 5) }),
       );
       const hotels = data.hotels.slice(0, g.count).map((h) => (g.city ? { ...h, city: g.city } : h));
@@ -597,15 +637,9 @@ export async function generateHotels(ctx: Ctx, row: TripRow, stay: StayPrefs, op
   const itinerary: Itinerary = { ...row.itinerary, hotels: kept, stayLabel: stayLabel(req.stay) };
   // Hotel votes refer to positions in the old list; clear them.
   const votes = Object.fromEntries(Object.entries(row.votes ?? {}).filter(([k]) => !k.startsWith("h-")));
-  const { data, error } = await ctx.db
-    .from("trips")
-    .update({ itinerary, request: req, votes })
-    .eq("id", row.id)
-    .select("*")
-    .single();
-  if (error || !data) throw new HttpError(500, "Hotels were found but couldn't be saved. Try again.");
-  await syncFeedback(data as TripRow);
-  return toTrip(data as TripRow);
+  const saved = await updateTrip(row, { itinerary, request: req, votes });
+  await syncFeedback(saved);
+  return saved;
 }
 
 // ---------------------------------------------------------------------------
@@ -629,12 +663,19 @@ function retireVotes(row: TripRow, keys: string[], itin: Itinerary) {
   return { votes, replaced: replaced.slice(-200) };
 }
 
-async function saveEdit(ctx: Ctx, row: TripRow, itinerary: Itinerary, votes: TripRow["votes"]) {
-  const { data, error } = await ctx.db.from("trips").update({ itinerary, votes }).eq("id", row.id).select("*").single();
-  if (error || !data) throw new HttpError(500, "Your change was made but couldn't be saved. Try again.");
-  await syncFeedback(data as TripRow);
-  return toTrip(data as TripRow);
+async function saveEdit(row: TripRow, itinerary: Itinerary, votes: TripRow["votes"]): Promise<TripRow> {
+  const saved = await updateTrip(row, { itinerary, votes });
+  await syncFeedback(saved);
+  return saved;
 }
+
+/** Friends planning a trip together: their taste is blended into swaps and rebuilt days. */
+export interface EditPeople {
+  companions: Companion[];
+  /** Stops someone said they're in for, by "day-stop" key (with the place name, so swaps reset it). */
+  liked: Map<string, string>;
+}
+const noPeople: EditPeople = { companions: [], liked: new Map() };
 
 function editContext(row: TripRow) {
   const req: TripRequest = row.request;
@@ -645,16 +686,18 @@ function editContext(row: TripRow) {
   return { req, eff, inTrip };
 }
 
-export async function swapStop(ctx: Ctx, row: TripRow, day: number, index: number, hint: string) {
+export async function swapStop(ctx: Ctx, row: TripRow, day: number, index: number, hint: string, people: EditPeople = noPeople) {
   const old = row.itinerary.days[day]?.stops[index];
   if (!old) throw new HttpError(404, "That stop isn't in this trip anymore. Reload and try again.");
+  await rateLimit(ctx, "edit", 60, "That's a lot of changes this hour. Try again a little later.");
   const { req: base, eff, inTrip } = editContext(row);
   const req = requestForCity(base, row.itinerary.days[day]?.city);
-  const { lists } = await loadSources(ctx);
-  const cands = selectCandidates(await gatherCandidates(req), eff, req).filter(
-    (c) => c.category !== "stay" && !inTrip.has(c.name.toLowerCase()),
-  );
-  const history = await loadHistory(ctx, req.destination);
+  const [{ lists }, gathered, history] = await Promise.all([
+    loadSources(ctx),
+    gatherCandidates(req),
+    loadHistory(ctx, req.destination, { ownerId: row.user_id, companions: people.companions }),
+  ]);
+  const cands = selectCandidates(gathered, eff, req).filter((c) => c.category !== "stay" && !inTrip.has(c.name.toLowerCase()));
   const { input } = await callTool(withHistory(history, buildSwapPrompt(req, eff, lists, row.itinerary, day, index, hint, cands)), STOP_TOOL, 2000, { fast: true });
   const parsed = z.object({ stop: StopSchema }).safeParse(input);
   if (!parsed.success) throw new HttpError(502, "The replacement came back incomplete. Try again.", "bad_output");
@@ -667,28 +710,32 @@ export async function swapStop(ctx: Ctx, row: TripRow, day: number, index: numbe
   const { votes, replaced } = retireVotes(row, [`${day}-${index}`], itinerary);
   itinerary.replaced = replaced;
   itinerary.days[day]!.stops[index] = { ...stop, locked: false };
-  return saveEdit(ctx, row, itinerary, votes);
+  return saveEdit(row, itinerary, votes);
 }
 
-export async function regenerateDay(ctx: Ctx, row: TripRow, day: number, hint: string) {
+export async function regenerateDay(ctx: Ctx, row: TripRow, day: number, hint: string, people: EditPeople = noPeople) {
   const current = row.itinerary.days[day];
   if (!current) throw new HttpError(404, "That day isn't in this trip anymore. Reload and try again.");
+  await rateLimit(ctx, "edit", 60, "That's a lot of changes this hour. Try again a little later.");
   const { req: base, eff } = editContext(row);
   const req = requestForCity(base, current.city);
-  const { lists } = await loadSources(ctx);
   const otherDays = new Set(
     [...row.itinerary.days.flatMap((d, i) => (i === day ? [] : d.stops)), ...(row.itinerary.hotels ?? [])].map((p) => p.name.toLowerCase()),
   );
-  const cands = selectCandidates(await gatherCandidates(req), eff, req).filter(
-    (c) => c.category !== "stay" && !otherDays.has(c.name.toLowerCase()),
-  );
-  const history = await loadHistory(ctx, req.destination);
-  const { input } = await callTool(withHistory(history, buildDayPrompt(req, eff, lists, row.itinerary, day, hint, cands)), DAY_TOOL, 8000);
-  const parsed = DayResultSchema.safeParse(input);
-  if (!parsed.success) throw new HttpError(502, "The new day came back incomplete. Try again.", "bad_output");
+  const [{ lists }, gathered, history] = await Promise.all([
+    loadSources(ctx),
+    gatherCandidates(req),
+    loadHistory(ctx, req.destination, { ownerId: row.user_id, companions: people.companions }),
+  ]);
+  const cands = selectCandidates(gathered, eff, req).filter((c) => c.category !== "stay" && !otherDays.has(c.name.toLowerCase()));
+  // Planning together: stops someone said they're in for stay, like locked ones.
+  const keep = current.stops.map((s, i) => !!s.locked || people.liked.get(`${day}-${i}`) === s.name);
+  const prompt = buildDayPrompt(req, eff, lists, { ...row.itinerary, days: row.itinerary.days.map((d, i) => (i === day ? { ...d, stops: d.stops.map((s, j) => ({ ...s, locked: keep[j] })) } : d)) }, day, hint, cands);
+  const { data: parsedDay } = await step("rebuild day", (attempt) => callTool(withHistory(history, prompt), DAY_TOOL, 4000, fastThenMain(attempt)), DayResultSchema, 3);
+  const parsed = { data: parsedDay };
 
-  // Locked stops are kept exactly, whatever the model returned.
-  const locked = current.stops.filter((s) => s.locked);
+  // Locked stops (and ones a friend is in for) are kept exactly, whatever the model returned.
+  const locked = current.stops.filter((_, i) => keep[i]);
   const lockedNames = new Set(locked.map((s) => s.name.toLowerCase()));
   const fresh = parsed.data.stops
     .filter((s) => !lockedNames.has(s.name.toLowerCase()) && !otherDays.has(s.name.toLowerCase()))
@@ -699,21 +746,21 @@ export async function regenerateDay(ctx: Ctx, row: TripRow, day: number, hint: s
 
   const itinerary: Itinerary = structuredClone(row.itinerary);
   // Votes on replaced stops are retired; locked stops keep theirs at their new positions.
-  const replacedKeys = current.stops.map((s, i) => (s.locked ? null : `${day}-${i}`)).filter((k): k is string => !!k);
+  const replacedKeys = current.stops.map((s, i) => (keep[i] ? null : `${day}-${i}`)).filter((k): k is string => !!k);
   const { votes: afterRetire, replaced } = retireVotes(row, replacedKeys, itinerary);
   const votes = Object.fromEntries(Object.entries(afterRetire).filter(([k]) => !k.startsWith(`${day}-`)));
   current.stops.forEach((s, i) => {
     const v = row.votes?.[`${day}-${i}`];
-    if (s.locked && v) votes[`${day}-${stops.indexOf(s)}`] = v;
+    if (keep[i] && v) votes[`${day}-${stops.indexOf(s)}`] = v;
   });
   itinerary.replaced = replaced;
   itinerary.days[day] = { ...current, theme: parsed.data.theme || current.theme, stops };
-  return saveEdit(ctx, row, itinerary, votes);
+  return saveEdit(row, itinerary, votes);
 }
 
 export async function setLocked(ctx: Ctx, row: TripRow, day: number, index: number, locked: boolean) {
   if (!row.itinerary.days[day]?.stops[index]) throw new HttpError(404, "That stop isn't in this trip anymore. Reload and try again.");
   const itinerary: Itinerary = structuredClone(row.itinerary);
   itinerary.days[day]!.stops[index]!.locked = locked;
-  return saveEdit(ctx, row, itinerary, row.votes ?? {});
+  return saveEdit(row, itinerary, row.votes ?? {});
 }

@@ -10,8 +10,9 @@ import {
   type TravelStats,
 } from "@travel/core";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { PlaceItemsEditor, type PlaceItem } from "./taste";
 
 const initials = (name: string) =>
   name
@@ -189,19 +190,32 @@ const blankPlace = (city = "", tripId: string | null = null): PastTripInput => (
   tripId,
 });
 
-/** Add or edit one place someone has been. */
+/** Add or edit one place someone has been, and what they did there. */
 export function PlaceForm({
   initial,
   onSaved,
   onCancel,
+  suggestions,
 }: {
   initial?: { id?: string; value: PastTripInput };
   onSaved: (p: PastTrip) => void;
   onCancel?: () => void;
+  /** Places from a Pylos plan for this trip, offered as "did you go?" chips. */
+  suggestions?: PlaceItem[];
 }) {
   const [v, setV] = useState<PastTripInput>(initial?.value ?? blankPlace());
+  const [items, setItems] = useState<PlaceItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const editingId = initial?.id;
+
+  // Editing: load what they already said they did there.
+  useEffect(() => {
+    if (!editingId) return;
+    api<{ items: PlaceItem[] }>(`/api/taste/trip/${editingId}`)
+      .then((r) => setItems(r.items.map(({ kind, name, liked }) => ({ kind, name, liked }))))
+      .catch(() => {});
+  }, [editingId]);
   const set = <K extends keyof PastTripInput>(k: K, val: PastTripInput[K]) => setV((x) => ({ ...x, [k]: val }));
   const years = Array.from({ length: 60 }, (_, i) => new Date().getFullYear() + 1 - i);
 
@@ -215,8 +229,17 @@ export function PlaceForm({
       const { place } = initial?.id
         ? await api<{ place: PastTrip }>(`/api/community/places/${initial.id}`, { method: "PUT", json: v })
         : await api<{ place: PastTrip }>("/api/community/places", { method: "POST", json: v });
+      const filled = items.filter((it) => it.name.trim());
+      if (filled.length || initial?.id) {
+        await api(`/api/taste/trip/${place.id}`, { method: "PUT", json: { items: filled } }).catch(() =>
+          setErr("The trip was saved, but the places you did there weren't. Edit it to try again."),
+        );
+      }
       onSaved(place);
-      if (!initial?.id) setV(blankPlace());
+      if (!initial?.id) {
+        setV(blankPlace());
+        setItems([]);
+      }
     } catch (e2) {
       setErr((e2 as Error).message);
     } finally {
@@ -305,6 +328,7 @@ export function PlaceForm({
         </label>
         <textarea id="pf-hi" maxLength={500} placeholder="The night markets, a tiny ramen bar near the station, hiking above town…" value={v.highlights} onChange={(e) => set("highlights", e.target.value)} />
       </div>
+      <PlaceItemsEditor items={items} onChange={setItems} suggestions={suggestions} />
       {err && (
         <p className="status err" role="status">
           {err}

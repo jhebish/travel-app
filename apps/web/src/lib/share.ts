@@ -1,4 +1,4 @@
-import type { SharedTrip } from "@travel/core";
+import { publicItinerary, type SharedTrip } from "@travel/core";
 import { supabaseAdmin } from "./supabase/server";
 import type { TripRow } from "./trips";
 
@@ -20,18 +20,12 @@ export async function getSharedTrip(token: string): Promise<SharedTrip | null> {
   if (error) console.error("shared trip lookup failed", error.code ?? "", (error.message ?? "").slice(0, 80).replace(/sb_[A-Za-z0-9_]+/g, "[key]"));
   if (!data) return null;
   const row = data as Pick<TripRow, "title" | "destination" | "request" | "itinerary" | "created_at">;
-  const { replaced: _replaced, ...itinerary } = row.itinerary;
   return {
     title: row.title,
     destination: row.destination,
     days: row.itinerary.days.length,
     party: row.request?.party ?? "",
-    itinerary: {
-      ...itinerary,
-      replaced: [],
-      days: itinerary.days.map((d) => ({ ...d, stops: d.stops.map(({ locked: _l, candidateId: _c, ...s }) => s) })),
-      hotels: (itinerary.hotels ?? []).map(({ candidateId: _c, expediaPropertyId: _e, liveRate: _r, ...h }) => h),
-    },
+    itinerary: publicItinerary(row.itinerary),
     createdAt: row.created_at,
   };
 }

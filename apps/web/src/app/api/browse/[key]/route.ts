@@ -1,6 +1,6 @@
 import { DESTINATION_BY_KEY } from "@travel/core";
 import { getCtx } from "@/lib/auth";
-import { readSample } from "@/lib/browse";
+import { longDays, readSample } from "@/lib/browse";
 import { topTrips } from "@/lib/community";
 import { HttpError, handler, json } from "@/lib/http";
 
@@ -11,6 +11,8 @@ export const dynamic = "force-dynamic";
 export const GET = handler(async (req: Request, { params }: { params: { key: string } }) => {
   const d = DESTINATION_BY_KEY[params.key];
   if (!d) throw new HttpError(404, "We don't have that destination.");
+  // ?long=1: the longer version the days slider trims from.
+  if (new URL(req.url).searchParams.get("long")) return json({ sample: await readSample(d.key, longDays(d)), days: longDays(d) });
   const ctx = await getCtx(req);
   const [sample, trips] = await Promise.all([readSample(d.key), topTrips(ctx, d.name).catch(() => [])]);
   return json({ destination: d, sample, trips: trips.slice(0, 6) });

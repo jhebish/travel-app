@@ -77,3 +77,55 @@ export const IconCar = () => (
     <circle cx="16.5" cy="16" r="0.5" />
   </svg>
 );
+
+/* Navigation (phone tab bar) */
+export const IconGlobe = () => (
+  <svg {...base}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3.5 9h17M3.5 15h17" />
+    <path d="M12 3a14.5 14.5 0 0 1 0 18a14.5 14.5 0 0 1 0-18" />
+  </svg>
+);
+export const IconCompass = () => (
+  <svg {...base}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="m15.5 8.5-2.2 4.8-4.8 2.2 2.2-4.8z" />
+  </svg>
+);
+export const IconSuitcase = () => (
+  <svg {...base}>
+    <rect x="3" y="7" width="18" height="13" rx="2.5" />
+    <path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7" />
+    <path d="M8 7v13M16 7v13" />
+  </svg>
+);
+export const IconPeople = () => (
+  <svg {...base}>
+    <circle cx="9" cy="8.5" r="3.5" />
+    <path d="M2.5 20a6.5 6.5 0 0 1 13 0" />
+    <path d="M15.5 5.2a3.5 3.5 0 0 1 0 6.6" />
+    <path d="M18 14.6a6.5 6.5 0 0 1 3.5 5.4" />
+  </svg>
+);
+export const IconUser = () => (
+  <svg {...base}>
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4 21a8 8 0 0 1 16 0" />
+  </svg>
+);
+export const IconMessage = () => (
+  <svg {...base}>
+    <path d="M21 11.5a8.5 8.5 0 0 1-12.4 7.6L3 21l1.9-5.4A8.5 8.5 0 1 1 21 11.5z" />
+  </svg>
+);
+export const IconPlus = () => (
+  <svg {...base}>
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+);
+export const IconLink = () => (
+  <svg {...base}>
+    <path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1" />
+    <path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1" />
+  </svg>
+);

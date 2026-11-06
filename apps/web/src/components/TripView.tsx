@@ -11,6 +11,7 @@ import {
   type Hotel,
   type StayPrefs,
   type Stop,
+  type Together,
   type Trip,
 } from "@travel/core";
 import Link from "next/link";
@@ -25,6 +26,8 @@ import {
   IconDown,
   IconLock,
   IconMap,
+  IconMessage,
+  IconPeople,
   IconRefresh,
   IconShare,
   IconSwap,
@@ -32,6 +35,8 @@ import {
   IconUp,
   IconWalk,
 } from "./icons";
+import { PlacePhoto } from "./PlacePhoto";
+import { TogetherSheet, WhoIsIn } from "./Together";
 
 const srcColor = (s: string) => `var(--s-${isSourceId(s) ? s : "reviews"})`;
 const srcName = (s: string) => (isSourceId(s) ? SOURCE_BY_ID[s].name : s);
@@ -75,6 +80,16 @@ function PlaceLinks({ p }: { p: Stop | Hotel }) {
   );
 }
 
+/** Shown when a pick matches what you've loved before (from your taste profile). */
+function ForYou({ p }: { p: Stop | Hotel }) {
+  if (!p.forYou) return null;
+  return (
+    <p className="foryou-note">
+      <b>For you</b> {p.forYou}
+    </p>
+  );
+}
+
 type Busy = null | { kind: "swap"; key: string } | { kind: "day"; day: number } | { kind: "hotels" } | { kind: "share" } | { kind: "visibility" };
 type Vis = NonNullable<Trip["visibility"]>;
 const VIS: { value: Vis; label: string; hint: string }[] = [
@@ -86,8 +101,30 @@ const VIS: { value: Vis; label: string; hint: string }[] = [
 /**
  * The full trip. `readOnly` is the public share view: no ratings, editing, or sharing controls.
  */
-export function TripView({ trip: initial, readOnly = false, onChange }: { trip: Trip; readOnly?: boolean; onChange?: (t: Trip) => void }) {
-  const [trip, setTrip] = useState(initial);
+export function TripView({
+  trip: initial,
+  readOnly = false,
+  onChange,
+  together: initialTogether = null,
+  toolbar,
+}: {
+  trip: Trip;
+  readOnly?: boolean;
+  onChange?: (t: Trip) => void;
+  /** Present when friends are planning this trip together. */
+  together?: Together | null;
+  /** Shown under the title, e.g. the days slider on shared and destination pages. */
+  toolbar?: React.ReactNode;
+}) {
+  const [tripState, setTrip] = useState(initial);
+  // Read-only views just follow their props (the days slider changes the itinerary they get).
+  const trip = readOnly ? initial : tripState;
+  const [tog, setTog] = useState<Together | null>(initialTogether);
+  const isMember = trip.role === "member";
+  const isOwner = !readOnly && !isMember;
+  const togetherOn = !readOnly && !!tog && tog.people.length > 1;
+  const me = tog?.people.find((p) => p.me);
+  const togDlg = useRef<HTMLDialogElement>(null);
   const [day, setDay] = useState(0);
   const [status, setStatus] = useState<{ text: string; err?: boolean } | null>(null);
   const [busy, setBusy] = useState<Busy>(null);
@@ -144,10 +181,48 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
     } else if (swapOpen === k) setSwapOpen(null);
   };
 
+  /** Send a vote save that's still waiting, so an edit can't overwrite it. */
+  async function flushVotes() {
+    if (!timer.current || !isOwner) return;
+    clearTimeout(timer.current);
+    timer.current = null;
+    await api(`/api/trips/${trip.id}`, { method: "PATCH", json: { saved: trip.saved, rating: trip.rating, votes: trip.votes } }).catch(() => {});
+  }
+
+  // ----- planning together: "I'm in" / "pass" per stop -----
+  const myReaction = (k: string): 1 | -1 | 0 => (me ? (tog?.reactions[k]?.[me.userId] ?? 0) : 0);
+  async function react(k: string, v: 1 | -1) {
+    if (!tog || !me) return;
+    const value = myReaction(k) === v ? 0 : v;
+    const next = structuredClone(tog);
+    const row = (next.reactions[k] ??= {});
+    if (value) row[me.userId] = value;
+    else delete row[me.userId];
+    setTog(next);
+    if (value === -1 && !k.startsWith("h-")) {
+      setSwapOpen(k);
+      setHint("");
+    }
+    try {
+      const r = await api<{ together: Together }>(`/api/trips/${trip.id}/together/react`, { method: "POST", json: { item: k, value } });
+      setTog(r.together);
+    } catch (e) {
+      fail(e);
+    }
+  }
+  /** Thumbs: your own feedback, and on a shared trip also what you tell your friends. */
+  const thumb = (k: string, v: 1 | -1) => {
+    if (togetherOn) void react(k, v);
+    if (isOwner) vote(k, v);
+  };
+  const pressed = (k: string, v: 1 | -1) => (togetherOn && isMember ? myReaction(k) === v : trip.votes[k] === v);
+
   // ----- edits -----
   async function edit(body: Record<string, unknown>, b: Busy) {
+    if (busy) return;
     setBusy(b);
     setStatus(null);
+    await flushVotes();
     try {
       const { trip: t } = await api<{ trip: Trip }>(`/api/trips/${trip.id}/edit`, { method: "POST", json: body });
       apply(t);
@@ -167,6 +242,7 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
     }
   };
   const lock = (si: number, locked: boolean) => {
+    if (busy) return;
     // Optimistic: flip locally, then save.
     const next = structuredClone(trip);
     next.itinerary.days[dIdx]!.stops[si]!.locked = locked;
@@ -219,6 +295,30 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
       setVisNote({ text: (e as Error).message, code: e instanceof ApiError ? e.code : undefined });
     } finally {
       setBusy(null);
+    }
+  }
+  /** Send the trip in Messages (or any app): turns the link on if needed, then opens the share sheet. */
+  async function sendTrip() {
+    let token = trip.shareToken;
+    if (!token) {
+      setBusy({ kind: "share" });
+      try {
+        const { trip: t } = await api<{ trip: Trip }>(`/api/trips/${trip.id}/share`, { method: "POST", json: { enabled: true } });
+        apply(t);
+        token = t.shareToken ?? null;
+      } catch (e) {
+        fail(e);
+      } finally {
+        setBusy(null);
+      }
+    }
+    if (!token) return;
+    const url = `${window.location.origin}/t/${token}`;
+    if (typeof navigator !== "undefined" && "share" in navigator) {
+      // Just the link: Messages turns it into the rich preview card.
+      await navigator.share({ url }).catch(() => {});
+    } else {
+      window.location.href = `sms:&body=${encodeURIComponent(url)}`;
     }
   }
   const [copied, setCopied] = useState(false);
@@ -274,7 +374,7 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
   );
 
   return (
-    <article className="trip" aria-live="polite">
+    <article className="trip">
       {/* ---------- hero ---------- */}
       <header className="hero">
         <span className="where-line">
@@ -284,23 +384,29 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
         <h1>{it.title}</h1>
         <p>{it.summary}</p>
         <div className="actions">
-          {!readOnly && (
+          {isOwner && (
             <button type="button" className="hbtn" aria-pressed={trip.saved} onClick={() => update({ saved: !trip.saved })}>
               <IconBookmark />
               {trip.saved ? "Saved" : "Save"}
             </button>
           )}
-          {!readOnly && (
+          {isOwner && (
             <button type="button" className="hbtn" onClick={() => shareDlg.current?.showModal()}>
               <IconShare />
               Share
+            </button>
+          )}
+          {!readOnly && (
+            <button type="button" className="hbtn" onClick={() => togDlg.current?.showModal()}>
+              <IconPeople />
+              {togetherOn ? `Planning with ${tog!.people.length - 1}` : "Plan together"}
             </button>
           )}
           <button type="button" className="hbtn" onClick={() => calDlg.current?.showModal()}>
             <IconCalendar />
             Add to calendar
           </button>
-          {!readOnly && (
+          {isOwner && (
             <Link className="hbtn" href={`/profile?log=${trip.id}&city=${encodeURIComponent(city.split(",")[0]!.trim())}`} title="Add it to the places you've been">
               I went
             </Link>
@@ -308,7 +414,19 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
         </div>
       </header>
 
-      {!readOnly && (
+      {toolbar}
+
+      {togetherOn && (
+        <p className="together-note">
+          <IconPeople />
+          <span>
+            {isMember ? `You're planning this with ${tog!.people.find((p) => p.owner)?.name ?? "a friend"}` : `You're planning this with ${tog!.people.filter((p) => !p.me).map((p) => p.name).join(", ")}`}.
+            {" "}Thumbs show what each of you is in for; rebuilding a day keeps those stops and plans the rest around everyone&apos;s taste.
+          </span>
+        </p>
+      )}
+
+      {isOwner && (
         <div className="ratebar">
           <div className="stars" role="group" aria-label="Rate this trip">
             {[1, 2, 3, 4, 5].map((n) => (
@@ -402,9 +520,11 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
         {!readOnly && dayHintOpen && (
           <div className="swapbox">
             <span className="hint">
-              {d.stops.some((s) => s.locked)
-                ? "Locked stops stay put. Everything else gets replaced."
-                : "Tip: lock the stops you love first. They'll stay put."}
+              {togetherOn
+                ? "Locked stops and ones anyone's in for stay put. The rest is replaced with picks for everyone's taste."
+                : d.stops.some((s) => s.locked)
+                  ? "Locked stops stay put. Everything else gets replaced."
+                  : "Tip: lock the stops you love first. They'll stay put."}
             </span>
             {busy?.kind === "day" ? (
               <span className="thinking">
@@ -441,11 +561,13 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
                 </div>
                 <div>
                   <div className="tl-body">
+                    <PlacePhoto photo={s.place?.photos?.[0]} alt={s.name} />
                     <span className="tl-time">{s.time}</span>
                     <div className="tl-name">
                       {s.name} {s.neighborhood && <span className="hood">in {s.neighborhood}</span>}
                     </div>
                     <p className="tl-why">{s.why}</p>
+                    <ForYou p={s} />
                     {s.localTip && (
                       <p className="tip">
                         <b>Local tip</b> {s.localTip}
@@ -464,6 +586,7 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
                             aria-pressed={!!s.locked}
                             aria-label={s.locked ? `Unlock ${s.name}` : `Lock ${s.name} so it stays when you rebuild the day`}
                             title={s.locked ? "Locked: stays when you rebuild the day" : "Lock this stop"}
+                            disabled={!!busy}
                             onClick={() => lock(si, !s.locked)}
                           >
                             {s.locked ? <IconLock /> : <IconUnlock />}
@@ -481,10 +604,11 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
                           >
                             <IconSwap />
                           </button>
-                          <button type="button" className="iconbtn up" aria-pressed={v === 1} aria-label={`Good pick: ${s.name}`} onClick={() => vote(k, 1)}>
+                          {togetherOn && <WhoIsIn people={tog!.people} by={tog!.reactions[k]} />}
+                          <button type="button" className="iconbtn up" aria-pressed={pressed(k, 1)} aria-label={togetherOn ? `I'm in: ${s.name}` : `Good pick: ${s.name}`} onClick={() => thumb(k, 1)}>
                             <IconUp />
                           </button>
-                          <button type="button" className="iconbtn down" aria-pressed={v === -1} aria-label={`Not for me: ${s.name}`} onClick={() => vote(k, -1)}>
+                          <button type="button" className="iconbtn down" aria-pressed={pressed(k, -1)} aria-label={togetherOn ? `Pass: ${s.name}` : `Not for me: ${s.name}`} onClick={() => thumb(k, -1)}>
                             <IconDown />
                           </button>
                         </div>
@@ -499,7 +623,7 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
                           </span>
                         ) : (
                           <>
-                            <b>{v === -1 ? "Not quite right? Swap it." : "Swap this stop"}</b>
+                            <b>{v === -1 || myReaction(k) === -1 ? "Not quite right? Swap it." : "Swap this stop"}</b>
                             <div className="row">
                               <input type="text" aria-label="What would you prefer" placeholder="Optional: cheaper, no seafood, more lively" value={hint} onChange={(e) => setHint(e.target.value)} maxLength={200} onKeyDown={(e) => e.key === "Enter" && swap(si)} />
                               <button type="button" className="btn ghost" onClick={() => swap(si)}>
@@ -541,6 +665,13 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
                   <Fragment key={h.name + i}>
                   {it.mode === "multi" && h.city && h.city !== it.hotels[i - 1]?.city && <h3 className="hotel-city">{h.city}</h3>}
                   <div className="hotel">
+                    {!!h.place?.photos?.length && (
+                      <div className="hphotos">
+                        {h.place.photos.slice(0, 3).map((ph) => (
+                          <PlacePhoto key={ph.name} photo={ph} alt={h.name} className="pphoto hphoto" sizes="(max-width: 720px) 80vw, 260px" />
+                        ))}
+                      </div>
+                    )}
                     <div className="hotel-top">
                       <h3>
                         {h.name} <span className="hood" style={{ fontWeight: 450, color: "var(--muted)", fontSize: 15 }}>in {h.neighborhood}</span>
@@ -555,6 +686,7 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
                       <Source p={h} />
                     </div>
                     <p className="tl-why">{h.why}</p>
+                    <ForYou p={h} />
                     {h.localTip && (
                       <p className="tip">
                         <b>Local tip</b> {h.localTip}
@@ -573,10 +705,11 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
                       </span>
                       {!readOnly && (
                         <div className="tl-tools">
-                          <button type="button" className="iconbtn up" aria-pressed={trip.votes[`h-${i}`] === 1} aria-label={`Good pick: ${h.name}`} onClick={() => vote(`h-${i}`, 1)}>
+                          {togetherOn && <WhoIsIn people={tog!.people} by={tog!.reactions[`h-${i}`]} />}
+                          <button type="button" className="iconbtn up" aria-pressed={pressed(`h-${i}`, 1)} aria-label={`Good pick: ${h.name}`} onClick={() => thumb(`h-${i}`, 1)}>
                             <IconUp />
                           </button>
-                          <button type="button" className="iconbtn down" aria-pressed={trip.votes[`h-${i}`] === -1} aria-label={`Not for me: ${h.name}`} onClick={() => vote(`h-${i}`, -1)}>
+                          <button type="button" className="iconbtn down" aria-pressed={pressed(`h-${i}`, -1)} aria-label={`Not for me: ${h.name}`} onClick={() => thumb(`h-${i}`, -1)}>
                             <IconDown />
                           </button>
                         </div>
@@ -645,6 +778,17 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
               <h2 id="share-title">Share this trip</h2>
               <p className="hint">Anyone with the link can see the plan. Your ratings and the personal details you entered stay private.</p>
             </div>
+            <div className="sendbox">
+              {trip.shareToken && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img className="og-preview" src={`/t/${trip.shareToken}/opengraph-image`} alt="How the link looks in Messages" width={600} height={315} loading="lazy" onError={(e) => (e.currentTarget.style.display = "none")} />
+              )}
+              <button type="button" className="btn" disabled={busy?.kind === "share"} onClick={sendTrip}>
+                <IconMessage />
+                Send in Messages
+              </button>
+              <span className="hint">Opens your share sheet with the link. In iMessage it shows as a card with the trip&apos;s name and route.</span>
+            </div>
             <label className="switch" htmlFor="share-on">
               <div>
                 <b>Public link</b>
@@ -703,6 +847,17 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
             </button>
           </div>
         </dialog>
+      )}
+
+      {!readOnly && (
+        <TogetherSheet
+          ref={togDlg}
+          tripId={trip.id}
+          isOwner={isOwner}
+          together={tog}
+          onChange={setTog}
+          onLeft={() => (window.location.href = "/trips")}
+        />
       )}
 
       <dialog ref={calDlg} className="sheet" aria-labelledby="cal-title" onClick={(e) => e.target === calDlg.current && calDlg.current?.close()}>

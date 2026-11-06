@@ -1,9 +1,10 @@
 "use client";
-import { PARTIES, TripRequestSchema, type CommunityTrip, type Trip } from "@travel/core";
+import type { CommunityTrip, Trip } from "@travel/core";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { PersonLine } from "@/components/community";
-import { TripView } from "@/components/TripView";
+import { readOnlyTrip } from "@/components/readOnlyTrip";
+import { ResizableTrip } from "@/components/ResizableTrip";
 import { useMe } from "@/components/useMe";
 import { api } from "@/lib/api";
 
@@ -25,20 +26,7 @@ export default function CommunityTripPage({ params }: { params: { id: string } }
 
   const view: Trip | null = useMemo(() => {
     if (!t?.itinerary) return null;
-    const party = (PARTIES as readonly string[]).includes(t.party) ? t.party : "Solo";
-    return {
-      id: "",
-      createdAt: t.createdAt,
-      destination: t.destination,
-      title: t.title,
-      request: TripRequestSchema.parse({ destination: t.destination, days: Math.max(1, Math.min(7, t.days)), party, budget: "Mid-range", pace: "Balanced" }),
-      weights: {} as Trip["weights"],
-      customMix: false,
-      itinerary: t.itinerary,
-      saved: false,
-      rating: 0,
-      votes: {},
-    };
+    return readOnlyTrip({ destination: t.destination, title: t.title, itinerary: t.itinerary, party: t.party, createdAt: t.createdAt });
   }, [t]);
 
   async function like() {
@@ -80,7 +68,7 @@ export default function CommunityTripPage({ params }: { params: { id: string } }
           {likeErr} {/sign in/i.test(likeErr) && <Link href={`/login?next=/c/${t.id}`}>Sign in</Link>}
         </p>
       )}
-      <TripView trip={view} readOnly />
+      <ResizableTrip trip={view} />
       <aside className="cta">
         <h2>Want your own take on {t.destination.split(",")[0]}?</h2>
         <p className="lede">Pylos builds it around who&apos;s coming and what you&apos;re into.</p>

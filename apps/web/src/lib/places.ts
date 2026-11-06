@@ -17,6 +17,8 @@ const FIELDS = [
   "places.priceLevel",
   "places.types",
   "places.shortFormattedAddress",
+  // Same price tier as the fields above: photos cost nothing extra to list.
+  "places.photos",
 ].join(",");
 
 const CACHE_DAYS = 14;
@@ -34,6 +36,7 @@ interface GPlace {
   userRatingCount?: number;
   priceLevel?: string;
   types?: string[];
+  photos?: { name: string; widthPx?: number; heightPx?: number; authorAttributions?: { displayName?: string; uri?: string }[] }[];
 }
 
 const PRICE_LEVELS: Record<string, number> = {
@@ -46,6 +49,7 @@ const PRICE_LEVELS: Record<string, number> = {
 
 export const placesEnabled = () => !!env.placesKey();
 
+/** Cached lookups. `load` throws on a failed request, so failures are never cached. */
 async function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
   const db = supabaseAdmin();
   const { data } = await db.from("places_cache").select("data, fetched_at").eq("key", key).maybeSingle();
@@ -55,9 +59,11 @@ async function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
   return fresh;
 }
 
+class PlacesError extends Error {}
+
 async function searchText(textQuery: string, maxResultCount: number): Promise<GPlace[]> {
   if (!placesEnabled()) return [];
-  const key = `search:${maxResultCount}:${textQuery.toLowerCase()}`;
+  const key = `search2:${maxResultCount}:${textQuery.toLowerCase()}`;
   return cached(key, async () => {
     const res = await fetch(SEARCH_URL, {
       method: "POST",
@@ -69,11 +75,14 @@ async function searchText(textQuery: string, maxResultCount: number): Promise<GP
       body: JSON.stringify({ textQuery, maxResultCount, languageCode: "en" }),
     });
     if (!res.ok) {
-      console.error("Places search failed", res.status, await res.text().catch(() => ""));
-      return [];
+      console.error("Places search failed", res.status, (await res.text().catch(() => "")).slice(0, 200));
+      throw new PlacesError(`search ${res.status}`);
     }
     const body = (await res.json()) as { places?: GPlace[] };
     return body.places ?? [];
+  }).catch((e) => {
+    if (e instanceof PlacesError) return [];
+    throw e;
   });
 }
 
@@ -92,6 +101,7 @@ export async function placesCandidates(query: string, category: CandidateCategor
       category,
       source: "reviews" as const,
       placeId: p.id,
+      verification: toVerification(p),
       rating: p.rating ?? null,
       ratingCount: p.userRatingCount ?? null,
       priceLevel: p.priceLevel ? (PRICE_LEVELS[p.priceLevel] ?? null) : null,
@@ -99,15 +109,26 @@ export async function placesCandidates(query: string, category: CandidateCategor
     }));
 }
 
-const toVerification = (p: GPlace): PlaceVerification => ({
+const https = (u?: string) => (u ? (u.startsWith("//") ? `https:${u}` : u.startsWith("https://") ? u : undefined) : undefined);
+
+function toVerification(p: GPlace): PlaceVerification {
+  return {
   placeId: p.id,
-  mapsUrl: p.googleMapsUri,
+  photos: p.photos?.slice(0, 3).map((ph) => ({
+    name: ph.name,
+    w: ph.widthPx || undefined,
+    h: ph.heightPx || undefined,
+    by: ph.authorAttributions?.[0]?.displayName?.slice(0, 120),
+    byUrl: https(ph.authorAttributions?.[0]?.uri),
+  })),
+  mapsUrl: https(p.googleMapsUri),
   address: p.formattedAddress,
   lat: p.location?.latitude,
   lng: p.location?.longitude,
   hours: p.regularOpeningHours?.weekdayDescriptions,
   status: p.businessStatus,
-});
+  };
+}
 
 const STOP_WORDS = new Set(["the", "and", "hotel", "restaurant", "cafe", "bar", "de", "da", "do", "dos", "das", "la", "le", "el", "los", "las"]);
 const words = (s: string) =>
@@ -138,14 +159,41 @@ export async function verifyPlace(name: string, neighborhood: string, city: stri
 /** Details for a known place id (cached). */
 export async function placeById(placeId: string): Promise<PlaceVerification | null> {
   if (!placesEnabled()) return null;
-  return cached(`place:${placeId}`, async () => {
+  return cached(`place2:${placeId}`, async () => {
     const res = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`, {
       headers: {
         "X-Goog-Api-Key": env.placesKey(),
         "X-Goog-FieldMask": FIELDS.replaceAll("places.", ""),
       },
     });
-    if (!res.ok) return null;
+    if (res.status === 404) return null; // gone: worth remembering
+    if (!res.ok) throw new PlacesError(`details ${res.status}`);
     return toVerification((await res.json()) as GPlace);
+  }).catch((e) => {
+    if (e instanceof PlacesError) return null;
+    throw e;
   });
+}
+
+/** A fresh photo for a place (photo names expire; ids don't). */
+export async function freshPhotoName(placeId: string): Promise<string | null> {
+  if (!placesEnabled() || !/^[A-Za-z0-9_-]+$/.test(placeId)) return null;
+  const res = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
+    headers: { "X-Goog-Api-Key": env.placesKey(), "X-Goog-FieldMask": "photos" },
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+  const body = (await res.json()) as { photos?: { name: string }[] };
+  return body.photos?.[0]?.name ?? null;
+}
+
+/** A short-lived image URL for a photo name at a given width (null if the name expired). */
+export async function photoUrl(name: string, width: number): Promise<string | null> {
+  const res = await fetch(`https://places.googleapis.com/v1/${name}/media?maxWidthPx=${width}&skipHttpRedirect=true`, {
+    headers: { "X-Goog-Api-Key": env.placesKey() },
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+  const body = (await res.json()) as { photoUri?: string };
+  return body.photoUri?.startsWith("https://") ? body.photoUri : null;
 }

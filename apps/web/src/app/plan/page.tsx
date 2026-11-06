@@ -55,6 +55,7 @@ const blank: TripRequest = {
   pace: "Balanced",
   extra: "",
   stay: { on: true, styles: ["Boutique"], price: "$150–300" },
+  with: [],
 };
 
 function Planner() {
@@ -76,6 +77,14 @@ function Planner() {
   const [tfKey, setTfKey] = useState(0);
   const [building, setBuilding] = useState<{ destination: string; days: number }>({ destination: "", days: 3 });
   const set = <K extends keyof TripRequest>(k: K, v: TripRequest[K]) => setReq((r) => ({ ...r, [k]: v }));
+  // Friends you can plan with (people you follow who follow you back).
+  const [friends, setFriends] = useState<{ handle: string; displayName: string }[]>([]);
+  useEffect(() => {
+    if (!me?.user || me.user.isGuest) return;
+    api<{ friends: { handle: string; displayName: string }[] }>("/api/together/friends")
+      .then((r) => setFriends(r.friends))
+      .catch(() => {});
+  }, [me?.user]);
 
   useEffect(() => {
     api<{ formId: string | null }>("/api/typeform")
@@ -316,6 +325,29 @@ function Planner() {
         <div className="field">
           <span className="label">Who&apos;s going</span>
           <SingleChips label="Who's going" options={PARTIES.map((v) => ({ value: v, label: PARTY_LABELS[v] }))} value={req.party} onChange={(v) => set("party", v)} />
+          {friends.length > 0 && (
+            <div className="field">
+              <span className="label">
+                Plan with friends <small>(they can edit it with you, and Pylos plans around everyone&apos;s taste)</small>
+              </span>
+              <div className="chips">
+                {friends.slice(0, 20).map((f) => {
+                  const on = (req.with ?? []).includes(f.handle);
+                  return (
+                    <button
+                      key={f.handle}
+                      type="button"
+                      className="chip"
+                      aria-pressed={on}
+                      onClick={() => set("with", on ? (req.with ?? []).filter((h) => h !== f.handle) : [...(req.with ?? []), f.handle].slice(0, 7))}
+                    >
+                      {f.displayName}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
         <div className="two">
           <div className="field">

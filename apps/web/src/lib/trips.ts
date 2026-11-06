@@ -39,14 +39,29 @@ export const toTrip = (r: TripRow): Trip => ({
   visibility: r.visibility ?? "private",
 });
 
-export const toSummary = (r: TripRow): TripSummary => ({
+/** The few columns a trip list needs (selected with JSON paths, so itineraries aren't loaded). */
+export interface SlimTripRow {
+  id: string;
+  created_at: string;
+  destination: string;
+  title: string;
+  custom_mix: boolean;
+  saved: boolean;
+  rating: number;
+  days?: number | null;
+  first_hotel?: string | null;
+  request?: TripRow["request"];
+  itinerary?: TripRow["itinerary"];
+}
+
+export const toSummary = (r: SlimTripRow): TripSummary => ({
   id: r.id,
   createdAt: r.created_at,
   destination: r.destination,
   title: r.title,
-  days: r.request?.days ?? r.itinerary?.days?.length ?? 0,
+  days: r.days ?? r.request?.days ?? r.itinerary?.days?.length ?? 0,
   saved: r.saved,
   rating: r.rating,
   customMix: r.custom_mix,
-  hasHotels: (r.itinerary?.hotels?.length ?? 0) > 0,
+  hasHotels: r.first_hotel != null || (r.itinerary?.hotels?.length ?? 0) > 0,
 });

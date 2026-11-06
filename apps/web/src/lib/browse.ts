@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   DESTINATIONS,
   DESTINATION_BY_KEY,
+  dayRange,
   TripRequestSchema,
   cityKey,
   countryName,
@@ -70,8 +71,13 @@ export async function listBrowse(now = new Date()): Promise<{ month: number; des
 // ---------------------------------------------------------------------------
 export type SampleState = { status: "ready"; itinerary: Itinerary } | { status: "pending" | "generating" | "failed" | "unavailable" };
 
-export async function readSample(key: string): Promise<SampleState> {
-  const { data, error } = await supabaseAdmin().from("destination_samples").select("status, itinerary").eq("key", key).maybeSingle();
+/** A destination's itinerary at its usual length, or a longer version for the days slider ("kyoto@7"). */
+const variantKey = (key: string, days?: number) => (days ? `${key}@${days}` : key);
+/** The longer version the slider trims from when someone wants more days than the usual plan. */
+export const longDays = (d: Destination) => dayRange(d).max;
+
+export async function readSample(key: string, days?: number): Promise<SampleState> {
+  const { data, error } = await supabaseAdmin().from("destination_samples").select("status, itinerary").eq("key", variantKey(key, days)).maybeSingle();
   if (error) {
     if (missingTable(error)) return { status: "unavailable" };
     console.error("sample read failed", error.message);
@@ -88,9 +94,11 @@ const RETRY_FAILED_MS = 5 * 60_000;
  * Make sure a destination has a sample itinerary. Only one request plans it; others see
  * "generating" and poll. Featured destinations only, so anonymous visitors can't run up costs.
  */
-export async function ensureSample(key: string): Promise<SampleState> {
-  const d = DESTINATION_BY_KEY[key];
+export async function ensureSample(dkey: string, days?: number): Promise<SampleState> {
+  const d = DESTINATION_BY_KEY[dkey];
   if (!d) throw new HttpError(404, "We don't have that destination.");
+  if (days != null && days !== longDays(d)) throw new HttpError(400, "Only the usual and the longest versions are planned.");
+  const key = variantKey(dkey, days);
   const admin = supabaseAdmin();
   const { data: row, error } = await admin.from("destination_samples").select("status, itinerary, started_at, updated_at").eq("key", key).maybeSingle();
   if (error) {
@@ -108,30 +116,32 @@ export async function ensureSample(key: string): Promise<SampleState> {
     const { error: insErr } = await admin.from("destination_samples").insert({ key, status: "generating", started_at: startedAt });
     if (insErr) return { status: "generating" }; // someone else inserted first
   } else {
+    // updated_at moves on every write, so only one of several simultaneous requests gets the job.
     const { data: took } = await admin
       .from("destination_samples")
       .update({ status: "generating", started_at: startedAt, error: null })
       .eq("key", key)
-      .eq("status", row.status as string)
+      .eq("updated_at", row.updated_at as string)
       .select("key");
     if (!took?.length) return { status: "generating" };
   }
 
   try {
-    const itinerary = await planSample(d);
+    const itinerary = await planSample(d, days);
     await admin.from("destination_samples").update({ status: "ready", itinerary, error: null }).eq("key", key);
     return { status: "ready", itinerary };
   } catch (e) {
     console.error("sample failed", key, e);
-    await admin.from("destination_samples").update({ status: "failed", error: String((e as Error)?.message ?? e).slice(0, 300) }).eq("key", key);
+    // The table is readable by anyone: keep the details in the logs, not here.
+    await admin.from("destination_samples").update({ status: "failed", error: e instanceof HttpError ? e.code ?? "failed" : "failed" }).eq("key", key);
     return { status: "failed" };
   }
 }
 
-async function planSample(d: Destination): Promise<Itinerary> {
+async function planSample(d: Destination, days?: number): Promise<Itinerary> {
   const ctx: Ctx = { user: null, db: supabaseAdmin(), role: "traveler" };
   const { eff, lists } = await loadSources(ctx);
-  const req = TripRequestSchema.parse(sampleRequest(d));
+  const req = TripRequestSchema.parse(sampleRequest(d, days));
   const t0 = Date.now();
   const { itin } = await planItinerary(req, { eff, lists, history: "" });
   console.log(`[sample] ${d.key} ${req.mode} ${req.days}d in ${Date.now() - t0}ms`);

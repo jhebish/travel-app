@@ -496,3 +496,39 @@ describe("typeform trip type", () => {
     expect(def.thankyou_screens.find((t) => t.ref === "browse")).toBeTruthy();
   });
 });
+
+import { fitItineraryToDays } from "../src";
+
+describe("fitItineraryToDays", () => {
+  const stop = (name: string) => ({ time: "10:00", name, neighborhood: "", why: "", localTip: "", source: "locals" as const });
+  const day = (label: string, city?: string) => ({ label, theme: label, city, stops: [stop(`${city ?? "x"} ${label}`)] });
+  it("keeps the first days of a one-place trip and relabels them", () => {
+    const it0 = ItinerarySchema.parse({ title: "T", summary: "", notes: [], days: [day("Day 1"), day("Day 2"), day("Day 3")], hotels: [], replaced: [] });
+    const out = fitItineraryToDays(it0, 2);
+    expect(out.days.map((d) => d.label)).toEqual(["Day 1", "Day 2"]);
+    expect(fitItineraryToDays(it0, 5)).toBe(it0);
+  });
+  it("drops later stops and shares the days on a multi-city route", () => {
+    const leg = (city: string, days: number) => ({ city, region: "", days, why: "", transfer: null, dayThemes: [] });
+    const it0 = ItinerarySchema.parse({
+      title: "Nile",
+      summary: "",
+      notes: [],
+      mode: "multi",
+      route: [leg("Cairo", 3), leg("Luxor", 2), leg("Aswan", 2)],
+      days: [day("Day 1", "Cairo"), day("Day 2", "Cairo"), day("Day 3", "Cairo"), day("Day 4", "Luxor"), day("Day 5", "Luxor"), day("Day 6", "Aswan"), day("Day 7", "Aswan")],
+      hotels: [{ name: "H Cairo", city: "Cairo", neighborhood: "", style: "", nightly: "", why: "", localTip: "", source: "press" }, { name: "H Aswan", city: "Aswan", neighborhood: "", style: "", nightly: "", why: "", localTip: "", source: "press" }],
+      replaced: [],
+    });
+    const three = fitItineraryToDays(it0, 3);
+    expect(three.route!.map((l) => `${l.city}:${l.days}`)).toEqual(["Cairo:3"]);
+    expect(three.days.every((d) => d.city === "Cairo")).toBe(true);
+    expect(three.hotels.map((h) => h.name)).toEqual(["H Cairo"]);
+    const four = fitItineraryToDays(it0, 4);
+    expect(four.route!.map((l) => `${l.city}:${l.days}`)).toEqual(["Cairo:2", "Luxor:2"]);
+    expect(four.days.map((d) => d.label)).toEqual(["Day 1", "Day 2", "Day 3", "Day 4"]);
+    const six = fitItineraryToDays(it0, 6);
+    expect(six.route!.map((l) => l.days).reduce((a, b) => a + b, 0)).toBe(6);
+    expect(six.days).toHaveLength(6);
+  });
+});

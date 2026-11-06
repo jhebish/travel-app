@@ -40,15 +40,20 @@ export async function callTool(
 ): Promise<{ input: unknown; model: string }> {
   const main = env.claudeModel();
   const model = opts.fast ? env.fastModel() : main;
+  // Stay inside the routes' time limits (60–120 s): one retry, and a per-call timeout, so people
+  // get our error message rather than a platform timeout. Callers retry malformed answers themselves.
   const create = (m: string) =>
-    anthropic().messages.create({
-      model: m,
-      max_tokens: maxTokens,
-      system: `${SYSTEM_PROMPT}\nAlways respond by calling the ${tool.name} tool exactly once with the complete result.`,
-      tools: [tool as unknown as Anthropic.Tool],
-      tool_choice: { type: "auto" },
-      messages: [{ role: "user", content: prompt }],
-    });
+    anthropic().messages.create(
+      {
+        model: m,
+        max_tokens: maxTokens,
+        system: `${SYSTEM_PROMPT}\nAlways respond by calling the ${tool.name} tool exactly once with the complete result.`,
+        tools: [tool as unknown as Anthropic.Tool],
+        tool_choice: { type: "auto" },
+        messages: [{ role: "user", content: prompt }],
+      },
+      { timeout: m === main ? 90_000 : 45_000, maxRetries: 1 },
+    );
   const t0 = Date.now();
   let res: Anthropic.Message;
   try {

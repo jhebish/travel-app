@@ -91,11 +91,15 @@ export function trendScore(d: Destination, month: number, activity: { recent: nu
 }
 
 /** The trip request used for a destination's sample itinerary. */
-export function sampleRequest(d: Destination) {
+/** The days slider's range for a destination: a day to a week for a city, up to two weeks for a region. */
+export const dayRange = (d: Pick<Destination, "kind">) => (d.kind === "region" ? { min: 2, max: 14 } : { min: 1, max: 7 });
+
+/** The planning request for a destination's itinerary (its usual length, or `days`). */
+export function sampleRequest(d: Destination, days = d.sampleDays) {
   return {
     mode: d.kind === "region" ? ("multi" as const) : ("single" as const),
     destination: d.kind === "region" ? d.name : `${d.name}, ${d.country}`,
-    days: d.sampleDays,
+    days,
     startDate: null,
     party: "Couple" as const,
     age: null,

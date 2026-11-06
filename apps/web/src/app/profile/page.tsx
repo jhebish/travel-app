@@ -1,11 +1,14 @@
 "use client";
-import { travelStats, type MyCommunityProfile, type PastTrip, type Visibility } from "@travel/core";
+import { SIGNAL_KIND_LABELS, travelStats, type MyCommunityProfile, type PastTrip, type Trip, type Visibility } from "@travel/core";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { PlaceChip, PlaceForm, StatsRow, blankPlace, countryName } from "@/components/community";
-import { useMe } from "@/components/useMe";
+import { ConnectCard } from "@/components/connect";
+import { TasteCard, kindFromName, useTaste, type PlaceItem } from "@/components/taste";
+import { canSubmitPicks, useMe } from "@/components/useMe";
 import { api, ApiError } from "@/lib/api";
+import { supabaseBrowser } from "@/lib/supabase/browser";
 
 const VIS: { value: Visibility; label: string }[] = [
   { value: "private", label: "Only me" },
@@ -24,6 +27,7 @@ const suggestHandle = (s: string) =>
 
 function ProfileEditor() {
   const me = useMe();
+  const router = useRouter();
   const params = useSearchParams();
   const [loaded, setLoaded] = useState(false);
   const [off, setOff] = useState<string | null>(null);
@@ -36,6 +40,32 @@ function ProfileEditor() {
   const [editing, setEditing] = useState<string | null>(null);
   const logTrip = params.get("log");
   const logCity = params.get("city") ?? "";
+  const taste = useTaste(!!me?.user);
+  const [suggestions, setSuggestions] = useState<PlaceItem[]>([]);
+
+  // Logging a Pylos trip ("I went"): offer its hotels and stops as "did you go?" chips.
+  useEffect(() => {
+    if (!logTrip || !me?.user) return;
+    api<{ trip: Trip }>(`/api/trips/${logTrip}`)
+      .then(({ trip }) => {
+        const it = trip.itinerary;
+        setSuggestions([
+          ...(it.hotels ?? []).map((h) => ({ kind: "stay" as const, name: h.name, liked: true })),
+          ...it.days.flatMap((d) => d.stops).map((st) => ({ kind: kindFromName(st.name), name: st.name, liked: true })),
+        ]);
+      })
+      .catch(() => {});
+  }, [logTrip, me?.user]);
+
+  /** What they did on each logged trip, from their taste signals. */
+  const itemsByTrip = useMemo(() => {
+    const m = new Map<string, { kind: string; name: string; liked?: boolean | null }[]>();
+    for (const sg of taste.data?.signals ?? []) {
+      if (!sg.pastTripId) continue;
+      m.set(sg.pastTripId, [...(m.get(sg.pastTripId) ?? []), sg]);
+    }
+    return m;
+  }, [taste.data]);
 
   useEffect(() => {
     if (!me?.user) return;
@@ -84,22 +114,36 @@ function ProfileEditor() {
 
   if (me && !me.user) {
     return (
-      <div className="card empty">
-        <b>Sign in to set up your profile</b>
-        <Link href="/login?next=/profile">Sign in</Link>
+      <div className="stack" style={{ gap: 22 }}>
+        <div className="head">
+          <h1>You</h1>
+          <p className="lede">Your past trips, your taste, and the accounts that help Pylos plan for you.</p>
+        </div>
+        <div className="card empty">
+          <b>Sign in to log your trips and teach Pylos your taste</b>
+          <Link href="/login?next=/profile">Sign in</Link>
+        </div>
       </div>
     );
   }
   if (!loaded) return <div className="card"><p className="hint">Loading…</p></div>;
   if (off) return <div className="card"><p className="status err">{off}</p></div>;
 
+  const signedIn = !!me?.user && !me.user.isGuest;
   return (
     <div className="stack" style={{ gap: 22 }}>
+      <div className="head">
+        <h1>You</h1>
+        <p className="lede">Your past trips, your taste, and the accounts that help Pylos plan for you.</p>
+      </div>
+
+      <TasteCard data={taste.data} updating={taste.updating} />
+
       {/* ---------- places ---------- */}
       <section className="card stack">
         <div className="head">
-          <h1>Places you&apos;ve been</h1>
-          <p className="lede">Log past trips and what you loved. Pylos uses them to plan trips that fit your taste, and you climb the ranks among friends.</p>
+          <h2>Places you&apos;ve been</h2>
+          <p className="hint">Log past trips, where you stayed and what you ate. Pylos learns your taste from them, and you climb the ranks among friends.</p>
         </div>
         <StatsRow stats={stats} showNext />
 
@@ -108,9 +152,11 @@ function ProfileEditor() {
             <b>Log your {logCity || "Pylos"} trip</b>
             <PlaceForm
               initial={{ value: blankPlace(logCity, logTrip) }}
+              suggestions={suggestions}
               onSaved={(p) => {
                 setPlaces((ps) => [p, ...ps]);
                 setMsg({ text: `${p.city} added.` });
+                taste.reload();
               }}
             />
           </div>
@@ -126,6 +172,7 @@ function ProfileEditor() {
                     onSaved={(np) => {
                       setPlaces((ps) => ps.map((x) => (x.id === np.id ? np : x)));
                       setEditing(null);
+                      taste.reload();
                     }}
                     onCancel={() => setEditing(null)}
                   />
@@ -141,6 +188,16 @@ function ProfileEditor() {
                       {p.rating ? ` · ${"★".repeat(p.rating)}` : ""}
                     </span>
                     {p.highlights && <p className="placehi">{p.highlights}</p>}
+                    {!!itemsByTrip.get(p.id)?.length && (
+                      <p className="placeitems">
+                        {itemsByTrip.get(p.id)!.map((it, i) => (
+                          <span key={i}>
+                            <small>{SIGNAL_KIND_LABELS[it.kind as keyof typeof SIGNAL_KIND_LABELS] ?? ""}</small> {it.name}
+                            {it.liked === true ? " ♥" : ""}
+                          </span>
+                        ))}
+                      </p>
+                    )}
                   </div>
                   <div className="row tight">
                     <button type="button" className="linkbtn" onClick={() => setEditing(p.id)}>
@@ -158,9 +215,16 @@ function ProfileEditor() {
 
         <details className="more" open={places.length === 0 && !logTrip}>
           <summary>Add a place</summary>
-          <PlaceForm onSaved={(p) => setPlaces((ps) => [p, ...ps])} />
+          <PlaceForm
+            onSaved={(p) => {
+              setPlaces((ps) => [p, ...ps]);
+              taste.reload();
+            }}
+          />
         </details>
       </section>
+
+      <ConnectCard onImported={taste.reload} />
 
       {/* ---------- community profile ---------- */}
       <section className="card stack">
@@ -246,6 +310,33 @@ function ProfileEditor() {
         {msg && (
           <p className={`status${msg.err ? " err" : ""}`} role="status">
             {msg.text}
+          </p>
+        )}
+      </section>
+
+      <section className="card stack" aria-label="Account">
+        <div className="row between">
+          <Link href="/sources">Your source mix →</Link>
+          {canSubmitPicks(me?.role) && <Link href="/picks">Local picks →</Link>}
+        </div>
+        {signedIn ? (
+          <div className="row between">
+            <span className="hint">Signed in as {me?.user?.email}</span>
+            <button
+              type="button"
+              className="linkbtn"
+              onClick={async () => {
+                await supabaseBrowser().auth.signOut();
+                router.push("/");
+                router.refresh();
+              }}
+            >
+              Sign out
+            </button>
+          </div>
+        ) : (
+          <p className="hint">
+            You&apos;re using Pylos as a guest. <Link href="/login?next=/profile">Sign in with your email</Link> to keep your trips on every device.
           </p>
         )}
       </section>

@@ -1,8 +1,8 @@
-import { PARTIES, TripRequestSchema, type Trip } from "@travel/core";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { TripView } from "@/components/TripView";
+import { readOnlyTrip } from "@/components/readOnlyTrip";
+import { ResizableTrip } from "@/components/ResizableTrip";
 import { getSharedTrip } from "@/lib/share";
 
 export const dynamic = "force-dynamic";
@@ -25,23 +25,10 @@ export async function generateMetadata({ params }: P): Promise<Metadata> {
 export default async function SharedTripPage({ params }: P) {
   const shared = await getSharedTrip(params.token);
   if (!shared) notFound();
-  const party = (PARTIES as readonly string[]).includes(shared.party) ? shared.party : "Solo";
-  const trip: Trip = {
-    id: "",
-    createdAt: shared.createdAt,
-    destination: shared.destination,
-    title: shared.title,
-    request: TripRequestSchema.parse({ destination: shared.destination, days: shared.days, party, budget: "Mid-range", pace: "Balanced" }),
-    weights: {} as Trip["weights"],
-    customMix: false,
-    itinerary: shared.itinerary,
-    saved: false,
-    rating: 0,
-    votes: {},
-  };
+  const trip = readOnlyTrip({ destination: shared.destination, title: shared.title, itinerary: shared.itinerary, party: shared.party, createdAt: shared.createdAt });
   return (
     <>
-      <TripView trip={trip} readOnly />
+      <ResizableTrip trip={trip} />
       <aside className="cta">
         <h2>Want a trip like this?</h2>
         <p className="lede">Tell Pylos where you&apos;re going and who&apos;s coming. You&apos;ll get a plan built from places the people who live there actually go.</p>

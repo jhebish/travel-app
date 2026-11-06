@@ -1,5 +1,6 @@
 "use client";
 import type { Itinerary, Stop } from "@travel/core";
+import { PlaceThumb } from "./PlacePhoto";
 
 export interface PreviewDay {
   label: string;
@@ -50,12 +51,13 @@ export function ItineraryPreview({
             {d.stops ? (
               <ul className="preview-stops">
                 {d.stops.slice(0, maxStops ?? d.stops.length).map((s, j) => (
-                  <li key={s.name + j}>
+                  <li key={s.name + j} className={s.place?.photos?.[0] ? "has-thumb" : undefined}>
                     <span className="preview-time">{s.time}</span>
                     <span>
                       <b>{s.name}</b>
                       {!compact && s.why ? <span className="preview-why"> {s.why}</span> : null}
                     </span>
+                    <PlaceThumb photo={s.place?.photos?.[0]} alt="" />
                   </li>
                 ))}
                 {maxStops != null && d.stops.length > maxStops && <li className="preview-more">and {d.stops.length - maxStops} more</li>}
@@ -70,6 +72,7 @@ export function ItineraryPreview({
           </li>
         ))}
       </ol>
+      {days.some((d) => d.stops?.some((s) => s.place?.photos?.length)) && <p className="photo-credit">Photos: Google Maps contributors</p>}
     </div>
   );
 }

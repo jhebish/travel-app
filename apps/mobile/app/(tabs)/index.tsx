@@ -46,6 +46,7 @@ const blank: TripRequest = {
   pace: "Balanced",
   extra: "",
   stay: { on: true, styles: ["Boutique"], price: "$150–300" },
+  with: [],
 };
 
 export default function Plan() {

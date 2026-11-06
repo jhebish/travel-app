@@ -16,6 +16,7 @@
     "@travel/core": "workspace:*",
     "@typeform/embed-react": "5.5.0",
     "d3-geo": "3.1.1",
+    "fflate": "0.8.2",
     "leaflet": "1.9.4",
     "next": "14.2.15",
     "react": "18.2.0",

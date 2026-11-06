@@ -84,7 +84,7 @@ export async function createIntakeForm(browseUrl?: string): Promise<{ formId: st
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     console.error("Typeform form not created", res.status, text);
-    throw new HttpError(502, `Typeform didn't accept the form (${res.status}). ${text.slice(0, 300)}`, "typeform_create");
+    throw new HttpError(502, `Typeform didn't accept the form (${res.status}). The details are in the server logs.`, "typeform_create");
   }
   const f = (await res.json()) as { id: string; _links?: { display?: string } };
   return { formId: f.id, url: f._links?.display ?? `https://form.typeform.com/to/${f.id}`, themed: !!themeHref };

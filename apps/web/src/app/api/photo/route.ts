@@ -1,0 +1,32 @@
+import { NextResponse } from "next/server";
+import { freshPhotoName, photoUrl, placesEnabled } from "@/lib/places";
+
+export const runtime = "nodejs";
+
+const REF = /^places\/([A-Za-z0-9_-]+)\/photos\/[A-Za-z0-9_-]+$/;
+const WIDTHS = [160, 400, 800, 1200];
+
+/**
+ * A place photo: /api/photo?ref=places/<id>/photos/<ref>&w=400 redirects to Google's image.
+ * The redirect is cached at the edge for a week, so each photo and size is fetched from Google
+ * about once a week however many people look at it. Expired photo names fall back to a fresh
+ * photo of the same place.
+ */
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const ref = url.searchParams.get("ref") ?? "";
+  const m = REF.exec(ref);
+  if (!m || !placesEnabled()) return new NextResponse(null, { status: 404 });
+  const want = Number(url.searchParams.get("w")) || 400;
+  const width = WIDTHS.find((w) => w >= want) ?? 1200;
+  let target = await photoUrl(ref, width);
+  if (!target) {
+    const fresh = await freshPhotoName(m[1]!);
+    if (fresh) target = await photoUrl(fresh, width);
+  }
+  if (!target) return new NextResponse(null, { status: 404, headers: { "Cache-Control": "public, s-maxage=3600" } });
+  return NextResponse.redirect(target, {
+    status: 302,
+    headers: { "Cache-Control": "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400" },
+  });
+}

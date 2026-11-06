@@ -13,14 +13,18 @@ export default function TripsPage() {
   const me = useMe();
   const [filter, setFilter] = useState<Filter>("all");
   const [trips, setTrips] = useState<TripSummary[] | null>(null);
+  const [shared, setShared] = useState<(TripSummary & { owner: string })[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
 
   useEffect(() => {
     if (!me?.user) return;
     setTrips(null);
-    api<{ trips: TripSummary[] }>(`/api/trips${filter === "all" ? "" : `?filter=${filter}`}`)
-      .then((r) => setTrips(r.trips))
+    api<{ trips: TripSummary[]; shared?: (TripSummary & { owner: string })[] }>(`/api/trips${filter === "all" ? "" : `?filter=${filter}`}`)
+      .then((r) => {
+        setTrips(r.trips);
+        if (filter === "all") setShared(r.shared ?? []);
+      })
       .catch((e) => setError((e as Error).message));
   }, [me?.user, filter]);
 
@@ -36,6 +40,29 @@ export default function TripsPage() {
   }
 
   return (
+    <>
+    {shared.length > 0 && (
+      <section className="card stack">
+        <div className="head">
+          <span className="eyebrow">Planning together</span>
+          <h2>Trips friends are planning with you</h2>
+        </div>
+        <ul className="list">
+          {shared.map((t) => (
+            <li key={t.id}>
+              <div className="list-top">
+                <div className="list-title">
+                  <Link href={`/trips/${t.id}`}>{t.title}</Link>
+                </div>
+              </div>
+              <div className="meta">
+                {t.days} {t.days === 1 ? "day" : "days"} in {t.destination} · with {t.owner}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
     <div className="card">
       <div className="head">
         <h1>My trips</h1>
@@ -111,5 +138,6 @@ export default function TripsPage() {
         </>
       )}
     </div>
+    </>
   );
 }

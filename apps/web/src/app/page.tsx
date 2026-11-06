@@ -2,6 +2,7 @@
 import {
   DESTINATION_BY_KEY,
   DESTINATION_TAGS,
+  dayRange,
   flag,
   monthsLabel,
   type BrowseDestination,
@@ -13,9 +14,10 @@ import {
 } from "@travel/core";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TripCard } from "@/components/community";
+import { DaysSlider } from "@/components/DaysSlider";
+import { useDaysPlan } from "@/components/useDaysPlan";
 import { ItineraryPreview, previewFromItinerary } from "@/components/ItineraryPreview";
 import { useMe } from "@/components/useMe";
 import { api } from "@/lib/api";
@@ -39,11 +41,15 @@ interface ForYou {
   signedIn: boolean;
 }
 
-const planHref = (d: Destination) =>
-  `/plan?dest=${encodeURIComponent(d.kind === "region" ? d.name : `${d.name}, ${d.country}`)}&mode=${d.kind === "region" ? "multi" : "single"}&days=${d.sampleDays}`;
+const planHref = (d: Destination, days = d.sampleDays) =>
+  `/plan?dest=${encodeURIComponent(d.kind === "region" ? d.name : `${d.name}, ${d.country}`)}&mode=${d.kind === "region" ? "multi" : "single"}&days=${days}`;
 
 function DestinationPanel({ d, detail, sampleBusy }: { d: BrowseDestination; detail: Detail | null; sampleBusy: boolean }) {
   const sample = detail?.sample;
+  const [days, setDays] = useState(d.sampleDays);
+  useEffect(() => setDays(d.sampleDays), [d.key, d.sampleDays]);
+  const plan = useDaysPlan(DESTINATION_BY_KEY[d.key] ?? null, sample?.status === "ready" ? sample.itinerary : null, days);
+  const range = dayRange(d);
   return (
     <div className="dest">
       <div className="dest-head">
@@ -66,32 +72,35 @@ function DestinationPanel({ d, detail, sampleBusy }: { d: BrowseDestination; det
 
       <div className="dest-sample">
         <span className="label">
-          Sample {d.sampleDays}-day {d.kind === "region" ? "route" : "itinerary"}
+          {days} {days === 1 ? "day" : "days"} in {d.name}
         </span>
-        {sample?.status === "ready" ? (
+        {sample?.status === "ready" && <DaysSlider value={days} min={range.min} max={range.max} onChange={setDays} />}
+        {sample?.status === "ready" && plan.itinerary ? (
           <>
-            <ItineraryPreview days={previewFromItinerary(sample.itinerary)} route={sample.itinerary.route?.map((l) => ({ city: l.city, days: l.days }))} maxStops={3} compact />
-            <Link className="linkbtn" href={`/d/${d.key}`}>
-              See the full sample itinerary →
+            <ItineraryPreview days={previewFromItinerary(plan.itinerary)} route={plan.itinerary.route?.map((l) => ({ city: l.city, days: l.days }))} maxStops={3} compact />
+            <Link className="linkbtn" href={`/d/${d.key}${days !== d.sampleDays ? `?days=${days}` : ""}`}>
+              See the full itinerary →
             </Link>
           </>
+        ) : sample?.status === "ready" && plan.failed ? (
+          <p className="hint">We couldn&apos;t plan {days} days here just now. Try fewer days, or plan your own below.</p>
         ) : sample?.status === "unavailable" ? (
-          <p className="hint">Sample itineraries are coming soon.</p>
+          <p className="hint">Itineraries for {d.name} are coming soon.</p>
         ) : sample?.status === "failed" && !sampleBusy ? (
-          <p className="hint">We couldn&apos;t sketch a sample just now. Plan your own below.</p>
+          <p className="hint">We couldn&apos;t plan this one just now. Plan your own below.</p>
         ) : (
           <div className="dest-sketching">
             <span className="thinking">
               <span className="dot" />
-              Sketching a sample {d.kind === "region" ? "route" : "trip"} with local picks…
+              Planning {sample?.status === "ready" ? days : d.sampleDays} days in {d.name} with local picks…
             </span>
-            <ItineraryPreview days={Array.from({ length: Math.min(3, d.sampleDays) }, (_, i) => ({ label: `Day ${i + 1}`, theme: "" }))} compact />
+            <ItineraryPreview days={Array.from({ length: 3 }, (_, i) => ({ label: `Day ${i + 1}`, theme: "" }))} compact />
           </div>
         )}
       </div>
 
       <div className="row">
-        <Link className="btn" href={planHref(d)}>
+        <Link className="btn" href={planHref(d, days)}>
           Plan my own trip here
         </Link>
         {d.kind === "city" && (
@@ -121,7 +130,6 @@ function DestinationPanel({ d, detail, sampleBusy }: { d: BrowseDestination; det
 /** The home page. Rendered at build time (no search params), so the header and layout arrive as HTML. */
 export default function Browse() {
   const me = useMe();
-  const router = useRouter();
   const [dests, setDests] = useState<BrowseDestination[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [tag, setTag] = useState<DestinationTag | "All">("All");
@@ -186,12 +194,13 @@ export default function Browse() {
     return () => {
       alive = false;
       if (poll) clearTimeout(poll);
+      setSampleBusy(false);
     };
   }, [selected]);
 
   function choose(key: string, scroll = false) {
     setSelected(key);
-    router.replace(`/?d=${key}`, { scroll: false });
+    window.history.replaceState(null, "", `/?d=${key}`);
     if (scroll) setTimeout(() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   }
 
@@ -209,7 +218,7 @@ export default function Browse() {
       <header className="browse-head">
         <span className="eyebrow">Trips planned the local way</span>
         <h1>Where to next?</h1>
-        <p className="lede">Turn the globe and tap a pin for a sample itinerary and the best-rated trips there. Pins are this season&apos;s trending places.</p>
+        <p className="lede">Turn the globe and tap a pin for an itinerary you can fit to your days, and the best-rated trips there. Pins are this season&apos;s trending places.</p>
         <div className="row browse-cta">
           <Link className="btn" href="/plan">
             Plan a trip
@@ -231,7 +240,7 @@ export default function Browse() {
       <section className="browse-main">
         <div className="globe-col">
           <Globe markers={markers} selected={selected} onSelect={(k) => choose(k, window.innerWidth < 900)} />
-          <p className="hint globe-hint">Drag to turn · tap a pin</p>
+          <p className="hint globe-hint">Drag to turn · pinch or + to zoom · tap a pin</p>
         </div>
         <aside className="card dest-panel" ref={panelRef} aria-live="polite">
           {current ? (

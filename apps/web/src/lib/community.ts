@@ -215,6 +215,25 @@ export async function addPlace(ctx: Ctx, p: PastTripInput): Promise<PastTrip> {
   return toPast(data as PastRow);
 }
 
+/** Add many past trips (an import). Skips ones already logged for the same city and year. */
+export async function addPlacesBulk(ctx: Ctx, list: PastTripInput[]): Promise<{ added: number; skipped: number }> {
+  if (!ctx.user) throw new HttpError(401, "Sign in to continue.", "unauthenticated");
+  const { data: have } = await ctx.db.from("past_trips").select("city_key, year").eq("user_id", ctx.user.id).limit(1000);
+  const seen = new Set((have ?? []).map((r) => `${r.city_key}|${r.year ?? ""}`));
+  const rows = [];
+  for (const p of list) {
+    const key = `${toCityKey(p.city)}|${p.year ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({ user_id: ctx.user.id, city: p.city, city_key: toCityKey(p.city), country_code: p.countryCode, year: p.year, month: p.month, days: p.days, rating: p.rating, highlights: p.highlights });
+  }
+  if (rows.length) {
+    const { error } = await ctx.db.from("past_trips").insert(rows);
+    check(error, "add places");
+  }
+  return { added: rows.length, skipped: list.length - rows.length };
+}
+
 export async function updatePlace(ctx: Ctx, id: string, p: PastTripInput): Promise<PastTrip> {
   if (!ctx.user) throw new HttpError(401, "Sign in to continue.", "unauthenticated");
   const { data, error } = await ctx.db
@@ -422,7 +441,8 @@ export async function setVisibility(ctx: Ctx, tripId: string, visibility: Visibi
     requireMember(ctx);
     if (!(await getMyProfile(ctx))) throw new HttpError(400, "Create your community profile first, then you can share trips.", "needs_profile");
   }
-  const { data, error } = await ctx.db.from("trips").update({ visibility }).eq("id", tripId).eq("user_id", ctx.user.id).select("id").maybeSingle();
+  // Trips are written by the server; the user_id filter keeps this to the caller's own trip.
+  const { data, error } = await supabaseAdmin().from("trips").update({ visibility }).eq("id", tripId).eq("user_id", ctx.user.id).select("id").maybeSingle();
   check(error, "visibility");
   if (!data) throw new HttpError(404, "We couldn't find that trip.");
 }

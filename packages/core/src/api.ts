@@ -19,6 +19,22 @@ export interface Trip {
   shareToken?: string | null;
   /** Who can see it in the community. */
   visibility?: "private" | "followers" | "public";
+  /** "member": a friend planning this trip with its owner (can edit, react and rebuild days). */
+  role?: "owner" | "member";
+}
+
+/** Someone planning a trip together, and what they think of each stop. */
+export interface TripPerson {
+  userId: string;
+  name: string;
+  handle: string | null;
+  owner: boolean;
+  me: boolean;
+}
+export interface Together {
+  people: TripPerson[];
+  /** item ("day-stop" or "h-hotel") → userId → 1 (I'm in) or -1 (pass). Only for the place still there. */
+  reactions: Record<string, Record<string, 1 | -1>>;
 }
 
 /** What a public share link shows: the plan, without the traveler's personal details. */
