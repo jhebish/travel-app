@@ -39,6 +39,7 @@ export async function scanCalendar(progress: Progress): Promise<{ places: number
 
   const events: CalendarEventLike[] = [];
   const now = Date.now();
+  const phoneZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   // iOS reads at most four years per query, so go a year at a time.
   for (let y = 0; y < YEARS_BACK; y++) {
     const end = new Date(now - y * 365 * DAY_MS);
@@ -46,7 +47,6 @@ export async function scanCalendar(progress: Progress): Promise<{ places: number
     progress(`Reading your calendars… ${start.getFullYear()}`);
     const batch = await Calendar.getEventsAsync(ids, start, end).catch(() => []);
     for (const e of batch) {
-      if (e.recurrenceRule) continue; // weekly meetings, birthdays
       events.push({
         id: e.id,
         summary: e.title ?? "",
@@ -54,6 +54,10 @@ export async function scanCalendar(progress: Progress): Promise<{ places: number
         description: (e.notes ?? "").slice(0, 2000),
         start: e.allDay ? localDay(e.startDate) : toIso(e.startDate),
         end: e.allDay ? localDay(e.endDate) : toIso(e.endDate),
+        // Phones give UTC times: read them in the event's zone so an 8pm dinner keeps its date.
+        timeZone: e.timeZone || phoneZone,
+        // Weekly meetings, birthdays and other repeats aren't trips or bookings.
+        recurring: !!e.recurrenceRule,
       });
     }
   }

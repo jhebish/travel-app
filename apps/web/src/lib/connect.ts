@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { countryCodeFor, type TasteSignal } from "@travel/core";
+import { countryCodeFor, type CalendarEventLike, type TasteSignal } from "@travel/core";
 import { env } from "./env";
 
 /**
@@ -66,22 +66,17 @@ async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
 // ---------------------------------------------------------------------------
 // Google Calendar: past trips, hotel stays and dinner reservations (Resy, OpenTable…)
 // ---------------------------------------------------------------------------
-export interface CalendarEvent {
-  id?: string;
-  summary?: string;
-  location?: string;
-  description?: string;
-  start?: string;
-  end?: string;
-}
+/** The shape core's calendarSignals reads. */
+export type CalendarEvent = CalendarEventLike;
 
 interface GEvent {
   id: string;
   summary?: string;
   location?: string;
   description?: string;
-  start?: { date?: string; dateTime?: string };
-  end?: { date?: string; dateTime?: string };
+  recurringEventId?: string;
+  start?: { date?: string; dateTime?: string; timeZone?: string };
+  end?: { date?: string; dateTime?: string; timeZone?: string };
 }
 
 export async function googleCalendarEvents(code: string, verifier: string, origin: string): Promise<CalendarEvent[]> {
@@ -113,7 +108,7 @@ export async function googleCalendarEvents(code: string, verifier: string, origi
           timeMax,
           singleEvents: "true",
           maxResults: "2500",
-          fields: "nextPageToken,items(id,summary,location,description,start,end)",
+          fields: "nextPageToken,items(id,summary,location,description,recurringEventId,start,end)",
           ...(pageToken ? { pageToken } : {}),
         });
         const r = await getJson<{ items?: GEvent[]; nextPageToken?: string }>(
@@ -129,6 +124,9 @@ export async function googleCalendarEvents(code: string, verifier: string, origi
             description: e.description?.slice(0, 600),
             start: e.start?.date ?? e.start?.dateTime,
             end: e.end?.date ?? e.end?.dateTime,
+            timeZone: e.start?.timeZone,
+            // Weekly meetings and other repeats aren't trips or bookings.
+            recurring: !!e.recurringEventId,
           });
         }
         pageToken = r.nextPageToken;
