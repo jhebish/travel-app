@@ -32,7 +32,7 @@ export function DayMap({ stops, onPick }: { stops: Stop[]; onPick?: (index: numb
         maxZoom: 19,
       }).addTo(map);
       const latlngs = pts.map((p) => [p.c.lat, p.c.lng] as [number, number]);
-      const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#2f45d8";
+      const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#2e5e8c";
       if (latlngs.length > 1) L.polyline(latlngs, { color: accent, weight: 3, opacity: 0.55, dashArray: "6 8" }).addTo(map);
       pts.forEach((p) => {
         const icon = L.divIcon({

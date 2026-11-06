@@ -54,16 +54,16 @@ export async function fetchResponse(responseId: string, onWait?: (attempt: numbe
   throw new HttpError(504, "We couldn't read your answers from Typeform. Try submitting again.", "typeform_timeout");
 }
 
-/** Create the Ayoush intake form (and a matching theme) in the connected Typeform account. */
+/** Create the Pylos intake form (and a matching theme) in the connected Typeform account. */
 export async function createIntakeForm(): Promise<{ formId: string; url: string; themed: boolean }> {
   let themeHref: string | undefined;
   try {
     const t = await tf("/themes", {
       method: "POST",
       body: JSON.stringify({
-        name: "Ayoush",
+        name: "Pylos",
         font: "Karla",
-        colors: { question: "#11131A", answer: "#2F45D8", button: "#2F45D8", background: "#FFFFFF" },
+        colors: { question: "#1E2A3A", answer: "#2E5E8C", button: "#2E5E8C", background: "#F7F4EE" },
         has_transparent_button: false,
         rounded_corners: "large",
       }),

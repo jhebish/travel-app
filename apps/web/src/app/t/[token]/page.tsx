@@ -11,12 +11,12 @@ type P = { params: { token: string } };
 
 export async function generateMetadata({ params }: P): Promise<Metadata> {
   const t = await getSharedTrip(params.token);
-  if (!t) return { title: "Trip not found · Ayoush" };
+  if (!t) return { title: "Trip not found · Pylos" };
   const description = t.itinerary.summary.slice(0, 200);
   return {
-    title: `${t.title} · Ayoush`,
+    title: `${t.title} · Pylos`,
     description,
-    openGraph: { title: t.title, description, type: "article", siteName: "Ayoush" },
+    openGraph: { title: t.title, description, type: "article", siteName: "Pylos" },
     twitter: { card: "summary", title: t.title, description },
     robots: { index: false }, // shared links are unlisted
   };
@@ -44,7 +44,7 @@ export default async function SharedTripPage({ params }: P) {
       <TripView trip={trip} readOnly />
       <aside className="cta">
         <h2>Want a trip like this?</h2>
-        <p className="lede">Tell Ayoush where you&apos;re going and who&apos;s coming. You&apos;ll get a plan built from places the people who live there actually go.</p>
+        <p className="lede">Tell Pylos where you&apos;re going and who&apos;s coming. You&apos;ll get a plan built from places the people who live there actually go.</p>
         <Link className="btn" href="/">
           Plan your own trip
         </Link>

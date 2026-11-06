@@ -23,7 +23,7 @@ export function cityKey(destination: string): string {
 export const cityLabel = (key: string) => key.replace(/\b[a-z]/g, (c) => c.toUpperCase());
 
 export const HANDLE_RE = /^[a-z0-9_]{3,24}$/;
-const RESERVED = new Set(["admin", "ayoush", "support", "help", "me", "settings", "community", "official", "staff", "null", "undefined"]);
+const RESERVED = new Set(["admin", "pylos", "ayoush", "support", "help", "me", "settings", "community", "official", "staff", "null", "undefined"]);
 
 export const CommunityProfileInputSchema = z.object({
   handle: z

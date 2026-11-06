@@ -1,5 +1,5 @@
 /**
- * Typeform intake: the form definition Ayoush creates in your Typeform account, and the mapping
+ * Typeform intake: the form definition Pylos creates in your Typeform account, and the mapping
  * from a Typeform response back to a TripRequest.
  *
  * Every question and every choice carries a fixed `ref`, so answers are matched by ref, never by
@@ -87,10 +87,10 @@ function multiple<T extends string>(
   };
 }
 
-/** The form Ayoush creates through the Typeform Create API. */
+/** The form Pylos creates through the Typeform Create API. */
 export function typeformDefinition(opts: { title?: string; themeHref?: string } = {}) {
   return {
-    title: opts.title ?? "Ayoush trip intake",
+    title: opts.title ?? "Pylos trip intake",
     ...(opts.themeHref ? { theme: { href: opts.themeHref } } : {}),
     hidden: [TF_HIDDEN_UID],
     settings: { language: "en", is_public: true, show_progress_bar: true, progress_bar: "proportion", meta: { allow_indexing: false } },

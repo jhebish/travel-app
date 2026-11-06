@@ -111,7 +111,7 @@ function parseTime(t: string): { h: number; m: number } | null {
 export function buildIcs(it: Itinerary, city: string, startDate: string, tripUrl?: string): string {
   const [y, mo, d] = startDate.split("-").map(Number) as [number, number, number];
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
-  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Ayoush//Trip//EN", "CALSCALE:GREGORIAN", `X-WR-CALNAME:${icsEscape(it.title)}`];
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Pylos//Trip//EN", "CALSCALE:GREGORIAN", `X-WR-CALNAME:${icsEscape(it.title)}`];
   it.days.forEach((day, di) => {
     const date = new Date(Date.UTC(y, mo - 1, d + di));
     const ymd = `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}`;
@@ -127,7 +127,7 @@ export function buildIcs(it: Itinerary, city: string, startDate: string, tripUrl
       const desc = [s.why, s.localTip ? `Local tip: ${s.localTip}` : "", s.place?.mapsUrl ?? "", tripUrl ?? ""].filter(Boolean).join("\n");
       lines.push(
         "BEGIN:VEVENT",
-        `UID:${ymd}-${di}-${si}-${Math.abs(hash(s.name + it.title))}@ayoush`,
+        `UID:${ymd}-${di}-${si}-${Math.abs(hash(s.name + it.title))}@pylos`,
         `DTSTAMP:${stamp}`,
         `DTSTART:${fmt(startMin)}`,
         `DTEND:${fmt(endMin)}`,

@@ -1,4 +1,4 @@
-# Ayoush
+# Pylos
 
 A locals-first travel planner. Travelers answer a few quick questions and get a bespoke itinerary with places to stay, built mostly from picks by locals and hosts. Every recommendation is tagged with its source, and both the app's curators and each traveler can tune how heavily each source counts. Trips are saved and rated, and those ratings feed back into the default source weights.
 

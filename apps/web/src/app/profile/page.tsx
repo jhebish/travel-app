@@ -99,13 +99,13 @@ function ProfileEditor() {
       <section className="card stack">
         <div className="head">
           <h1>Places you&apos;ve been</h1>
-          <p className="lede">Log past trips and what you loved. Ayoush uses them to plan trips that fit your taste, and you climb the ranks among friends.</p>
+          <p className="lede">Log past trips and what you loved. Pylos uses them to plan trips that fit your taste, and you climb the ranks among friends.</p>
         </div>
         <StatsRow stats={stats} showNext />
 
         {logTrip && !alreadyLogged && (
           <div className="callout stack">
-            <b>Log your {logCity || "Ayoush"} trip</b>
+            <b>Log your {logCity || "Pylos"} trip</b>
             <PlaceForm
               initial={{ value: blankPlace(logCity, logTrip) }}
               onSaved={(p) => {

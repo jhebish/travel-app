@@ -83,7 +83,7 @@ export default function CommunityTripPage({ params }: { params: { id: string } }
       <TripView trip={view} readOnly />
       <aside className="cta">
         <h2>Want your own take on {t.destination.split(",")[0]}?</h2>
-        <p className="lede">Ayoush builds it around who&apos;s coming and what you&apos;re into.</p>
+        <p className="lede">Pylos builds it around who&apos;s coming and what you&apos;re into.</p>
         <Link className="btn" href={`/?dest=${encodeURIComponent(t.destination)}&days=${t.days}`}>
           Plan a trip like this
         </Link>

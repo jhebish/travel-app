@@ -236,7 +236,7 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
     const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `ayoush-${city.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.ics`;
+    a.download = `pylos-${city.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.ics`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -613,7 +613,7 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
                   <button
                     type="button"
                     className="btn"
-                    onClick={() => navigator.share({ title: it.title, text: `My ${city} trip on Ayoush`, url: shareUrl }).catch(() => {})}
+                    onClick={() => navigator.share({ title: it.title, text: `My ${city} trip on Pylos`, url: shareUrl }).catch(() => {})}
                   >
                     <IconShare />
                     Share

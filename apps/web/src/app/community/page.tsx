@@ -185,7 +185,7 @@ function People() {
       ) : !data ? (
         <Loading />
       ) : !data.people.length ? (
-        <p className="hint">{term ? "No one matches that yet. Invite them to Ayoush." : "Search for friends by name or handle."}</p>
+        <p className="hint">{term ? "No one matches that yet. Invite them to Pylos." : "Search for friends by name or handle."}</p>
       ) : (
         <>
           {!term && <span className="label">Follows you</span>}

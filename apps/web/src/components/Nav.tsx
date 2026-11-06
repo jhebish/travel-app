@@ -18,8 +18,9 @@ export function Nav() {
   const current = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
   return (
     <header className="topbar">
+      <div className="topbar-row">
       <Link href="/" className="brand">
-        Ayoush
+        Pylos
       </Link>
       <nav className="nav" aria-label="Main">
         {links.map((l) => (
@@ -49,6 +50,8 @@ export function Nav() {
           </Link>
         ) : null}
       </div>
+      </div>
+      <div className="meander" aria-hidden="true" />
     </header>
   );
 }

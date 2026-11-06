@@ -1,18 +1,18 @@
 import { useColorScheme } from "react-native";
 import type { SourceId } from "@travel/core";
 
-// Same system as the web app: limestone ground, blue-black ink, one Majorelle-cobalt accent.
+// Same system as the web app (Aegean): whitewash ground, pale sea-blue hero, one deep Aegean blue accent.
 const light = {
-  bg: "#f3f4f1", surface: "#ffffff", sunk: "#eceee9", ink: "#161b2e", muted: "#5e6475", faint: "#8a90a2", line: "#e2e4e9",
-  accent: "#2f45d8", accentInk: "#ffffff", accentSoft: "#e6e9fb", hero: "#2f45d8", heroInk: "#ffffff", heroSoft: "rgba(255,255,255,0.78)",
-  saffron: "#e98f37", good: "#1f8a5b", bad: "#c53d3d",
-  sources: { locals: "#2f45d8", hosts: "#1f8a5b", press: "#7c4ddb", indie: "#d08014", reviews: "#8a90a2", guidebooks: "#b4532a", social: "#d23b7f", sponsored: "#c53d3d" } as Record<SourceId, string>,
+  bg: "#f7f4ee", surface: "#fffefb", sunk: "#eef0ef", ink: "#1e2a3a", muted: "#566273", faint: "#7f8896", line: "#e3e1d8",
+  accent: "#2e5e8c", accentInk: "#ffffff", accentSoft: "#dde9f2", hero: "#dce8f1", heroInk: "#1e2a3a", heroSoft: "#3f4d60",
+  saffron: "#c08a3e", good: "#4f6d3c", bad: "#b04a3e",
+  sources: { locals: "#2e5e8c", hosts: "#5f7a4a", press: "#7a5c93", indie: "#a8742c", reviews: "#7f8896", guidebooks: "#a85a3c", social: "#b5527a", sponsored: "#b04a3e" } as Record<SourceId, string>,
 };
 const dark: typeof light = {
-  bg: "#0d1020", surface: "#151a2e", sunk: "#1b2138", ink: "#eceef6", muted: "#a0a6ba", faint: "#737a90", line: "#262c44",
-  accent: "#8090ff", accentInk: "#0d1020", accentSoft: "#1f2654", hero: "#2a3ab5", heroInk: "#ffffff", heroSoft: "rgba(255,255,255,0.8)",
-  saffron: "#f2a65e", good: "#4cc08a", bad: "#ec6b6b",
-  sources: { locals: "#8090ff", hosts: "#4cc08a", press: "#a985f2", indie: "#eaa443", reviews: "#8e94a8", guidebooks: "#dd8a5c", social: "#ec7bab", sponsored: "#ec6b6b" },
+  bg: "#0f1722", surface: "#16202d", sunk: "#1c2837", ink: "#eef1f4", muted: "#a7b1bd", faint: "#7d8897", line: "#27354a",
+  accent: "#8db6dc", accentInk: "#0f1722", accentSoft: "#1d3149", hero: "#1b2b3e", heroInk: "#eef1f4", heroSoft: "#b9c6d4",
+  saffron: "#e0ad6a", good: "#9db884", bad: "#e07c6e",
+  sources: { locals: "#8db6dc", hosts: "#9db884", press: "#b59ad0", indie: "#e0ad6a", reviews: "#8a95a3", guidebooks: "#dd9470", social: "#e08bb0", sponsored: "#e07c6e" },
 };
 
 export type Theme = typeof light;

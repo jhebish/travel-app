@@ -1,55 +1,66 @@
 /*
-  Ayoush design system
-  Layout: one left-aligned 680px column. Quiet limestone ground, white panels, deep blue-black ink.
-  One bold move: each trip opens on a solid Majorelle-cobalt panel; days read as numbered routes.
-  Type: Schibsted Grotesk throughout, sentence case, tight large headlines.
+  Pylos design system: Aegean
+  Whitewashed ground, pale sea-blue panels, one deep Aegean blue for actions, olive and ochre accents.
+  Shapes: Cycladic arches (round-topped hero and tabs) and a faint Greek key band as the only ornament.
+  Type: Marcellus (classical inscription capitals) for headings and labels; EB Garamond for reading.
 */
 :root {
-  --bg: #f3f4f1;
-  --surface: #ffffff;
-  --sunk: #eceee9;
-  --ink: #161b2e;
-  --muted: #5e6475;
-  --faint: #8a90a2;
-  --line: #e2e4e9;
-  --accent: #2f45d8;
-  --accent-hover: #2537b8;
+  --bg: #f7f4ee;
+  --surface: #fffefb;
+  --sunk: #eef0ef;
+  --ink: #1e2a3a;
+  --muted: #566273;
+  --faint: #7f8896;
+  --line: #e3e1d8;
+  --accent: #2e5e8c;
+  --accent-hover: #244c73;
   --accent-ink: #ffffff;
-  --accent-soft: #e6e9fb;
-  --hero: #2f45d8;
-  --hero-ink: #ffffff;
-  --hero-soft: rgba(255, 255, 255, 0.78);
-  --warm: #e98f37;
-  --good: #1f8a5b;
-  --bad: #c53d3d;
-  --s-locals: #2f45d8; --s-hosts: #1f8a5b; --s-press: #7c4ddb; --s-indie: #d08014;
-  --s-reviews: #8a90a2; --s-guidebooks: #b4532a; --s-social: #d23b7f; --s-sponsored: #c53d3d;
-  --font: "Schibsted Grotesk", "Helvetica Neue", Arial, system-ui, sans-serif;
-  --r-panel: 22px;
-  --r-ctl: 12px;
+  --accent-soft: #dde9f2;
+  --hero: #dce8f1;
+  --hero-ink: #1e2a3a;
+  --hero-soft: #3f4d60;
+  --hero-line: #b9cddd;
+  --olive: #e3e8d5;
+  --olive-ink: #4f6440;
+  --ochre: #f3e5c8;
+  --clay: #f1dcd2;
+  --warm: #c08a3e;
+  --good: #4f6d3c;
+  --bad: #b04a3e;
+  --s-locals: #2e5e8c; --s-hosts: #5f7a4a; --s-press: #7a5c93; --s-indie: #a8742c;
+  --s-reviews: #7f8896; --s-guidebooks: #a85a3c; --s-social: #b5527a; --s-sponsored: #b04a3e;
+  --font: "EB Garamond", Georgia, "Times New Roman", serif;
+  --font-display: "Marcellus", "EB Garamond", Georgia, serif;
+  --r-panel: 18px;
+  --r-ctl: 10px;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0d1020;
-    --surface: #151a2e;
-    --sunk: #1b2138;
-    --ink: #eceef6;
-    --muted: #a0a6ba;
-    --faint: #737a90;
-    --line: #262c44;
-    --accent: #8090ff;
-    --accent-hover: #9aa7ff;
-    --accent-ink: #0d1020;
-    --accent-soft: #1f2654;
-    --hero: #2a3ab5;
-    --hero-ink: #ffffff;
-    --hero-soft: rgba(255, 255, 255, 0.8);
-    --warm: #f2a65e;
-    --good: #4cc08a;
-    --bad: #ec6b6b;
-    --s-locals: #8090ff; --s-hosts: #4cc08a; --s-press: #a985f2; --s-indie: #eaa443;
-    --s-reviews: #8e94a8; --s-guidebooks: #dd8a5c; --s-social: #ec7bab; --s-sponsored: #ec6b6b;
+    --bg: #0f1722;
+    --surface: #16202d;
+    --sunk: #1c2837;
+    --ink: #eef1f4;
+    --muted: #a7b1bd;
+    --faint: #7d8897;
+    --line: #27354a;
+    --accent: #8db6dc;
+    --accent-hover: #a8c8e6;
+    --accent-ink: #0f1722;
+    --accent-soft: #1d3149;
+    --hero: #1b2b3e;
+    --hero-ink: #eef1f4;
+    --hero-soft: #b9c6d4;
+    --hero-line: #33475f;
+    --olive: #253021;
+    --olive-ink: #b5c79f;
+    --ochre: #3a3020;
+    --clay: #3a2a26;
+    --warm: #e0ad6a;
+    --good: #9db884;
+    --bad: #e07c6e;
+    --s-locals: #8db6dc; --s-hosts: #9db884; --s-press: #b59ad0; --s-indie: #e0ad6a;
+    --s-reviews: #8a95a3; --s-guidebooks: #dd9470; --s-social: #e08bb0; --s-sponsored: #e07c6e;
     color-scheme: dark;
   }
 }
@@ -500,3 +511,122 @@ td { padding: 10px 8px; border-bottom: 1px solid var(--line); text-align: right;
   .profilehead > .btn, .profilehead > .follow { order: 3; width: 100%; align-items: stretch; }
   .profilehead > .follow .btn, .profilehead > .btn { width: 100%; }
 }
+
+
+/* =====================================================================
+   Aegean layer: classical type, arches and the Greek key.
+   ===================================================================== */
+body { font-size: 18px; line-height: 1.5; font-feature-settings: "kern", "liga", "onum"; }
+h1, h2, h3, .brand, .tl-name, .tcard-title, .list-title, .profilename, .build h2 {
+  font-family: var(--font-display); font-weight: 400; letter-spacing: 0.005em;
+}
+h1 { font-size: clamp(32px, 6vw, 42px); line-height: 1.1; }
+h2 { font-size: 25px; line-height: 1.2; }
+h3 { font-size: 20px; }
+.lede { font-size: 19px; font-style: italic; }
+.hint, .meta { font-size: 16px; }
+.label, .eyebrow, .build .eyebrow, .tcard-where, .daytabs button, .seg button {
+  font-family: var(--font-display); font-weight: 400; letter-spacing: 0.12em; text-transform: uppercase; font-size: 13px;
+}
+.label small { text-transform: none; letter-spacing: 0; font-family: var(--font); font-style: italic; font-size: 15px; }
+
+/* The Greek key: a thin meander band, drawn with a mask so it follows the theme colour. */
+.meander {
+  height: 12px; background: var(--accent); opacity: .28;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='12' viewBox='0 0 24 12'%3E%3Cpath d='M0 11.5H24M2 11.5V1.5H14V8.5H7V4.5H10.5' fill='none' stroke='black' stroke-width='1.2'/%3E%3C/svg%3E") repeat-x left center / 24px 12px;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='12' viewBox='0 0 24 12'%3E%3Cpath d='M0 11.5H24M2 11.5V1.5H14V8.5H7V4.5H10.5' fill='none' stroke='black' stroke-width='1.2'/%3E%3C/svg%3E") repeat-x left center / 24px 12px;
+}
+.topbar { padding-block: 20px 0; flex-direction: column; align-items: stretch; gap: 12px; }
+.topbar-row { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.brand { font-size: 24px; letter-spacing: 0.18em; text-transform: uppercase; }
+.nav a { font-family: var(--font); font-size: 17px; font-weight: 500; }
+.nav a[aria-current="page"] { border-bottom-color: var(--accent); }
+.account { font-size: 15px; }
+
+/* Inputs: quiet, underlined where it matters. */
+input[type=text], input[type=email], input[type=date], input[type=search], input[type=number], textarea, select {
+  font: 18px var(--font); background: var(--surface); border: 1px solid var(--line);
+}
+.where input { font-family: var(--font-display); font-weight: 400; letter-spacing: 0; font-size: clamp(28px, 5vw, 36px); }
+
+/* Buttons: inscription capitals on Aegean blue. */
+.btn { font: 400 15px var(--font-display); letter-spacing: 0.14em; text-transform: uppercase; border-radius: 999px; min-height: 54px; }
+.btn.ghost { font: 500 16px var(--font); letter-spacing: 0; text-transform: none; }
+.btn.small, .btn.sm { font-size: 13px; }
+.btn.ghost.sm { font-size: 15px; }
+
+/* Chips and tabs: pastel, not black. */
+.chip { font: 500 16px var(--font); background: var(--surface); }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
+.seg { background: var(--sunk); }
+.seg button[aria-selected="true"], .seg button[aria-pressed="true"] { background: var(--surface); color: var(--accent); }
+
+/* Cards: whitewash, hairline borders. */
+.card, .cta, .tcard { box-shadow: none; }
+
+/* The trip hero is a Cycladic arch in pale sea-blue, finished with the Greek key. */
+.hero {
+  border-radius: min(240px, 40vw) min(240px, 40vw) var(--r-panel) var(--r-panel);
+  padding: clamp(56px, 12vw, 84px) clamp(24px, 6vw, 44px) 30px; text-align: center; align-items: center;
+  box-shadow: inset 0 0 0 7px var(--bg), inset 0 0 0 8px var(--hero-line);
+}
+.hero::after {
+  content: ""; position: absolute; left: 22px; right: 22px; bottom: 16px; top: auto; width: auto; height: 12px; border: 0; border-radius: 0;
+  background: var(--accent); opacity: .25;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='12' viewBox='0 0 24 12'%3E%3Cpath d='M0 11.5H24M2 11.5V1.5H14V8.5H7V4.5H10.5' fill='none' stroke='black' stroke-width='1.2'/%3E%3C/svg%3E") repeat-x left center / 24px 12px;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='12' viewBox='0 0 24 12'%3E%3Cpath d='M0 11.5H24M2 11.5V1.5H14V8.5H7V4.5H10.5' fill='none' stroke='black' stroke-width='1.2'/%3E%3C/svg%3E") repeat-x left center / 24px 12px;
+}
+.hero .where-line { font-family: var(--font-display); font-weight: 400; letter-spacing: 0.18em; text-transform: uppercase; font-size: 13px; }
+.hero h1 { max-width: 20ch; }
+.hero p { font-style: italic; font-size: 19px; }
+.hero .actions { justify-content: center; margin-bottom: 18px; }
+.hero .hbtn { background: var(--surface); color: var(--ink); border: 1px solid var(--hero-line); font: 500 16px var(--font); }
+.hero .hbtn:hover { background: var(--surface); border-color: var(--accent); }
+.hero .hbtn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+/* Day tabs become small arches. */
+.daytabs { background: transparent; padding: 0; gap: 8px; border-radius: 0; }
+.daytabs button { border: 1px solid var(--line); background: var(--surface); border-radius: 26px 26px 6px 6px; padding: 10px 16px 8px; color: var(--muted); }
+.daytabs button[aria-selected="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); box-shadow: none; }
+
+/* Timeline numbers sit in an eight-point star. */
+.tl-node {
+  background: transparent; color: var(--ink); font: 400 15px var(--font-display); position: relative; width: 34px; height: 34px;
+}
+.tl-node::before, .tl-node::after {
+  content: ""; position: absolute; inset: 6px; background: var(--accent-soft); z-index: -1; border-radius: 2px;
+}
+.tl-node::after { transform: rotate(45deg); }
+.tl-rail { position: relative; z-index: 0; }
+.tl-item.locked .tl-node { background: transparent; color: var(--accent-ink); }
+.tl-item.locked .tl-node::before, .tl-item.locked .tl-node::after { background: var(--accent); }
+.tl-line { background: none; border-left: 1.5px dotted var(--hero-line); width: 0; }
+.tl-time { font-style: italic; font-weight: 400; font-size: 16px; }
+.tl-name { font-size: 21px; }
+.tl-name .hood { font-family: var(--font); font-style: italic; font-size: 16px; }
+.tip { font-size: 16.5px; font-style: italic; }
+.tip b { color: var(--olive-ink); font-style: normal; font-family: var(--font-display); font-weight: 400; letter-spacing: 0.1em; text-transform: uppercase; font-size: 12.5px; }
+.pin { font: 400 14px var(--font-display); }
+
+/* Progress: a calm Aegean bar. */
+.bar > span { background: var(--accent); }
+.build-pct { font-family: var(--font-display); font-weight: 400; letter-spacing: 0; }
+
+/* Community touches. */
+.stats > div { border-radius: 34px 34px 8px 8px; text-align: center; align-items: center; }
+.stats > div:nth-child(1) { background: var(--olive); }
+.stats > div:nth-child(2) { background: var(--clay); }
+.stats > div:nth-child(3) { background: var(--hero); }
+.stats b { font-family: var(--font-display); font-weight: 400; letter-spacing: 0; }
+.level { font-family: var(--font-display); font-weight: 400; letter-spacing: 0.12em; text-transform: uppercase; font-size: 11.5px; background: var(--ochre); color: var(--ink); }
+.tcard-rank { font-family: var(--font-display); font-weight: 400; background: var(--accent); color: var(--accent-ink); }
+.tcard:nth-child(1) .tcard-rank { background: var(--warm); color: #fff; }
+.board-rank { font-family: var(--font-display); font-weight: 400; }
+.avatar { font-family: var(--font-display); font-weight: 400; }
+.callout { background: var(--hero); }
+.place { font-size: 16px; font-weight: 500; }
+/* The big destination field stays a bare underline. */
+.where input[type=text] { background: transparent; border: 0; border-bottom: 1.5px solid var(--line); border-radius: 0; padding: 6px 0 10px; }
+.where input[type=text]:focus { border-bottom-color: var(--accent); }
+/* A locked stop is not a warning: undo the generic .locked label style. */
+.tl-item.locked { font-size: inherit; color: inherit; font-weight: inherit; }
