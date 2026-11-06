@@ -59,7 +59,8 @@ async function nameAll(stays: z.infer<typeof Stay>[]) {
 ${chunk.map(({ i, s }) => `${i}: ${s.lat.toFixed(3)}, ${s.lng.toFixed(3)}`).join("\n")}
 
 Call name_places.`;
-      const { input } = await callTool(prompt, NAME_TOOL, 4000, { fast: true });
+      // The main model: it places coordinates more precisely (the fast one named Como "Lecco").
+      const { input } = await callTool(prompt, NAME_TOOL, 4000);
       const parsed = Named.safeParse(input);
       if (!parsed.success) return;
       for (const p of parsed.data.places) if (isCountryCode(p.countryCode)) names.set(p.i, { city: p.city, countryCode: p.countryCode });
