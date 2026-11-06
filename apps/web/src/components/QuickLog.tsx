@@ -47,11 +47,28 @@ export function QuickLog({ onSaved, preset, onPresetDone }: { onSaved: (p: PastT
   const top = useRef<HTMLDivElement>(null);
   const picking = !!list;
 
+  // One request per city; a known city starts loading as soon as it's typed or picked.
+  const requests = useRef(new Map<string, Promise<CityPicks>>());
+  function fetchPicks(name: string) {
+    const k = keyOf(name);
+    let p = requests.current.get(k);
+    if (!p) {
+      p = api<CityPicks>("/api/taste/city-picks", { method: "POST", json: { city: name } });
+      p.catch(() => requests.current.delete(k));
+      requests.current.set(k, p);
+    }
+    return p;
+  }
+  useEffect(() => {
+    const known = CITY_NAMES.find((c) => keyOf(c) === keyOf(city));
+    if (known && !picking) fetchPicks(known).catch(() => {});
+  }, [city, picking]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function load(name: string) {
     setLoading(true);
     setErr(null);
     try {
-      const r = await api<CityPicks>("/api/taste/city-picks", { method: "POST", json: { city: name } });
+      const r = await fetchPicks(name);
       if (!r.found) {
         setErr(`We couldn't find “${name}”. Check the spelling, or try the nearest city.`);
         return null;

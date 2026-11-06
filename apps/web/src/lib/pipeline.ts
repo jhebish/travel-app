@@ -851,8 +851,19 @@ export async function swapCity(ctx: Ctx, row: TripRow, legIndex: number, cityIn:
   const [days, hotels] = await Promise.all([Promise.all(dayJobs), hotelJob]);
 
   // 3. Check the new places exist, in the new town.
+  const seen = new Set<string>();
+  const once = (s: Stop) => {
+    const k = (s.candidateId || s.name).toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  };
   const drop = await ground([...days.flatMap((d) => d.stops), ...hotels], cands, `${city}, ${base.destination}`);
-  const newDays = days.map((d) => ({ ...d, stops: d.stops.filter((s) => !drop.has(s)) }));
+  const newDays = days.map((d) => {
+    const kept = d.stops.filter((s) => !drop.has(s));
+    const fresh = kept.filter(once);
+    return { ...d, stops: fresh.length >= 2 || fresh.length === kept.length ? fresh : kept };
+  });
   if (newDays.some((d) => !d.stops.length)) throw new HttpError(502, `We couldn't verify enough places in ${city}. Try another town.`, "unverified");
   const newHotels = hotels.filter((h) => !drop.has(h));
 

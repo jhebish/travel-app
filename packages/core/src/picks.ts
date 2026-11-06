@@ -28,6 +28,19 @@ export const CityPickSchema = z.object({
 });
 export type CityPick = z.infer<typeof CityPickSchema>;
 
+/** Same place, differently written: "Cafe Majestic" and "Majestic Café", "The Yeatman" and "Yeatman". */
+export function pickKey(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(" ")
+    .filter((w) => w && w !== "the")
+    .sort()
+    .join(" ");
+}
+
 export const CityPicksSchema = z
   .object({
     found: z.boolean().catch(true).default(true),
@@ -41,7 +54,7 @@ export const CityPicksSchema = z
   .transform((r) => {
     const seen = new Set<string>();
     const picks = r.picks.filter((p) => {
-      const k = p.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const k = pickKey(p.name);
       if (!k || seen.has(k)) return false;
       seen.add(k);
       return true;
@@ -76,14 +89,21 @@ export const CITY_PICKS_TOOL = {
   },
 } as const;
 
-export function buildCityPicksPrompt(city: string): string {
+/** The list is written in two halves at once (it's twice as fast as one long answer). */
+export const CITY_PICK_PARTS = [
+  "6 stays (from a good hostel or guesthouse to the grand hotel, including a design or boutique hotel), 9 restaurants (institutions, local favorites, one fine-dining, street food or a market stall) and 3 cafés",
+  "4 bars, 2 nightlife spots, 5 sights (landmarks, museums, viewpoints, beaches), 3 things to do (tours, hikes, day trips, classes) and 2 shops or markets",
+] as const;
+
+export function buildCityPicksPrompt(city: string, part: 0 | 1 = 0): string {
   return `A traveler is logging a past trip to "${city.replace(/["\n\r]/g, " ").trim()}" and will tick the places they loved.
 
 List the places they are most likely to have been, so most visitors recognize several:
 - First resolve the place: its usual English name and country code. If it isn't a real place, set "found" to false and leave "picks" empty.
-- Then 32 places that have been around for years and are still well known: famous names first, then places locals love.
-- Spread them: 6 stays (from a good hostel or guesthouse to the grand hotel, including a design or boutique hotel), 9 restaurants (institutions, local favorites, one fine-dining, street food or a market stall), 4 bars, 3 cafés, 2 nightlife, 5 sights (landmarks, museums, viewpoints, beaches), 3 things to do (tours, hikes, day trips, classes) and 2 shops or markets. For a region or island, spread them across its towns.
-- "note": what it is and where, under 7 words.
+- Then exactly these: ${CITY_PICK_PARTS[part]}. For a region or island, spread them across its towns.
+- Places that have been around for years and are still well known: famous names first, then places locals love.
+- Names exactly as people write them, with accents.
+- "note": what it is in a few words, plus the neighborhood or town only when you're sure of it (e.g. "Old-school tasca · Alfama", "Port lodge with tastings").
 - Only real places you are confident about. No duplicates.
 
 Call submit_places.`;

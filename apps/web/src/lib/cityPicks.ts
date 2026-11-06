@@ -27,14 +27,22 @@ export async function cityPicks(ctx: Ctx, city: string): Promise<CityPicks> {
   if (hit) return hit;
 
   await rateLimit(ctx, "extract", 30, "That's a lot of new cities this hour. Try again a little later.");
-  let parsed: CityPicks | null = null;
-  for (let attempt = 0; attempt < 2 && !parsed; attempt++) {
-    const { input } = await callTool(buildCityPicksPrompt(city), CITY_PICKS_TOOL, 3500, { fast: true });
-    const r = CityPicksSchema.safeParse(input);
-    if (r.success && (!r.data.found || r.data.picks.length >= 8)) parsed = r.data;
-  }
-  if (!parsed) throw new HttpError(502, "We couldn't load places for that city just now. Try again.", "bad_output");
-  if (!parsed.found) return parsed;
+  // Two halves at once: stays, food and cafés; then drinks, sights and things to do.
+  const half = async (part: 0 | 1): Promise<CityPicks | null> => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { input } = await callTool(buildCityPicksPrompt(city, part), CITY_PICKS_TOOL, 2500, { fast: true }).catch(() => ({ input: null }));
+      const r = CityPicksSchema.safeParse(input);
+      if (r.success && (!r.data.found || r.data.picks.length >= 5)) return r.data;
+    }
+    return null;
+  };
+  const [a, b] = await Promise.all([half(0), half(1)]);
+  const first = a ?? b;
+  if (!first) throw new HttpError(502, "We couldn't load places for that city just now. Try again.", "bad_output");
+  if (!first.found || (a && !a.found && b && !b.found)) return { ...first, found: false, picks: [] };
+  const merged = CityPicksSchema.parse({ ...first, picks: [...(a?.found ? a.picks : []), ...(b?.found ? b.picks : [])] });
+  const parsed: CityPicks = { ...merged, countryCode: a?.countryCode ?? b?.countryCode ?? null };
+  if (parsed.picks.length < 8) throw new HttpError(502, "We couldn't load places for that city just now. Try again.", "bad_output");
 
   // Cache under what they typed and under the proper name ("NYC" and "New York").
   const now = new Date().toISOString();

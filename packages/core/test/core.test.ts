@@ -583,3 +583,12 @@ describe("city picks for quick logging", () => {
     expect(PICK_GROUPS.flatMap((g) => g.kinds).sort()).toEqual([...PICK_KINDS].sort());
   });
 });
+
+describe("pick names", () => {
+  it("treats reordered, accented and 'the' names as one place", async () => {
+    const { pickKey } = await import("../src");
+    expect(pickKey("Cafe Majestic")).toBe(pickKey("Majestic Café"));
+    expect(pickKey("The Yeatman")).toBe(pickKey("Yeatman"));
+    expect(pickKey("Casa Guedes")).not.toBe(pickKey("Casa Lusitana"));
+  });
+});

@@ -987,7 +987,7 @@ html, body { overflow-x: clip; }
   border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit;
   cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background .15s, border-color .15s;
 }
-.ql-item:hover { border-color: var(--faint); }
+@media (hover: hover) { .ql-item:hover { border-color: var(--faint); } }
 .ql-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ql-item[aria-pressed="true"] { background: var(--clay); border-color: var(--clay-line); }
 .ql-heart { flex: none; font-size: 18px; line-height: 1.2; color: var(--clay-line); }
@@ -1003,7 +1003,8 @@ html, body { overflow-x: clip; }
   background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   box-shadow: 0 6px 24px rgb(0 0 0 / .08);
 }
-.ql-bar .btn { min-width: 120px; }
+.ql-bar .hint { white-space: nowrap; }
+.ql-bar .btn { flex: none; min-width: 120px; }
 @media (max-width: 720px) {
   .ql-city { grid-template-columns: minmax(0, 1fr) 112px; }
   .ql-city .btn { grid-column: 1 / -1; }
@@ -1034,7 +1035,7 @@ html, body { overflow-x: clip; }
   border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; cursor: pointer;
   -webkit-tap-highlight-color: transparent; transition: background .15s, border-color .15s;
 }
-.leg-alt:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
+@media (hover: hover) { .leg-alt:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); } }
 .leg-alt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .leg-alt:disabled { opacity: .55; cursor: default; }
 .leg-alt b { font-family: var(--font-display); font-weight: 400; font-size: 17px; line-height: 1.2; }
