@@ -6,12 +6,22 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f6f0e8"
+    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.example.tripplanner"
     },
     "android": {
-      "package": "com.example.tripplanner"
+      "package": "com.example.tripplanner",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#3f7472"
+      }
     },
     "plugins": [
       "expo-router",
