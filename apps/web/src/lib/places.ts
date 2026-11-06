@@ -47,7 +47,18 @@ const PRICE_LEVELS: Record<string, number> = {
   PRICE_LEVEL_VERY_EXPENSIVE: 4,
 };
 
-export const placesEnabled = () => !!env.placesKey();
+/**
+ * After an error that will keep happening (key, API switched off, quota, Google down), Places is
+ * paused for a few minutes. Trips then build from unverified picks, as with no key, instead of
+ * every lookup failing and every place being dropped.
+ */
+const PAUSE_MS = 5 * 60_000;
+let pausedUntil = 0;
+const pauseOn = (status: number, body = "") => {
+  if (status === 401 || status === 403 || status === 429 || status >= 500 || /api key/i.test(body)) pausedUntil = Date.now() + PAUSE_MS;
+};
+
+export const placesEnabled = () => !!env.placesKey() && Date.now() >= pausedUntil;
 
 /** Cached lookups. `load` throws on a failed request, so failures are never cached. */
 async function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
@@ -59,8 +70,17 @@ async function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
   return fresh;
 }
 
-class PlacesError extends Error {}
+/** A failed Places request: Google couldn't answer, which is not the same as "no such place". */
+export class PlacesError extends Error {}
 
+async function failed(res: Response, what: string): Promise<never> {
+  const body = (await res.text().catch(() => "")).slice(0, 200);
+  console.error(`Places ${what} failed`, res.status, body);
+  pauseOn(res.status, body);
+  throw new PlacesError(`${what} ${res.status}`);
+}
+
+/** Text search. Throws PlacesError when the request fails. */
 async function searchText(textQuery: string, maxResultCount: number): Promise<GPlace[]> {
   if (!placesEnabled()) return [];
   const key = `search2:${maxResultCount}:${textQuery.toLowerCase()}`;
@@ -74,15 +94,9 @@ async function searchText(textQuery: string, maxResultCount: number): Promise<GP
       },
       body: JSON.stringify({ textQuery, maxResultCount, languageCode: "en" }),
     });
-    if (!res.ok) {
-      console.error("Places search failed", res.status, (await res.text().catch(() => "")).slice(0, 200));
-      throw new PlacesError(`search ${res.status}`);
-    }
+    if (!res.ok) return failed(res, "search");
     const body = (await res.json()) as { places?: GPlace[] };
     return body.places ?? [];
-  }).catch((e) => {
-    if (e instanceof PlacesError) return [];
-    throw e;
   });
 }
 
@@ -90,7 +104,10 @@ const neighborhoodOf = (p: GPlace) => p.shortFormattedAddress?.split(",").slice(
 
 /** Candidates from a Places search. Google results are tagged as the "reviews" source. */
 export async function placesCandidates(query: string, category: CandidateCategory, limit = 10): Promise<Candidate[]> {
-  const places = await searchText(query, limit);
+  const places = await searchText(query, limit).catch((e) => {
+    if (e instanceof PlacesError) return [] as GPlace[]; // candidates are optional
+    throw e;
+  });
   return places
     .filter((p) => p.businessStatus !== "CLOSED_PERMANENTLY" && p.displayName?.text)
     .map((p) => ({
@@ -146,7 +163,10 @@ export function namesMatch(a: string, b: string): boolean {
   return wa.some((w) => wb.has(w));
 }
 
-/** Look up one named place. Returns null when it can't be found. */
+/**
+ * Look up one named place. Returns null when Google has no such place, and throws PlacesError
+ * when Google couldn't be asked: callers keep the pick unverified rather than dropping it.
+ */
 export async function verifyPlace(name: string, neighborhood: string, city: string): Promise<PlaceVerification | null> {
   if (!placesEnabled()) return null;
   const results = await searchText(`${name}, ${neighborhood ? neighborhood + ", " : ""}${city}`, 1);
@@ -167,7 +187,7 @@ export async function placeById(placeId: string): Promise<PlaceVerification | nu
       },
     });
     if (res.status === 404) return null; // gone: worth remembering
-    if (!res.ok) throw new PlacesError(`details ${res.status}`);
+    if (!res.ok) return failed(res, "details");
     return toVerification((await res.json()) as GPlace);
   }).catch((e) => {
     if (e instanceof PlacesError) return null;
@@ -182,18 +202,25 @@ export async function freshPhotoName(placeId: string): Promise<string | null> {
     headers: { "X-Goog-Api-Key": env.placesKey(), "X-Goog-FieldMask": "photos" },
     cache: "no-store",
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    pauseOn(res.status);
+    return null;
+  }
   const body = (await res.json()) as { photos?: { name: string }[] };
   return body.photos?.[0]?.name ?? null;
 }
 
 /** A short-lived image URL for a photo name at a given width (null if the name expired). */
 export async function photoUrl(name: string, width: number): Promise<string | null> {
+  if (!placesEnabled()) return null;
   const res = await fetch(`https://places.googleapis.com/v1/${name}/media?maxWidthPx=${width}&skipHttpRedirect=true`, {
     headers: { "X-Goog-Api-Key": env.placesKey() },
     cache: "no-store",
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    pauseOn(res.status); // an expired photo name is a 400/404 and doesn't pause
+    return null;
+  }
   const body = (await res.json()) as { photoUri?: string };
   return body.photoUri?.startsWith("https://") ? body.photoUri : null;
 }

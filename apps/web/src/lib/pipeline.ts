@@ -49,7 +49,7 @@ import { callTool } from "./claude";
 import { syncFeedback } from "./feedback";
 import { adultsFor, attachLiveRates } from "./hotels";
 import { HttpError } from "./http";
-import { placeById, placesCandidates, placesEnabled, verifyPlace } from "./places";
+import { PlacesError, placeById, placesCandidates, placesEnabled, verifyPlace } from "./places";
 import { supabaseAdmin } from "./supabase/server";
 import { tasteBlock } from "./taste";
 import { addFriendsOnCreate, companionsFromHandles } from "./together";
@@ -161,7 +161,8 @@ async function ground(picks: Pick[], cands: Candidate[], city: string): Promise<
         drop.add(p); // the model named a place we can't find: leave it out
       }
     } catch (e) {
-      console.error("verify failed", p.name, e);
+      // Google couldn't be asked (already logged): keep the pick, unverified, as with no key.
+      if (!(e instanceof PlacesError)) console.error("verify failed", p.name, e);
     }
   });
   return drop;
