@@ -13,8 +13,8 @@ import {
 } from "@travel/core";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { TripCard } from "@/components/community";
 import { ItineraryPreview, previewFromItinerary } from "@/components/ItineraryPreview";
 import { useMe } from "@/components/useMe";
@@ -118,19 +118,25 @@ function DestinationPanel({ d, detail, sampleBusy }: { d: BrowseDestination; det
   );
 }
 
-function Browse() {
+/** The home page. Rendered at build time (no search params), so the header and layout arrive as HTML. */
+export default function Browse() {
   const me = useMe();
   const router = useRouter();
-  const params = useSearchParams();
   const [dests, setDests] = useState<BrowseDestination[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [tag, setTag] = useState<DestinationTag | "All">("All");
-  const [selected, setSelected] = useState<string | null>(params.get("d"));
+  const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [sampleBusy, setSampleBusy] = useState(false);
   const [forYou, setForYou] = useState<ForYou | null>(null);
   const requested = useRef(new Set<string>());
   const panelRef = useRef<HTMLDivElement>(null);
+
+  // A destination in the link (/?d=kyoto) opens straight away.
+  useEffect(() => {
+    const d = new URLSearchParams(window.location.search).get("d");
+    if (d && DESTINATION_BY_KEY[d]) setSelected(d);
+  }, []);
 
   useEffect(() => {
     api<{ destinations: BrowseDestination[] }>("/api/browse")
@@ -340,13 +346,5 @@ function Browse() {
         </aside>
       )}
     </div>
-  );
-}
-
-export default function Page() {
-  return (
-    <Suspense>
-      <Browse />
-    </Suspense>
   );
 }
