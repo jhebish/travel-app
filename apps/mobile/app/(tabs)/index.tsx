@@ -31,6 +31,7 @@ const PARTY_LABELS = { Solo: "Solo", Couple: "Couple", "Family with kids": "Fami
 const BUDGET_LABELS = { Budget: "$", "Mid-range": "$$", Splurge: "$$$" } as const;
 
 const blank: TripRequest = {
+  mode: "single",
   destination: "",
   days: 3,
   startDate: null,

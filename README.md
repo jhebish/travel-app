@@ -195,3 +195,9 @@ Follow friends, see their shared trips, browse the top-rated public trips in any
 - **Visibility:** each trip is Only me, Followers, or Everyone (from its Share menu); new trips follow the profile's default. Other people's trips are served by the server with personal details removed (the "about you" answers, notes, dates and source mix).
 - **Places I've been** (`past_trips`): city, country, year, rating and highlights. They drive the friends leaderboard (countries, then cities) and feed the planner as a taste signal, so returning visitors get fewer first-timer sights.
 - **Top trips** rank public trips by likes from other people, then the owner's rating, with a small boost for recent ones.
+
+## Browse, multi-city trips, and faster builds
+
+- **Browse** (`/browse`, public, no account needed): a turning globe of trending destinations (2026 trend lists, seasonality and activity on Pylos), each with a cached sample itinerary (`/d/<key>`), the best public trips there, and "Plan my own". Signed-in travelers with a few logged places get "Picked for you" predictions. Run `supabase/migrations/20261106100000_browse.sql` to enable sample caching and picks.
+- **Several stops**: choose "Several stops" on the planner (or `mode: "multi"` in the API) with a country or region and up to 14 days. The planner picks the route (stops, order, days, transfers), then plans every day and each stop's hotels in parallel.
+- **Speed**: the fast model writes the outline and days; malformed answers are repaired instead of re-planned; finished days stream to the page as they're ready.

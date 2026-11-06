@@ -10,8 +10,9 @@ export function Nav() {
   const me = useMe();
   const links = [
     { href: "/", label: "Plan" },
+    { href: "/browse", label: "Browse" },
     { href: "/trips", label: "My trips" },
-    { href: "/community", label: "Community" },
+    { href: "/friends", label: "Friends" },
     { href: "/sources", label: "Sources" },
     ...(canSubmitPicks(me?.role) ? [{ href: "/picks", label: "Local picks" }] : []),
   ];

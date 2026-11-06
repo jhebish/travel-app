@@ -1,5 +1,5 @@
 import type { Votes } from "./insights";
-import type { Itinerary, TripRequest } from "./schemas";
+import type { Hotel, Itinerary, TripRequest } from "./schemas";
 import type { SourceId, Weights } from "./sources";
 
 /** Trip as returned by the API to the web and mobile apps. */
@@ -62,8 +62,19 @@ export type BuildEvent =
   | { type: "progress"; pct: number; label: string }
   /** Sent first when the request came from somewhere else (a Typeform), so the client knows what's being built. */
   | { type: "request"; request: TripRequest }
-  | { type: "outline"; title: string; days: { label: string; theme: string }[]; hotels: boolean }
-  | { type: "day"; index: number }
-  | { type: "hotels" }
+  | {
+      type: "outline";
+      title: string;
+      summary?: string;
+      days: { label: string; theme: string; city?: string }[];
+      hotels: boolean;
+      /** Multi-city trips: the stops in order. */
+      route?: { city: string; days: number }[];
+    }
+  /** A day finished; `day` carries it so the client can show it straight away. */
+  | { type: "day"; index: number; day?: Itinerary["days"][number] }
+  | { type: "hotels"; hotels?: Hotel[] }
+  /** The traveler asked to be inspired instead (Typeform "not sure yet"). */
+  | { type: "redirect"; to: string }
   | { type: "done"; trip: Trip }
   | { type: "error"; message: string; code?: string };

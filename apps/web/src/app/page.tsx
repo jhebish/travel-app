@@ -4,22 +4,25 @@ import {
   AGE_BANDS,
   BUDGETS,
   INTERESTS,
+  MAX_DAYS,
   PACES,
   PARTIES,
   STAY_PRICES,
   STAY_STYLES,
+  type BrowseDestination,
   type BuildEvent,
+  type TripMode,
   type TripRequest,
 } from "@travel/core";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { Chips, SingleChips } from "@/components/Chips";
 import { TripView } from "@/components/TripView";
 import { useMe } from "@/components/useMe";
 import { api, streamEvents } from "@/lib/api";
-import { BuildProgress, initialBuild, type BuildState } from "@/components/BuildProgress";
+import { BuildProgress, initialBuild, reduceBuild, type BuildState } from "@/components/BuildProgress";
 import type { Trip } from "@/lib/trips";
 
 const TypeformIntake = dynamic(() => import("@/components/TypeformIntake"), {
@@ -40,6 +43,7 @@ const PARTY_LABELS: Record<string, string> = { Solo: "Solo", Couple: "Couple", "
 const BUDGET_LABELS: Record<string, string> = { Budget: "$", "Mid-range": "$$", Splurge: "$$$" };
 
 const blank: TripRequest = {
+  mode: "single",
   destination: "",
   days: 3,
   startDate: null,
@@ -55,7 +59,9 @@ const blank: TripRequest = {
 
 function Planner() {
   const me = useMe();
+  const router = useRouter();
   const params = useSearchParams();
+  const [trending, setTrending] = useState<BrowseDestination[]>([]);
   const [req, setReq] = useState<TripRequest>(blank);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ text: string; err?: boolean } | null>(null);
@@ -75,19 +81,40 @@ function Planner() {
     api<{ formId: string | null }>("/api/typeform")
       .then((r) => setTfForm(r.formId))
       .catch(() => setTfForm(null));
+    api<{ destinations: BrowseDestination[] }>("/api/browse")
+      .then((r) => setTrending(r.destinations.slice(0, 6)))
+      .catch(() => {});
   }, []);
+
+  // Links from Browse and Friends: ?dest=Egypt&mode=multi&days=7
+  useEffect(() => {
+    const dest = params.get("dest");
+    if (!dest) return;
+    const m: TripMode = params.get("mode") === "multi" ? "multi" : "single";
+    const days = Number(params.get("days"));
+    setMode("quick");
+    setReq((r) => ({
+      ...r,
+      mode: m,
+      destination: dest.slice(0, 120),
+      days: days >= 1 ? Math.min(MAX_DAYS[m], Math.round(days)) : m === "multi" ? Math.max(r.days, 5) : Math.min(r.days, MAX_DAYS.single),
+    }));
+  }, [params]);
+
+  function setTripMode(m: TripMode) {
+    setReq((r) => ({ ...r, mode: m, days: m === "multi" ? Math.max(r.days, 5) : Math.min(r.days, MAX_DAYS.single) }));
+  }
+
+  function pickTrending(d: BrowseDestination) {
+    const m: TripMode = d.kind === "region" ? "multi" : "single";
+    setReq((r) => ({ ...r, mode: m, destination: d.kind === "region" ? d.name : `${d.name}, ${d.country}`, days: m === "multi" ? Math.max(r.days, d.sampleDays) : Math.min(r.days, MAX_DAYS.single) }));
+  }
 
   useEffect(() => {
     if (!me?.user) return;
     api<{ prefs: { useCustom: boolean } | null }>("/api/prefs")
       .then((p) => setCustomMix(!!p.prefs?.useCustom))
       .catch(() => setCustomMix(false));
-    const dest = params.get("dest");
-    if (dest) {
-      const days = Number(params.get("days"));
-      setMode("quick");
-      setReq((r) => ({ ...r, destination: dest.slice(0, 120), days: days >= 1 && days <= 7 ? Math.round(days) : r.days }));
-    }
     const from = params.get("from");
     if (from)
       api<{ trip: Trip }>(`/api/trips/${from}`)
@@ -100,50 +127,34 @@ function Planner() {
   }, [me?.user, params]);
 
   function onEvent(e: BuildEvent) {
-    setBuild((b) => {
-      if (!b) return b;
-      switch (e.type) {
-        case "progress":
-          return { ...b, pct: Math.max(b.pct, e.pct), label: e.label };
-        case "request":
-          return { ...b, hotels: e.request.stay.on ? { done: false } : null };
-        case "outline":
-          return {
-            ...b,
-            title: e.title,
-            outlineDone: true,
-            days: e.days.map((d) => ({ ...d, done: false })),
-            hotels: e.hotels ? { done: false } : null,
-          };
-        case "day":
-          return { ...b, days: b.days.map((d, i) => (i === e.index ? { ...d, done: true } : d)) };
-        case "hotels":
-          return { ...b, hotels: b.hotels ? { done: true } : null };
-        default:
-          return b;
-      }
-    });
+    setBuild((b) => (b ? reduceBuild(b, e) : b));
   }
 
   /** Stream a build from `path` and show live progress, then the finished trip. */
-  async function runBuild(path: string, body: unknown, info: { destination: string; days: number; hotels: boolean }) {
+  async function runBuild(path: string, body: unknown, info: { destination: string; days: number; hotels: boolean; multi?: boolean }) {
     setBusy(true);
     setStatus(null);
     setTrip(null);
     setBuilding({ destination: info.destination, days: info.days });
-    setBuild({ ...initialBuild(), hotels: info.hotels ? { done: false } : null });
+    setBuild(initialBuild({ multi: info.multi, hotels: info.hotels }));
     setTimeout(() => progressRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
     let finished: Trip | null = null;
     let failure: string | null = null;
+    let redirect: string | null = null;
     try {
       await streamEvents<BuildEvent>(path, body, (ev) => {
         if (ev.type === "done") finished = ev.trip;
         else if (ev.type === "error") failure = ev.message;
+        else if (ev.type === "redirect") redirect = ev.to;
         else {
           if (ev.type === "request") setBuilding({ destination: ev.request.destination, days: ev.request.days });
           onEvent(ev);
         }
       });
+      if (redirect) {
+        router.push(redirect);
+        return;
+      }
       if (finished) {
         setBuild((b) => (b ? { ...b, pct: 100, label: "Done" } : b));
         await new Promise((r) => setTimeout(r, 450)); // let the bar land at 100%
@@ -166,7 +177,7 @@ function Planner() {
       setStatus({ text: "Add a destination first.", err: true });
       return;
     }
-    await runBuild("/api/trips", req, { destination: req.destination.trim(), days: req.days, hotels: req.stay.on });
+    await runBuild("/api/trips", req, { destination: req.destination.trim(), days: req.days, hotels: req.stay.on, multi: req.mode === "multi" });
   }
 
   function onTypeformSubmit(responseId: string) {
@@ -236,11 +247,48 @@ function Planner() {
       {!useTypeform && tfForm !== undefined && (
       <form className="stack" style={{ gap: 28 }} onSubmit={submit} autoComplete="off">
         <div className="where">
+          <div className="seg triptype" role="radiogroup" aria-label="Kind of trip">
+            <button type="button" role="radio" aria-checked={req.mode === "single"} onClick={() => setTripMode("single")}>
+              One place
+            </button>
+            <button type="button" role="radio" aria-checked={req.mode === "multi"} onClick={() => setTripMode("multi")}>
+              Several stops
+            </button>
+            <button type="button" role="radio" aria-checked={false} onClick={() => router.push("/browse")}>
+              Not sure yet
+            </button>
+          </div>
           <label htmlFor="dest">
-            <h1>Where to?</h1>
+            <h1>{req.mode === "multi" ? "Which country or region?" : "Where to?"}</h1>
           </label>
-          <input id="dest" type="text" placeholder="Lisbon, Oaxaca, Kyoto…" value={req.destination} onChange={(e) => set("destination", e.target.value)} />
-          <p className="lede">Tell us who&apos;s coming and what you&apos;re into. Your plan is built from the places locals actually go.</p>
+          <input
+            id="dest"
+            type="text"
+            placeholder={req.mode === "multi" ? "Egypt, Japan, the Amalfi Coast…" : "Lisbon, Oaxaca, Kyoto…"}
+            value={req.destination}
+            onChange={(e) => set("destination", e.target.value)}
+          />
+          <p className="lede">
+            {req.mode === "multi"
+              ? "We'll choose the stops, the order and how long to spend in each, then plan every day the way locals would."
+              : "Tell us who's coming and what you're into. Your plan is built from the places locals actually go."}
+          </p>
+          {trending.length > 0 && (
+            <div className="trending" aria-label="Trending destinations">
+              <span className="label">Trending now</span>
+              <div className="chips">
+                {trending.map((d) => (
+                  <button key={d.key} type="button" className="chip" onClick={() => pickTrending(d)}>
+                    {d.name}
+                    {d.kind === "region" && <small>several stops</small>}
+                  </button>
+                ))}
+                <Link className="chip chip-link" href="/browse">
+                  See the globe →
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
         <div className="card">
         <div className="two">
@@ -253,7 +301,7 @@ function Planner() {
               <output>
                 {req.days} {req.days === 1 ? "day" : "days"}
               </output>
-              <button type="button" aria-label="More days" onClick={() => set("days", Math.min(7, req.days + 1))}>
+              <button type="button" aria-label="More days" onClick={() => set("days", Math.min(MAX_DAYS[req.mode], req.days + 1))}>
                 +
               </button>
             </div>
@@ -290,7 +338,7 @@ function Planner() {
           <label className="switch" htmlFor="stay-on">
             <div>
               <b>Suggest places to stay</b>
-              <span>Three hotel options that fit the trip.</span>
+              <span>{req.mode === "multi" ? "Two options at each stop." : "Three hotel options that fit the trip."}</span>
             </div>
             <input id="stay-on" type="checkbox" checked={req.stay.on} onChange={(e) => set("stay", { ...req.stay, on: e.target.checked })} />
           </label>

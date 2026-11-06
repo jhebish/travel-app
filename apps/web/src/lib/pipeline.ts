@@ -10,7 +10,6 @@ import {
   OUTLINE_TOOL,
   OutlineSchema,
   blendWeights,
-  buildHotelPrompt,
   buildHotelPromptForAreas,
   buildOutlinePrompt,
   buildPlanDayPrompt,
@@ -34,6 +33,11 @@ import {
   historyForPrompt,
   type PastTrip,
   type Visibility,
+  ROUTE_TOOL,
+  RouteLegSchema,
+  arrivalContext,
+  buildRoutePrompt,
+  fitRoute,
 } from "@travel/core";
 import { z } from "zod";
 import type { Ctx } from "./auth";
@@ -183,21 +187,25 @@ const DayResultSchema = z.object({
   stops: salvage(StopSchema, 1, 8),
 });
 
-/** Run a model step, retrying once if the answer doesn't validate. */
+/**
+ * Run a model step, retrying if the answer doesn't validate. `run(attempt)` is called with
+ * 0, 1, … so the caller can choose the model per attempt (fast first, main model last).
+ */
 async function step<T>(
   label: string,
   run: (attempt: number) => Promise<{ input: unknown; model: string }>,
   schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  attempts = 2,
 ): Promise<{ data: T; model: string }> {
   let lastErr: unknown;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
     try {
       const { input, model } = await run(attempt);
       const parsed = schema.safeParse(input);
       if (parsed.success) return { data: parsed.data, model };
       console.error(`${label} failed validation (attempt ${attempt + 1})`, JSON.stringify(parsed.error.issues.slice(0, 4)), JSON.stringify(input).slice(0, 600));
     } catch (e) {
-      // A bad or cut-off answer gets one more try; outages and auth errors don't.
+      // A bad or cut-off answer gets another try; outages and auth errors don't.
       if (!(e instanceof HttpError) || !["bad_output", "too_long"].includes(e.code ?? "")) throw e;
       console.error(`${label} attempt ${attempt + 1}: ${e.code}`);
       lastErr = e;
@@ -222,10 +230,6 @@ function dedupeAcrossDays(itin: Itinerary) {
   });
 }
 
-/**
- * Build a trip. Fast path: one short outline call (title, notes, an area per day), then every
- * day and the hotels are planned at the same time. Progress is reported through `emit`.
- */
 /** The traveler's logged places, as a prompt block. Empty if none (or before the community migration). */
 export async function loadHistory(ctx: Ctx, destination: string): Promise<string> {
   if (!ctx.user) return "";
@@ -261,26 +265,60 @@ const withHistory = (history: string, prompt: string) => (history ? `${history}\
 /** Postgres/PostgREST "column doesn't exist" — the community migration hasn't been run yet. */
 const missingColumn = (e: { code?: string } | null) => !!e && (e.code === "42703" || e.code === "PGRST204");
 
-export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: string; tripsPerHour: number }, emit: Emit = () => {}) {
-  const t0 = Date.now();
-  const progress = (pct: number, label: string) => emit({ type: "progress", pct, label });
-  progress(3, "Reading your request");
-  await checkRateLimit(ctx, opts.tripsPerHour);
-  const [{ eff, lists }, history, visibility] = await Promise.all([loadSources(ctx), loadHistory(ctx, req.destination), defaultVisibility(ctx)]);
+export interface PlanInputs {
+  eff: EffectiveSources;
+  lists: CuratorLists;
+  /** The traveler's travel history block for prompts (may be empty). */
+  history: string;
+}
 
+type CuratorLists = { alwaysFeature: string; neverRecommend: string };
+type DayOut = Itinerary["days"][number];
+
+/** Fast model first; if the answer is malformed, fast again; the main model only as a last resort. */
+const fastThenMain = (attempt: number) => ({ fast: attempt < 2 });
+
+/** Per-day request for a multi-city trip: the day's city becomes the destination. */
+export function requestForCity(req: TripRequest, city: string | undefined): TripRequest {
+  if (!city || req.mode !== "multi") return req;
+  return { ...req, mode: "single", destination: `${city}, ${req.destination}` };
+}
+
+/**
+ * Plan an itinerary (not saved). Single place: a quick outline, then every day and the hotels
+ * at once. Several stops: the route first, then every day and each stop's hotels at once.
+ * Every finished day is emitted straight away so the client can show it.
+ */
+export async function planItinerary(req: TripRequest, inputs: PlanInputs, emit: Emit = () => {}): Promise<{ itin: Itinerary; model: string }> {
+  const out = req.mode === "multi" ? await planMulti(req, inputs, emit) : await planSingle(req, inputs, emit);
+  dedupeAcrossDays(out.itin);
+  emit({ type: "progress", pct: 88, label: placesEnabled() ? "Checking every place on the map" : "Finishing touches" });
+  await groundByCity(out.itin, out.candsByCity, req);
+  return { itin: out.itin, model: out.model };
+}
+
+interface Planned {
+  itin: Itinerary;
+  model: string;
+  /** Candidates per city key ("" for a single-place trip), used for grounding. */
+  candsByCity: Map<string, Candidate[]>;
+}
+
+async function planSingle(req: TripRequest, { eff, lists, history }: PlanInputs, emit: Emit): Promise<Planned> {
+  const progress = (pct: number, label: string) => emit({ type: "progress", pct, label });
   progress(8, "Gathering local picks");
   const cands = selectCandidates(await gatherCandidates(req), eff, req);
 
   progress(15, `Sketching your ${req.days}-day outline`);
   const { data: outline, model } = await step(
     "outline",
-    (attempt) => callTool(withHistory(history, buildOutlinePrompt(req, eff, lists, cands)), OUTLINE_TOOL, attempt ? 5000 : 3000),
+    (attempt) => callTool(withHistory(history, buildOutlinePrompt(req, eff, lists, cands)), OUTLINE_TOOL, attempt ? 4000 : 2500, fastThenMain(attempt)),
     OutlineSchema,
+    3,
   );
   const o: Outline = { ...outline, days: outline.days.slice(0, req.days) };
-  emit({ type: "outline", title: o.title, days: o.days.map((d) => ({ label: d.label, theme: d.theme })), hotels: req.stay.on });
+  emit({ type: "outline", title: o.title, summary: o.summary, days: o.days.map((d) => ({ label: d.label, theme: d.theme })), hotels: req.stay.on });
 
-  // Parallel: every day, plus hotels.
   const jobs = o.days.length + (req.stay.on ? 1 : 0);
   let finished = 0;
   const tick = (label: string) => {
@@ -289,48 +327,216 @@ export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: strin
   };
   progress(30, "Planning every day at once");
 
-  const dayJobs = o.days.map(async (d, i) => {
+  const dayJobs = o.days.map(async (d, i): Promise<DayOut> => {
     const { data } = await step(
       `day ${i + 1}`,
-      (attempt) => callTool(withHistory(history, buildPlanDayPrompt(req, eff, lists, o, i, cands)), DAY_TOOL, attempt ? 6000 : 4000, { fast: attempt === 0 }),
+      (attempt) => callTool(withHistory(history, buildPlanDayPrompt(req, eff, lists, o, i, cands)), DAY_TOOL, 4000, fastThenMain(attempt)),
       DayResultSchema,
+      3,
     );
-    emit({ type: "day", index: i });
-    tick(`${d.label} planned`);
-    return { label: d.label || `Day ${i + 1}`, theme: data.theme || d.theme, stops: data.stops };
+    const day: DayOut = { label: d.label || `Day ${i + 1}`, theme: data.theme || d.theme, stops: data.stops };
+    emit({ type: "day", index: i, day });
+    tick(`${day.label} planned`);
+    return day;
   });
   const hotelJob = req.stay.on
-    ? (async () => {
-        const stayCands = cands.filter((c) => c.category === "stay");
-        const areas = o.days.map((d) => d.area).filter(Boolean);
-        try {
-          const { data } = await step(
-            "hotels",
-            (attempt) => callTool(buildHotelPromptForAreas(req, eff, lists, areas, stayCands), HOTELS_TOOL, 3000, { fast: attempt === 0 }),
-            z.object({ hotels: salvage(HotelSchema, 1, 5) }),
-          );
-          return data.hotels.slice(0, 3);
-        } catch (e) {
-          console.error("hotels step failed; trip continues without hotels", e);
-          return [];
-        } finally {
-          emit({ type: "hotels" });
-          tick("Places to stay picked");
-        }
-      })()
+    ? planHotels(req, eff, lists, o.days.map((d) => d.area).filter(Boolean), cands.filter((c) => c.category === "stay"), 3, emit, tick)
     : Promise.resolve([] as Hotel[]);
 
   const [days, hotels] = await Promise.all([Promise.all(dayJobs), hotelJob]);
-  const itin: Itinerary = ItinerarySchema.parse({ title: o.title, summary: o.summary, notes: o.notes, days, hotels, replaced: [] });
+  const itin: Itinerary = ItinerarySchema.parse({ title: o.title, summary: o.summary, notes: o.notes, days, hotels, replaced: [], mode: "single" });
   if (itin.hotels.length) itin.stayLabel = stayLabel(req.stay);
-  dedupeAcrossDays(itin);
+  return { itin, model, candsByCity: new Map([["", cands]]) };
+}
 
-  console.log(`[build] model calls done ${Date.now() - t0}ms`);
-  progress(88, placesEnabled() ? "Checking every place on the map" : "Finishing touches");
-  await groundItinerary(itin, cands, req.destination);
+async function planHotels(
+  req: TripRequest,
+  eff: EffectiveSources,
+  lists: CuratorLists,
+  areas: string[],
+  stayCands: Candidate[],
+  count: number,
+  emit: Emit,
+  tick: (label: string) => void,
+  city?: string,
+): Promise<Hotel[]> {
+  try {
+    const { data } = await step(
+      `hotels${city ? ` ${city}` : ""}`,
+      (attempt) => callTool(buildHotelPromptForAreas(req, eff, lists, areas, stayCands, count), HOTELS_TOOL, 3000, fastThenMain(attempt)),
+      z.object({ hotels: salvage(HotelSchema, 1, 5) }),
+    );
+    const hotels = data.hotels.slice(0, count).map((h) => (city ? { ...h, city } : h));
+    emit({ type: "hotels", hotels });
+    return hotels;
+  } catch (e) {
+    console.error("hotels step failed; trip continues without hotels", e);
+    emit({ type: "hotels", hotels: [] });
+    return [];
+  } finally {
+    tick(city ? `Places to stay in ${city}` : "Places to stay picked");
+  }
+}
+
+const RouteSchema = z.object({
+  title: z.string().trim().min(1).transform((v) => v.slice(0, 140)),
+  summary: z.string().default("").transform((v) => v.slice(0, 600)),
+  notes: salvage(z.string().transform((v) => v.slice(0, 300)), 0, 6).default([]),
+  legs: salvage(RouteLegSchema, 1, 8),
+});
+
+async function planMulti(req: TripRequest, { eff, lists, history }: PlanInputs, emit: Emit): Promise<Planned> {
+  const progress = (pct: number, label: string) => emit({ type: "progress", pct, label });
+  progress(8, `Mapping a route through ${req.destination}`);
+  const { data: route, model } = await step(
+    "route",
+    (attempt) => callTool(withHistory(history, buildRoutePrompt(req, eff, lists)), ROUTE_TOOL, attempt ? 5000 : 3500),
+    RouteSchema,
+  );
+  const legs = fitRoute(route.legs, req.days);
+  if (!legs.length) throw new HttpError(502, "We couldn't plan a route for that. Try a different country or more days.", "bad_output");
+
+  // Flatten the route into days, remembering each day's stop.
+  const plan: { leg: number; within: number; label: string; theme: string; area: string; city: string }[] = [];
+  legs.forEach((l, li) =>
+    l.dayThemes.forEach((t, k) => plan.push({ leg: li, within: k, label: `Day ${plan.length + 1}`, theme: t.theme, area: t.area || l.city, city: l.city })),
+  );
+  emit({
+    type: "outline",
+    title: route.title,
+    summary: route.summary,
+    days: plan.map((p) => ({ label: p.label, theme: p.theme, city: p.city })),
+    hotels: req.stay.on,
+    route: legs.map((l) => ({ city: l.city, days: l.days })),
+  });
+
+  progress(22, `Finding local picks in ${legs.map((l) => l.city).join(", ")}`);
+  const legReqs = legs.map((l) => ({ ...requestForCity(req, l.city), days: l.days }));
+  const legCands = await Promise.all(legReqs.map(async (r) => selectCandidates(await gatherCandidates(r), eff, r)));
+
+  // Each stop gets its own outline, so a day knows the other days in the same place.
+  const legOutlines: Outline[] = legs.map((l, li) => {
+    const ids = legCands[li]!.filter((c) => c.category !== "stay").map((c) => c.id);
+    return {
+      title: route.title,
+      summary: route.summary,
+      notes: [],
+      days: l.dayThemes.map((t, k) => ({
+        label: plan.find((p) => p.leg === li && p.within === k)!.label,
+        theme: t.theme,
+        area: t.area || l.city,
+        candidateIds: ids.filter((_, j) => j % l.days === k).slice(0, 6),
+      })),
+    };
+  });
+
+  const jobs = plan.length + (req.stay.on ? legs.length : 0);
+  let finished = 0;
+  const tick = (label: string) => {
+    finished++;
+    progress(30 + Math.round((finished / jobs) * 55), label);
+  };
+  progress(30, "Planning every day at once");
+
+  const dayJobs = plan.map(async (p, i): Promise<DayOut> => {
+    const leg = legs[p.leg]!;
+    const context =
+      p.within === 0 && p.leg > 0
+        ? arrivalContext(leg, legs[p.leg - 1]!.city)
+        : p.within === leg.days - 1 && p.leg < legs.length - 1
+          ? `Tomorrow they travel on to ${legs[p.leg + 1]!.city}; keep the evening easy.`
+          : "";
+    const { data } = await step(
+      `day ${i + 1}`,
+      (attempt) =>
+        callTool(
+          withHistory(history, buildPlanDayPrompt(legReqs[p.leg]!, eff, lists, legOutlines[p.leg]!, p.within, legCands[p.leg]!, context)),
+          DAY_TOOL,
+          4000,
+          fastThenMain(attempt),
+        ),
+      DayResultSchema,
+      3,
+    );
+    const t = leg.transfer;
+    const day: DayOut = {
+      label: p.label,
+      theme: data.theme || p.theme,
+      city: p.city,
+      arrival: p.within === 0 && p.leg > 0 && t ? [`From ${legs[p.leg - 1]!.city}`, t.mode, t.duration, t.note].filter(Boolean).join(" · ") : undefined,
+      stops: data.stops,
+    };
+    emit({ type: "day", index: i, day });
+    tick(`${day.label} planned`);
+    return day;
+  });
+
+  const hotelJobs = req.stay.on
+    ? legs.map((l, li) =>
+        planHotels(
+          legReqs[li]!,
+          eff,
+          lists,
+          l.dayThemes.map((t) => t.area).filter(Boolean),
+          legCands[li]!.filter((c) => c.category === "stay"),
+          2,
+          emit,
+          tick,
+          l.city,
+        ),
+      )
+    : [];
+
+  const [days, hotelLists] = await Promise.all([Promise.all(dayJobs), Promise.all(hotelJobs)]);
+  const itin: Itinerary = ItinerarySchema.parse({
+    title: route.title,
+    summary: route.summary,
+    notes: route.notes,
+    days,
+    hotels: hotelLists.flat(),
+    replaced: [],
+    mode: "multi",
+    route: legs.map(({ dayThemes: _t, ...l }) => ({ ...l, dayThemes: [] })),
+  });
+  if (itin.hotels.length) itin.stayLabel = stayLabel(req.stay);
+  return { itin, model, candsByCity: new Map(legs.map((l, li) => [l.city, legCands[li]!])) };
+}
+
+/** Verify stops and hotels against the right city (each stop's city on a multi-city trip). */
+async function groundByCity(itin: Itinerary, candsByCity: Map<string, Candidate[]>, req: TripRequest) {
+  if (itin.mode !== "multi") {
+    await groundItinerary(itin, candsByCity.get("") ?? [], req.destination);
+    return;
+  }
+  const cities = [...new Set([...itin.days.map((d) => d.city ?? ""), ...itin.hotels.map((h) => h.city ?? "")])];
+  const drop = new Set<Pick>();
+  await Promise.all(
+    cities.map(async (city) => {
+      const picks: Pick[] = [...itin.days.filter((d) => (d.city ?? "") === city).flatMap((d) => d.stops), ...itin.hotels.filter((h) => (h.city ?? "") === city)];
+      const d = await ground(picks, candsByCity.get(city) ?? [], city ? `${city}, ${req.destination}` : req.destination);
+      d.forEach((p) => drop.add(p));
+    }),
+  );
+  itin.days = itin.days.map((d) => ({ ...d, stops: d.stops.filter((s) => !drop.has(s)) })).filter((d) => d.stops.length > 0);
+  itin.hotels = itin.hotels.filter((h) => !drop.has(h));
+  if (!itin.days.length) throw new HttpError(502, "We couldn't verify enough places for this trip. Try again or adjust the request.", "unverified");
+}
+
+export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: string; tripsPerHour: number }, emit: Emit = () => {}) {
+  const t0 = Date.now();
+  emit({ type: "progress", pct: 3, label: "Reading your request" });
+  const [, { eff, lists }, history, visibility] = await Promise.all([
+    checkRateLimit(ctx, opts.tripsPerHour),
+    loadSources(ctx),
+    loadHistory(ctx, req.destination),
+    defaultVisibility(ctx),
+  ]);
+
+  const { itin, model } = await planItinerary(req, { eff, lists, history }, emit);
+  console.log(`[build] planned ${req.mode} ${req.days}d in ${Date.now() - t0}ms`);
   await attachLiveRates(itin.hotels, req.startDate, req.days, adultsFor(req.party), opts.ip);
 
-  progress(96, "Saving your trip");
+  emit({ type: "progress", pct: 96, label: "Saving your trip" });
   const row = {
     user_id: ctx.user!.id,
     destination: req.destination,
@@ -350,7 +556,7 @@ export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: strin
   if (missingColumn(error)) ({ data, error } = await ctx.db.from("trips").insert(row).select("*").single());
   if (error || !data) throw new HttpError(500, "Your trip was built but couldn't be saved. Try again.");
   console.log(`[build] total ${Date.now() - t0}ms`);
-  progress(100, "Done");
+  emit({ type: "progress", pct: 100, label: "Done" });
   return toTrip(data as TripRow);
 }
 
@@ -358,13 +564,33 @@ export async function generateHotels(ctx: Ctx, row: TripRow, stay: StayPrefs, op
   const req: TripRequest = { ...row.request, stay: { ...stay, on: true } };
   const { lists } = await loadSources(ctx);
   const eff: EffectiveSources = { weights: row.weights, blocked: (row.blocked ?? []).filter(isSourceId), custom: row.custom_mix };
-  const cands = selectCandidates(await gatherCandidates(req, true), eff, req);
-  const { input } = await callTool(buildHotelPrompt(req, eff, lists, row.itinerary, cands), HOTELS_TOOL, 3000);
-  const parsed = z.object({ hotels: z.array(HotelSchema).min(1) }).safeParse(input);
-  if (!parsed.success) throw new HttpError(502, "Hotel picks came back incomplete. Try again.", "bad_output");
-  const hotels = parsed.data.hotels.slice(0, 3);
-  const drop = await ground(hotels, cands, req.destination);
-  const kept = hotels.filter((h) => !drop.has(h));
+  const route = row.itinerary.mode === "multi" ? row.itinerary.route ?? [] : [];
+  // One place: three hotels. Several stops: two per stop, each checked against its own city.
+  const groups = route.length
+    ? route.map((l) => ({ city: l.city, req: requestForCity(req, l.city), count: 2 }))
+    : [{ city: undefined as string | undefined, req, count: 3 }];
+  const found = await Promise.all(
+    groups.map(async (g) => {
+      const cands = selectCandidates(await gatherCandidates(g.req, true), eff, g.req);
+      const areas = [
+        ...new Set(
+          row.itinerary.days
+            .filter((d) => !g.city || d.city === g.city)
+            .flatMap((d) => d.stops.map((s) => s.neighborhood))
+            .filter(Boolean),
+        ),
+      ].slice(0, 12);
+      const { data } = await step(
+        `hotels${g.city ? ` ${g.city}` : ""}`,
+        (attempt) => callTool(buildHotelPromptForAreas(g.req, eff, lists, areas, cands, g.count), HOTELS_TOOL, 3000, fastThenMain(attempt)),
+        z.object({ hotels: salvage(HotelSchema, 1, 5) }),
+      );
+      const hotels = data.hotels.slice(0, g.count).map((h) => (g.city ? { ...h, city: g.city } : h));
+      const drop = await ground(hotels, cands, g.req.destination);
+      return hotels.filter((h) => !drop.has(h));
+    }),
+  );
+  const kept = found.flat();
   if (!kept.length) throw new HttpError(502, "We couldn't verify any hotels for this trip. Try a different style or price.", "unverified");
   await attachLiveRates(kept, req.startDate, req.days, adultsFor(req.party), opts.ip);
 
@@ -422,7 +648,8 @@ function editContext(row: TripRow) {
 export async function swapStop(ctx: Ctx, row: TripRow, day: number, index: number, hint: string) {
   const old = row.itinerary.days[day]?.stops[index];
   if (!old) throw new HttpError(404, "That stop isn't in this trip anymore. Reload and try again.");
-  const { req, eff, inTrip } = editContext(row);
+  const { req: base, eff, inTrip } = editContext(row);
+  const req = requestForCity(base, row.itinerary.days[day]?.city);
   const { lists } = await loadSources(ctx);
   const cands = selectCandidates(await gatherCandidates(req), eff, req).filter(
     (c) => c.category !== "stay" && !inTrip.has(c.name.toLowerCase()),
@@ -446,7 +673,8 @@ export async function swapStop(ctx: Ctx, row: TripRow, day: number, index: numbe
 export async function regenerateDay(ctx: Ctx, row: TripRow, day: number, hint: string) {
   const current = row.itinerary.days[day];
   if (!current) throw new HttpError(404, "That day isn't in this trip anymore. Reload and try again.");
-  const { req, eff } = editContext(row);
+  const { req: base, eff } = editContext(row);
+  const req = requestForCity(base, current.city);
   const { lists } = await loadSources(ctx);
   const otherDays = new Set(
     [...row.itinerary.days.flatMap((d, i) => (i === day ? [] : d.stops)), ...(row.itinerary.hotels ?? [])].map((p) => p.name.toLowerCase()),

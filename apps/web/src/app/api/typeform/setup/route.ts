@@ -16,6 +16,6 @@ export const POST = handler(async (req: Request) => {
     const ctx = await getCtx(req);
     if (ctx.role !== "admin") throw new HttpError(409, "A Typeform intake is already configured.", "typeform_exists");
   }
-  const form = await createIntakeForm();
+  const form = await createIntakeForm(`${new URL(req.url).origin}/browse`);
   return json({ ...form, next: `Set TYPEFORM_FORM_ID=${form.formId} in Vercel and redeploy.` }, 201);
 });

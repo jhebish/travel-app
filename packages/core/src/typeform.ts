@@ -13,12 +13,14 @@ import {
   INTERESTS,
   PACES,
   PARTIES,
+  MAX_DAYS,
   TripRequestSchema,
   type TripRequest,
 } from "./schemas";
 import { STAY_PRICES, STAY_STYLES } from "./sources";
 
 export const TF = {
+  tripType: "trip_type",
   destination: "destination",
   days: "days",
   startDate: "start_date",
@@ -43,6 +45,15 @@ const slug = (v: string) =>
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
 const choiceRef = (field: string, value: string) => `${field}_${slug(value)}`;
+
+/** First question: what kind of trip. "browse" ends the form and sends them to the Browse page. */
+export const TF_TRIP_TYPES = ["one", "multi", "browse"] as const;
+const TRIP_TYPE_LABELS: Record<(typeof TF_TRIP_TYPES)[number], string> = {
+  one: "One place I have in mind",
+  multi: "Several stops in a country or region",
+  browse: "Not sure yet, show me what's trending",
+};
+export const TF_BROWSE_ENDING = "browse";
 
 const PARTY_LABELS: Record<(typeof PARTIES)[number], string> = {
   Solo: "Just me",
@@ -88,7 +99,7 @@ function multiple<T extends string>(
 }
 
 /** The form Pylos creates through the Typeform Create API. */
-export function typeformDefinition(opts: { title?: string; themeHref?: string } = {}) {
+export function typeformDefinition(opts: { title?: string; themeHref?: string; browseUrl?: string } = {}) {
   return {
     title: opts.title ?? "Pylos trip intake",
     ...(opts.themeHref ? { theme: { href: opts.themeHref } } : {}),
@@ -107,10 +118,22 @@ export function typeformDefinition(opts: { title?: string; themeHref?: string } 
         title: "Building your trip to {{field:destination}}…",
         properties: { show_button: false, share_icons: false, description: "Stay on this page. Your plan appears in a few seconds." },
       },
+      {
+        ref: TF_BROWSE_ENDING,
+        title: "Let's find your next place.",
+        properties: {
+          show_button: true,
+          button_text: "Explore trending destinations",
+          share_icons: false,
+          description: "Spin the globe, open sample itineraries, and plan when something catches your eye.",
+          ...(opts.browseUrl ? { button_mode: "redirect", redirect_url: opts.browseUrl } : {}),
+        },
+      },
     ],
     fields: [
-      { ref: TF.destination, title: "Where are you headed?", type: "short_text", properties: { description: "A city or region, e.g. Lisbon, Oaxaca, Kyoto" }, validations: { required: true, max_length: 120 } },
-      { ref: TF.days, title: "How many days in {{field:destination}}?", type: "number", properties: { description: "Up to 7." }, validations: { required: true, min_value: 1, max_value: 7 } },
+      multiple(TF.tripType, "What kind of trip is this?", TF_TRIP_TYPES, { labels: TRIP_TYPE_LABELS }),
+      { ref: TF.destination, title: "Where are you headed?", type: "short_text", properties: { description: "A city (Lisbon, Oaxaca) or, for several stops, a country or region (Egypt, Sardinia)." }, validations: { required: true, max_length: 120 } },
+      { ref: TF.days, title: "How many days in {{field:destination}}?", type: "number", properties: { description: "Up to 7 for one place, up to 14 for several stops." }, validations: { required: true, min_value: 1, max_value: 14 } },
       { ref: TF.startDate, title: "When do you arrive?", type: "date", properties: { description: "Optional. Lets us check live hotel rates.", structure: "MMDDYYYY", separator: "/" }, validations: { required: false } },
       multiple(TF.party, "Who's coming?", PARTIES, { labels: PARTY_LABELS }),
       multiple(TF.age, "Your age range?", AGE_BANDS),
@@ -128,6 +151,17 @@ export function typeformDefinition(opts: { title?: string; themeHref?: string } 
       { ref: TF.extra, title: "Anything else we should know?", type: "long_text", properties: { description: "Anniversary trip, hate crowds, staying near the old town…" }, validations: { required: false, max_length: 500 } },
     ],
     logic: [
+      {
+        type: "field",
+        ref: TF.tripType,
+        actions: [
+          {
+            action: "jump",
+            details: { to: { type: "thankyou", value: TF_BROWSE_ENDING } },
+            condition: { op: "is", vars: [{ type: "field", value: TF.tripType }, { type: "choice", value: choiceRef(TF.tripType, "browse") }] },
+          },
+        ],
+      },
       {
         type: "field",
         ref: TF.stayOn,
@@ -208,12 +242,14 @@ export function typeformToRequest(answers: TypeformAnswer[]): TripRequest {
 
   const destination = (by.get(TF.destination)?.text ?? "").trim();
   if (destination.length < 2) throw new Error("The form didn't include a destination.");
+  const mode = one(TF.tripType, TF_TRIP_TYPES, TRIP_TYPE_LABELS) === "multi" ? "multi" : "single";
   const rawDays = by.get(TF.days)?.number;
-  const days = Math.min(7, Math.max(1, Math.round(Number.isFinite(rawDays) ? rawDays! : 3)));
+  const days = Math.min(MAX_DAYS[mode], Math.max(1, Math.round(Number.isFinite(rawDays) ? rawDays! : 3)));
   const date = by.get(TF.startDate)?.date?.slice(0, 10);
   const stayOn = by.get(TF.stayOn)?.boolean ?? false;
 
   return TripRequestSchema.parse({
+    mode,
     destination: destination.slice(0, 120),
     days,
     startDate: date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null,
@@ -230,4 +266,11 @@ export function typeformToRequest(answers: TypeformAnswer[]): TripRequest {
       price: (stayOn && one(TF.stayPrice, STAY_PRICES)) || "$150–300",
     },
   });
+}
+
+/** Did the traveler pick "not sure yet"? Then they should go to the Browse page, not get a trip. */
+export function typeformWantsBrowse(answers: TypeformAnswer[]): boolean {
+  const a = answers.find((x) => x.field?.ref === TF.tripType);
+  if (!a?.choice) return false;
+  return a.choice.ref === choiceRef(TF.tripType, "browse") || /not sure|trending|inspire/i.test(a.choice.label ?? "");
 }

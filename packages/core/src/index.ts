@@ -10,3 +10,5 @@ export * from "./normalize";
 export * from "./typeform";
 export * from "./countries";
 export * from "./community";
+export * from "./destinations";
+export * from "./route";

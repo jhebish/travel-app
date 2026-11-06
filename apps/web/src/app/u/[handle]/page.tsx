@@ -18,7 +18,7 @@ export default function ProfilePage({ params }: { params: { handle: string } }) 
       .catch((e) => setErr((e as Error).message));
   }, [params.handle, me]);
 
-  if (err) return <div className="card empty"><b>{err}</b><Link href="/community">Back to the community</Link></div>;
+  if (err) return <div className="card empty"><b>{err}</b><Link href="/friends">Back to Friends</Link></div>;
   if (!data) return <div className="card"><p className="hint">Loading…</p></div>;
   const { profile: p, trips } = data;
   const countries = p.places ? [...new Set(p.places.map((x) => x.countryCode))] : [];

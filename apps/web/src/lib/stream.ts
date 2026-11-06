@@ -3,9 +3,10 @@ import { HttpError } from "./http";
 
 /**
  * Stream build progress as newline-delimited JSON. `run` emits events through `send` and
- * resolves with the final payload, sent as `{type:"done"}`; failures become `{type:"error"}`.
+ * resolves with the finished trip, sent as `{type:"done"}` (or null when it sent its own ending,
+ * such as a redirect); failures become `{type:"error"}`.
  */
-export function ndjsonResponse(run: (send: (e: BuildEvent) => void) => Promise<Extract<BuildEvent, { type: "done" }>["trip"]>) {
+export function ndjsonResponse(run: (send: (e: BuildEvent) => void) => Promise<Extract<BuildEvent, { type: "done" }>["trip"] | null>) {
   const enc = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -18,7 +19,7 @@ export function ndjsonResponse(run: (send: (e: BuildEvent) => void) => Promise<E
       };
       try {
         const trip = await run(send);
-        send({ type: "done", trip });
+        if (trip) send({ type: "done", trip });
       } catch (e) {
         if (!(e instanceof HttpError)) console.error(e);
         send({

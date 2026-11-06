@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   TripRequestSchema,
   DaySchema,
+  ItinerarySchema,
   OutlineSchema,
   HotelSchema,
   aggregateInsights,
@@ -391,5 +392,107 @@ describe("community", () => {
     const { COUNTRIES, flag } = await import("../src/countries");
     expect(new Set(COUNTRIES.map((c) => c[0])).size).toBe(COUNTRIES.length);
     expect(flag("JP")).toBe("🇯🇵");
+  });
+});
+
+describe("model output repair", () => {
+  it("parses stops sent as a JSON string with raw newlines and trailing commas", async () => {
+    const { normalizeModelOutput } = await import("../src/normalize");
+    const raw = { theme: "x", stops: '[{"time":"09:00","name":"Bakery\nCorner","source":"locals",},]' };
+    const out = normalizeModelOutput(raw) as { stops: { name: string }[] };
+    expect(Array.isArray(out.stops)).toBe(true);
+    expect(out.stops[0]!.name).toBe("Bakery\nCorner");
+  });
+  it("keeps the complete items of a cut-off list", async () => {
+    const { parseLooseJson } = await import("../src/normalize");
+    const v = parseLooseJson('[{"name":"A","why":"one"},{"name":"B","why":"two"},{"name":"C","wh') as { name: string }[];
+    expect(v.map((x) => x.name)).toEqual(["A", "B"]);
+  });
+  it("leaves bracketed prose alone", async () => {
+    const { parseLooseJson } = await import("../src/normalize");
+    expect(parseLooseJson("[sic] a great spot")).toBeUndefined();
+  });
+  it("validates a day whose stops came back as a string", async () => {
+    const { normalizeModelOutput } = await import("../src/normalize");
+    const day = normalizeModelOutput({ theme: "t", stops: JSON.stringify([{ time: "09:00", name: "A", source: "locals" }]) });
+    expect(DaySchema.safeParse({ label: "Day 1", ...(day as object) }).success).toBe(true);
+  });
+});
+
+describe("multi-city", () => {
+  it("defaults to one place and clamps days per mode", () => {
+    expect(TripRequestSchema.parse({ destination: "Lisbon", days: 12, party: "Solo", budget: "Budget", pace: "Slow" })).toMatchObject({ mode: "single", days: 7 });
+    expect(TripRequestSchema.parse({ mode: "multi", destination: "Egypt", days: 12, party: "Solo", budget: "Budget", pace: "Slow" })).toMatchObject({ mode: "multi", days: 12 });
+    expect(TripRequestSchema.parse({ mode: "multi", destination: "Egypt", days: 14, party: "Solo", budget: "Budget", pace: "Slow" }).days).toBe(14);
+  });
+  it("fits a route to the trip length and fills day themes", async () => {
+    const { fitRoute } = await import("../src/route");
+    const legs = [
+      { city: "Cairo", region: "", days: 4, why: "", transfer: null, dayThemes: [{ theme: "Old Cairo", area: "Islamic Cairo" }] },
+      { city: "Luxor", region: "", days: 3, why: "", transfer: { mode: "train", duration: "10h", note: "" }, dayThemes: [] },
+      { city: "Aswan", region: "", days: 3, why: "", transfer: { mode: "train", duration: "3h", note: "" }, dayThemes: [] },
+    ];
+    const fitted = fitRoute(legs, 7);
+    expect(fitted.reduce((n, l) => n + l.days, 0)).toBe(7);
+    expect(fitted.every((l) => l.dayThemes.length === l.days)).toBe(true);
+    expect(fitted[0]!.transfer).toBeNull();
+    const longer = fitRoute(legs, 12);
+    expect(longer.reduce((n, l) => n + l.days, 0)).toBe(12);
+    const tooMany = fitRoute(legs, 2);
+    expect(tooMany.length).toBe(2);
+    expect(tooMany.reduce((n, l) => n + l.days, 0)).toBe(2);
+  });
+  it("accepts an itinerary with a route and per-day cities", () => {
+    const r = ItinerarySchema.safeParse({
+      title: "Egypt",
+      mode: "multi",
+      route: [{ city: "Cairo", days: "3", why: "x", transfer: null }],
+      days: [{ label: "Day 1", theme: "t", city: "Cairo", stops: [{ name: "Khan el-Khalili", source: "locals" }] }],
+    });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.route?.[0]!.days).toBe(3);
+  });
+});
+
+describe("browse destinations", () => {
+  it("has unique keys, valid coordinates and sample requests that validate", async () => {
+    const { DESTINATIONS, sampleRequest } = await import("../src/destinations");
+    expect(new Set(DESTINATIONS.map((d) => d.key)).size).toBe(DESTINATIONS.length);
+    for (const d of DESTINATIONS) {
+      expect(Math.abs(d.lat)).toBeLessThanOrEqual(90);
+      expect(Math.abs(d.lng)).toBeLessThanOrEqual(180);
+      expect(d.bestMonths.every((m) => m >= 1 && m <= 12)).toBe(true);
+      const req = TripRequestSchema.parse(sampleRequest(d));
+      expect(req.mode).toBe(d.kind === "region" ? "multi" : "single");
+      expect(req.days).toBe(d.sampleDays);
+    }
+  });
+  it("summarizes best months, wrapping round the new year", async () => {
+    const { monthsLabel } = await import("../src/destinations");
+    expect(monthsLabel([3, 4, 5, 10, 11])).toBe("Mar–May, Oct–Nov");
+    expect(monthsLabel([11, 12, 1, 2, 3])).toBe("Nov–Mar");
+    expect(monthsLabel([6])).toBe("Jun");
+  });
+  it("ranks in-season, trend-listed places higher", async () => {
+    const { DESTINATION_BY_KEY, trendScore } = await import("../src/destinations");
+    const kyoto = DESTINATION_BY_KEY["kyoto"]!;
+    expect(trendScore(kyoto, 11)).toBeGreaterThan(trendScore(kyoto, 7));
+  });
+});
+
+describe("typeform trip type", () => {
+  it("maps several stops to a multi-city request and spots 'not sure yet'", async () => {
+    const { typeformToRequest, typeformWantsBrowse, typeformDefinition } = await import("../src/typeform");
+    const r = typeformToRequest([
+      { field: { ref: "trip_type" }, type: "choice", choice: { ref: "trip_type_multi", label: "Several stops in a country or region" } },
+      { field: { ref: "destination" }, type: "text", text: "Egypt" },
+      { field: { ref: "days" }, type: "number", number: 10 },
+    ]);
+    expect(r).toMatchObject({ mode: "multi", destination: "Egypt", days: 10 });
+    expect(typeformWantsBrowse([{ field: { ref: "trip_type" }, type: "choice", choice: { ref: "trip_type_browse" } }])).toBe(true);
+    expect(typeformWantsBrowse([{ field: { ref: "trip_type" }, type: "choice", choice: { ref: "trip_type_one" } }])).toBe(false);
+    const def = typeformDefinition({ browseUrl: "https://www.pylos.ai/browse" });
+    expect(def.fields[0]!.ref).toBe("trip_type");
+    expect(def.thankyou_screens.find((t) => t.ref === "browse")).toBeTruthy();
   });
 });

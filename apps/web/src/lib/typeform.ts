@@ -55,7 +55,7 @@ export async function fetchResponse(responseId: string, onWait?: (attempt: numbe
 }
 
 /** Create the Pylos intake form (and a matching theme) in the connected Typeform account. */
-export async function createIntakeForm(): Promise<{ formId: string; url: string; themed: boolean }> {
+export async function createIntakeForm(browseUrl?: string): Promise<{ formId: string; url: string; themed: boolean }> {
   let themeHref: string | undefined;
   try {
     const t = await tf("/themes", {
@@ -74,7 +74,7 @@ export async function createIntakeForm(): Promise<{ formId: string; url: string;
     if (e instanceof HttpError && e.code === "typeform_auth") throw e;
     console.error("Typeform theme not created", e);
   }
-  const res = await tf("/forms", { method: "POST", body: JSON.stringify(typeformDefinition({ themeHref })) });
+  const res = await tf("/forms", { method: "POST", body: JSON.stringify(typeformDefinition({ themeHref, browseUrl })) });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     console.error("Typeform form not created", res.status, text);

@@ -120,7 +120,7 @@ export function FollowButton({ handle, initial, onChange }: { handle: string; in
           {/sign in/i.test(err) && (
             <>
               {" "}
-              <Link href="/login?next=/community">Sign in</Link>
+              <Link href="/login?next=/friends">Sign in</Link>
             </>
           )}
         </span>

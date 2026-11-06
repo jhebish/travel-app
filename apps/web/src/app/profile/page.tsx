@@ -65,7 +65,7 @@ function ProfileEditor() {
       const { profile: p } = await api<{ profile: MyCommunityProfile }>("/api/community/profile", { method: "PUT", json: form });
       setProfile(p);
       setForm({ ...p });
-      setMsg({ text: profile ? "Saved." : "You're in. Find friends on the Community page." });
+      setMsg({ text: profile ? "Saved." : "You're in. Find people on the Friends page." });
     } catch (e2) {
       setMsg({ text: (e2 as Error).message, err: true });
     } finally {

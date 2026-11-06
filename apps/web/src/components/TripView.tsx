@@ -14,7 +14,7 @@ import {
   type Trip,
 } from "@travel/core";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { Chips, SingleChips } from "./Chips";
 import { DayMap } from "./DayMap";
@@ -112,6 +112,8 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
   const dIdx = Math.min(day, it.days.length - 1);
   const d = it.days[dIdx]!;
   const city = trip.destination;
+  /** On a multi-city trip, a day's places belong to that day's city. */
+  const dayCity = d.city ? `${d.city}, ${city}` : city;
 
   const apply = (t: Trip) => {
     setTrip(t);
@@ -276,7 +278,8 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
       {/* ---------- hero ---------- */}
       <header className="hero">
         <span className="where-line">
-          {city}, {it.days.length} {it.days.length === 1 ? "day" : "days"}
+          {city}
+          {it.route && it.route.length > 1 ? ` · ${it.route.length} stops` : ""} · {it.days.length} {it.days.length === 1 ? "day" : "days"}
         </span>
         <h1>{it.title}</h1>
         <p>{it.summary}</p>
@@ -325,20 +328,65 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
         </div>
       )}
 
+      {/* ---------- route (several stops) ---------- */}
+      {!!it.route && it.route.length > 1 && (
+        <nav className="route" aria-label="Route">
+          {it.route.map((l, i) => {
+            const first = it.days.findIndex((x) => x.city === l.city);
+            const hop = [l.transfer?.mode, l.transfer?.duration].filter(Boolean).join(" · ");
+            return (
+              <Fragment key={l.city + i}>
+                {i > 0 && (
+                  <span className="route-hop" aria-label={hop ? `then ${hop}` : "then"}>
+                    <svg viewBox="0 0 24 8" aria-hidden="true"><path d="M0 4h21M18 1l3 3-3 3" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>
+                    {hop && <small>{hop}</small>}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  className="route-stop"
+                  aria-pressed={d.city === l.city}
+                  onClick={() => {
+                    if (first >= 0) setDay(first);
+                    setSwapOpen(null);
+                    setDayHintOpen(false);
+                  }}
+                >
+                  <b>{l.city}</b>
+                  <span>
+                    {l.days} {l.days === 1 ? "day" : "days"}
+                  </span>
+                </button>
+              </Fragment>
+            );
+          })}
+        </nav>
+      )}
+
       {/* ---------- day ---------- */}
       <div className="daytabs" role="tablist" aria-label="Days">
         {it.days.map((x, i) => (
           <button key={i} type="button" role="tab" aria-selected={i === dIdx} onClick={() => { setDay(i); setSwapOpen(null); setDayHintOpen(false); }}>
             {x.label}
+            {x.city && <small className="tab-city">{x.city}</small>}
           </button>
         ))}
       </div>
 
       <section className="card">
+        {d.arrival && (
+          <p className="arrival">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h15M13 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            {d.arrival}
+          </p>
+        )}
         <div className="dayhead">
-          <h2>{d.theme}</h2>
+          <div className="dayhead-title">
+            {d.city && <span className="eyebrow">{d.city}</span>}
+            <h2>{d.theme}</h2>
+          </div>
           <div className="daytools">
-            <a className="btn ghost small" href={googleMapsDayUrl(d.stops, city)} target="_blank" rel="noopener noreferrer">
+            <a className="btn ghost small" href={googleMapsDayUrl(d.stops, dayCity)} target="_blank" rel="noopener noreferrer">
               <IconMap />
               Open in Google Maps
             </a>
@@ -490,7 +538,9 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
             <>
               <div className="hotels">
                 {it.hotels.map((h, i) => (
-                  <div className="hotel" key={h.name + i}>
+                  <Fragment key={h.name + i}>
+                  {it.mode === "multi" && h.city && h.city !== it.hotels[i - 1]?.city && <h3 className="hotel-city">{h.city}</h3>}
+                  <div className="hotel">
                     <div className="hotel-top">
                       <h3>
                         {h.name} <span className="hood" style={{ fontWeight: 450, color: "var(--muted)", fontSize: 15 }}>in {h.neighborhood}</span>
@@ -512,7 +562,7 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
                     )}
                     <div className="tl-foot">
                       <span className="links">
-                        <a href={ratesUrl(h, city)} target="_blank" rel="noopener noreferrer">
+                        <a href={ratesUrl(h, h.city ? `${h.city}, ${city}` : city)} target="_blank" rel="noopener noreferrer">
                           Check rates
                         </a>
                         {h.place?.mapsUrl && (
@@ -533,6 +583,7 @@ export function TripView({ trip: initial, readOnly = false, onChange }: { trip: 
                       )}
                     </div>
                   </div>
+                  </Fragment>
                 ))}
               </div>
               <p className="hint">

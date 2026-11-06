@@ -61,9 +61,16 @@ export const StaySchema = z.object({
 });
 export type StayPrefs = z.infer<typeof StaySchema>;
 
+export const TRIP_MODES = ["single", "multi"] as const;
+export type TripMode = (typeof TRIP_MODES)[number];
+/** Longest trip for each mode. One place: a week. Several stops: two weeks. */
+export const MAX_DAYS: Record<TripMode, number> = { single: 7, multi: 14 };
+
 export const TripRequestSchema = z.object({
+  /** "single": one city or area. "multi": several stops inside a country or region. */
+  mode: z.enum(TRIP_MODES).default("single"),
   destination: z.string().trim().min(2).max(120),
-  days: z.number().int().min(1).max(7),
+  days: z.number().int().min(1).max(14),
   startDate: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -77,7 +84,7 @@ export const TripRequestSchema = z.object({
   pace: z.enum(PACES),
   extra: z.string().trim().max(500).default(""),
   stay: StaySchema.default({ on: false, styles: [], price: "$150–300" }),
-});
+}).transform((r) => (r.days > MAX_DAYS[r.mode] ? { ...r, days: MAX_DAYS[r.mode] } : r));
 export type TripRequest = z.infer<typeof TripRequestSchema>;
 
 export const PlaceVerificationSchema = z.object({
@@ -147,6 +154,8 @@ export const LiveRateSchema = z.object({
 
 export const HotelSchema = z.object({
   name: clipReq(160),
+  /** Multi-city trips: the stop this hotel is for. */
+  city: clip(80).optional().catch(undefined),
   neighborhood: clip(120).default(""),
   style: clip(60).default(""),
   nightly: clip(40).default(""),
@@ -166,12 +175,37 @@ export type Hotel = z.infer<typeof HotelSchema>;
 export const DaySchema = z.object({
   label: clip(40).default(""),
   theme: clip(160).default(""),
+  /** Multi-city trips: where this day happens. */
+  city: clip(80).optional().catch(undefined),
+  /** Multi-city trips: how you get here on the first day in a new place. */
+  arrival: clip(240).optional().catch(undefined),
   stops: salvage(StopSchema, 1, 8),
 });
+
+const toInt = (v: unknown) => (typeof v === "string" && v.trim() !== "" ? Number(v) : v);
+
+/** One stop on a multi-city route. */
+export const RouteLegSchema = z.object({
+  city: clipReq(80),
+  region: clip(80).default(""),
+  days: z.preprocess(toInt, z.number().int().min(1).max(14)),
+  why: clip(300).default(""),
+  /** How to get here from the previous stop (absent for the first stop). */
+  transfer: z
+    .object({ mode: clip(40).default(""), duration: clip(40).default(""), note: clip(200).default("") })
+    .nullable()
+    .optional()
+    .catch(null),
+  dayThemes: salvage(z.object({ theme: clip(160).default(""), area: clip(160).default("") }), 0, 14).default([]),
+});
+export type RouteLeg = z.infer<typeof RouteLegSchema>;
 
 export const ItinerarySchema = z.object({
   title: clipReq(140),
   summary: clip(600).default(""),
+  mode: z.enum(TRIP_MODES).optional().catch(undefined),
+  /** Multi-city trips: the stops in order. */
+  route: salvage(RouteLegSchema, 0, 8).optional(),
   days: salvage(DaySchema, 1, 7),
   hotels: salvage(HotelSchema, 0, 5).default([]),
   notes: salvage(clip(300), 0, 6).default([]),

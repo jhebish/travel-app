@@ -9,7 +9,7 @@ import { api, ApiError } from "@/lib/api";
 
 type Tab = "friends" | "top" | "travelled" | "people";
 const TABS: { id: Tab; label: string }[] = [
-  { id: "friends", label: "Friends" },
+  { id: "friends", label: "Feed" },
   { id: "top", label: "Top trips" },
   { id: "travelled", label: "Most travelled" },
   { id: "people", label: "Find people" },
@@ -46,7 +46,7 @@ function Friends({ joined }: { joined: boolean }) {
       <div className="empty">
         <b>No trips from friends yet</b>
         <span className="hint">Follow people to see the trips they share.</span>
-        <Link href="/community?tab=people">Find people</Link>
+        <Link href="/friends?tab=people">Find people</Link>
         {!joined && <Link href="/profile">Create your profile</Link>}
       </div>
     );
@@ -68,7 +68,7 @@ function Top() {
   const { data, err } = useLoad<{ trips: CommunityTrip[]; cities: { key: string; label: string; trips: number }[] }>(
     `/api/community/top${city ? `?city=${encodeURIComponent(city)}` : ""}`,
   );
-  const go = (c: string) => router.replace(`/community?tab=top${c ? `&city=${encodeURIComponent(c)}` : ""}`, { scroll: false });
+  const go = (c: string) => router.replace(`/friends?tab=top${c ? `&city=${encodeURIComponent(c)}` : ""}`, { scroll: false });
   return (
     <div className="stack" style={{ gap: 16 }}>
       <form
@@ -140,7 +140,7 @@ function Travelled({ joined }: { joined: boolean }) {
         <div className="empty">
           <b>{joined ? "Follow friends to see who's been where" : "Join to compare with friends"}</b>
           <span className="hint">Ranked by countries, then cities, from the places each person logs.</span>
-          {joined ? <Link href="/community?tab=people">Find people</Link> : <Link href="/profile">Create your profile</Link>}
+          {joined ? <Link href="/friends?tab=people">Find people</Link> : <Link href="/profile">Create your profile</Link>}
         </div>
       ) : null}
       {data.rows.length > 0 && (
@@ -225,8 +225,8 @@ function Community() {
     <div className="stack" style={{ gap: 20 }}>
       <div className="pagehead">
         <div>
-          <h1>Community</h1>
-          <p className="lede">Friends&apos; trips, the best-rated plans in every city, and who&apos;s been where.</p>
+          <h1>Friends</h1>
+          <p className="lede">Your friends&apos; trips, the best-rated plans in every city, and who&apos;s been where.</p>
         </div>
         {joined && (
           <Link className="btn ghost sm" href={`/u/${mine!.profile!.handle}`}>
@@ -246,9 +246,9 @@ function Community() {
           </Link>
         </div>
       )}
-      <div className="seg wide" role="tablist" aria-label="Community">
+      <div className="seg wide" role="tablist" aria-label="Friends">
         {TABS.map((x) => (
-          <button key={x.id} role="tab" aria-selected={tab === x.id} onClick={() => router.replace(`/community?tab=${x.id}`, { scroll: false })}>
+          <button key={x.id} role="tab" aria-selected={tab === x.id} onClick={() => router.replace(`/friends?tab=${x.id}`, { scroll: false })}>
             {x.label}
           </button>
         ))}

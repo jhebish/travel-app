@@ -15,17 +15,22 @@
     "@supabase/supabase-js": "2.118.0",
     "@travel/core": "workspace:*",
     "@typeform/embed-react": "5.5.0",
+    "d3-geo": "3.1.1",
     "leaflet": "1.9.4",
     "next": "14.2.15",
     "react": "18.2.0",
     "react-dom": "18.2.0",
+    "topojson-client": "3.1.0",
+    "world-atlas": "2.0.2",
     "zod": "3.23.8"
   },
   "devDependencies": {
+    "@types/d3-geo": "3.1.0",
     "@types/leaflet": "1.9.14",
     "@types/node": "20.17.6",
     "@types/react": "18.2.79",
     "@types/react-dom": "18.2.25",
+    "@types/topojson-client": "3.1.5",
     "typescript": "5.6.3"
   }
 }

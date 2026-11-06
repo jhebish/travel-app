@@ -1,4 +1,4 @@
-import { TF_HIDDEN_UID, typeformToRequest } from "@travel/core";
+import { TF_HIDDEN_UID, typeformToRequest, typeformWantsBrowse } from "@travel/core";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { env } from "@/lib/env";
@@ -29,6 +29,10 @@ export const POST = handler(async (req: Request) => {
     // The embed passes the user's id as a hidden field; only that user can build from this response.
     if (response.hidden?.[TF_HIDDEN_UID] !== ctx.user.id) {
       throw new HttpError(403, "These answers belong to a different session. Fill in the form again.", "typeform_owner");
+    }
+    if (typeformWantsBrowse(response.answers ?? [])) {
+      send({ type: "redirect", to: "/browse" });
+      return null;
     }
     let request;
     try {
