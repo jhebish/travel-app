@@ -3,6 +3,7 @@ import {
   AGE_BANDS,
   BUDGETS,
   INTERESTS,
+  MAX_DAYS,
   PACES,
   PARTIES,
   STAY_PRICES,
@@ -29,6 +30,8 @@ const ABOUT_LABELS = {
 } as const;
 const PARTY_LABELS = { Solo: "Solo", Couple: "Couple", "Family with kids": "Family", "Group of friends": "Friends" } as const;
 const BUDGET_LABELS = { Budget: "$", "Mid-range": "$$", Splurge: "$$$" } as const;
+const MODES = ["single", "multi"] as const;
+const MODE_LABELS = { single: "One place", multi: "Several stops" } as const;
 
 const blank: TripRequest = {
   mode: "single",
@@ -88,8 +91,26 @@ export default function Plan() {
         <H1>Where are you headed?</H1>
         <P muted>Tell us a little about you. We&apos;ll build a trip around what locals actually do.</P>
         <View style={styles.field}>
-          <Label>Destination</Label>
-          <TextInput style={input} value={req.destination} onChangeText={(v) => set("destination", v)} placeholder="City or region, e.g. Mexico City" placeholderTextColor={t.muted} />
+          <Label>Kind of trip</Label>
+          <ChipRow
+            options={MODES}
+            labels={MODE_LABELS}
+            value={[req.mode]}
+            single
+            onChange={([m]) =>
+              m && setReq((r) => ({ ...r, mode: m, days: m === "multi" ? Math.max(r.days, 5) : Math.min(r.days, MAX_DAYS.single) }))
+            }
+          />
+        </View>
+        <View style={styles.field}>
+          <Label>{req.mode === "multi" ? "Country or region" : "Destination"}</Label>
+          <TextInput
+            style={input}
+            value={req.destination}
+            onChangeText={(v) => set("destination", v)}
+            placeholder={req.mode === "multi" ? "Egypt, Japan, the Amalfi Coast" : "City or region, e.g. Mexico City"}
+            placeholderTextColor={t.muted}
+          />
         </View>
         <View style={styles.field}>
           <Label>Days</Label>
@@ -100,7 +121,7 @@ export default function Plan() {
             <Text style={{ color: t.ink, fontWeight: "600", minWidth: 56, textAlign: "center" }}>
               {req.days} {req.days === 1 ? "day" : "days"}
             </Text>
-            <Pressable accessibilityLabel="More days" onPress={() => set("days", Math.min(7, req.days + 1))} style={{ padding: 10, paddingHorizontal: 16 }}>
+            <Pressable accessibilityLabel="More days" onPress={() => set("days", Math.min(MAX_DAYS[req.mode], req.days + 1))} style={{ padding: 10, paddingHorizontal: 16 }}>
               <Text style={{ color: t.ink, fontSize: 18 }}>+</Text>
             </Pressable>
           </View>
