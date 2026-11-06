@@ -1,25 +1,27 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IconCompass, IconGlobe, IconPeople, IconSuitcase, IconUser } from "./icons";
+import { IconGlobe, IconPeople, IconSuitcase, IconUser } from "./icons";
 import { Mark } from "./Mark";
 import { canSubmitPicks, useMe } from "./useMe";
 
+/** Phones: the sections in a tab bar at the bottom. Planning is the button at the top right. */
 const TABS = [
   { href: "/", label: "Browse", Icon: IconGlobe },
-  { href: "/plan", label: "Plan", Icon: IconCompass },
   { href: "/trips", label: "Trips", Icon: IconSuitcase },
   { href: "/friends", label: "Friends", Icon: IconPeople },
   { href: "/profile", label: "You", Icon: IconUser },
 ];
 
-/** Top bar on every page; on phones the sections move to a tab bar at the bottom of the screen. */
+/**
+ * The header spans the window: the mark at the far left, the sections in the middle, and
+ * "Plan a trip" as a button at the far right, over the Pylos wave running edge to edge.
+ */
 export function Nav() {
   const path = usePathname();
   const me = useMe();
   const links = [
     { href: "/", label: "Browse" },
-    { href: "/plan", label: "Plan" },
     { href: "/trips", label: "My trips" },
     { href: "/friends", label: "Friends" },
     { href: "/sources", label: "Sources" },
@@ -33,33 +35,40 @@ export function Nav() {
     <>
       <header className="topbar">
         <div className="topbar-row">
-          <Link href="/" className="brand">
-            <Mark width={60} tight cut="full" />
-            <span className="brand-word">Pylos</span>
-          </Link>
+          <div className="topbar-start">
+            <Link href="/" className="brand">
+              <Mark width={60} tight cut="full" />
+              <span className="brand-word">Pylos</span>
+            </Link>
+          </div>
           <nav className="nav" aria-label="Main">
             {links.map((l) => (
-              <Link key={l.href} href={l.href} aria-current={current(l.href) ? "page" : undefined}>
+              <Link key={l.href} href={l.href} className={l.href === "/sources" ? "nav-extra" : undefined} aria-current={current(l.href) ? "page" : undefined}>
                 {l.label}
               </Link>
             ))}
           </nav>
-          <div className="account">
-            {!me ? (
-              // Holds the space while we check, so nothing jumps when "Sign in" appears.
-              <span className="account-slot" aria-hidden="true" />
-            ) : signedIn ? (
-              <Link href="/profile" className="me-link" title={me.user?.email} aria-current={path.startsWith("/profile") ? "page" : undefined}>
-                <span className="me-dot" aria-hidden="true">
-                  {(me.user?.email?.[0] ?? "·").toUpperCase()}
-                </span>
-                <span className="me-label">You</span>
-              </Link>
-            ) : (
-              <Link href={loginHref} title="Optional: keep your trips across devices">
-                Sign in
-              </Link>
-            )}
+          <div className="topbar-end">
+            <div className="account">
+              {!me ? (
+                // Holds the space while we check, so nothing jumps when "Sign in" appears.
+                <span className="account-slot" aria-hidden="true" />
+              ) : signedIn ? (
+                <Link href="/profile" className="me-link" title={me.user?.email} aria-current={path.startsWith("/profile") ? "page" : undefined}>
+                  <span className="me-dot" aria-hidden="true">
+                    {(me.user?.email?.[0] ?? "·").toUpperCase()}
+                  </span>
+                  <span className="me-label">You</span>
+                </Link>
+              ) : (
+                <Link href={loginHref} title="Optional: keep your trips across devices">
+                  Sign in
+                </Link>
+              )}
+            </div>
+            <Link href="/plan" className="plan-cta" aria-current={current("/plan") ? "page" : undefined}>
+              Plan<span className="plan-cta-more">&nbsp;a trip</span>
+            </Link>
           </div>
         </div>
         <div className="meander" aria-hidden="true" />

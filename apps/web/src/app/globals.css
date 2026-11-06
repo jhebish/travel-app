@@ -98,26 +98,51 @@ img { max-width: 100%; }
 .shell {
   padding-left: max(20px, env(safe-area-inset-left, 0px));
   padding-right: max(20px, env(safe-area-inset-right, 0px));
-  padding-block: 0 72px;
+  padding-block: 28px 72px;
 }
 .app { max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
 /* The page content: keeps the same spacing between a page's top-level blocks. */
 .main { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
+/*
+  The header spans the window: the mark at the far left, the sections centred, "Plan a trip" at the
+  far right, and the wave running edge to edge underneath. The page itself stays a reading column.
+*/
 .topbar {
   position: sticky; top: 0; z-index: 20;
-  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
-  padding-block: 18px 14px;
-}
-/* The bar's background spans the whole window, so wide pages don't show through at the sides. */
-.topbar::before {
-  content: ""; position: absolute; inset: 0 calc(50% - 50vw); z-index: -1;
+  display: flex; flex-direction: column;
   background: color-mix(in srgb, var(--bg) 90%, transparent);
   backdrop-filter: saturate(1.4) blur(12px);
   -webkit-backdrop-filter: saturate(1.4) blur(12px);
 }
-.brand { font-size: 24px; font-weight: 800; letter-spacing: -0.035em; color: var(--ink); text-decoration: none; margin-right: auto; }
-.nav { display: flex; gap: 18px; overflow-x: auto; }
+.topbar-row {
+  --bar-gutter: clamp(20px, 3.5vw, 52px);
+  display: flex; align-items: center; gap: 28px;
+  padding: 16px max(var(--bar-gutter), env(safe-area-inset-right, 0px)) 12px max(var(--bar-gutter), env(safe-area-inset-left, 0px));
+}
+/* Equal sides keep the sections centred in the window; neither side shrinks past its content. */
+.topbar-start, .topbar-end { flex: 1 1 0; min-width: max-content; display: flex; align-items: center; }
+.topbar-end { justify-content: flex-end; gap: 18px; }
+.brand { font-size: 24px; color: var(--ink); text-decoration: none; }
+.nav { flex: 0 1 auto; min-width: 0; display: flex; gap: 28px; overflow-x: auto; scrollbar-width: none; }
+.nav::-webkit-scrollbar { display: none; }
 .nav a { color: var(--muted); font-weight: 600; font-size: 15px; text-decoration: none; padding-block: 4px; border-bottom: 2px solid transparent; white-space: nowrap; }
+/* Planning is the one action in the header: a plum pill at the far right. */
+.plan-cta {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  min-height: 42px; padding: 0 22px; border-radius: 999px;
+  background: var(--btn); color: var(--btn-ink); text-decoration: none; white-space: nowrap;
+  font: 400 13px/1 var(--font-display); letter-spacing: 0.14em; text-transform: uppercase;
+  transition: background .15s;
+}
+@media (hover: hover) { .plan-cta:hover { background: var(--btn-hover); } }
+.plan-cta[aria-current="page"] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--accent); }
+/* Narrower windows: the account shrinks to its initial, then Sources steps out (it's in You). */
+@media (max-width: 1080px) {
+  .topbar-row { gap: 20px; }
+  .nav { gap: 20px; }
+  .topbar-end .me-label { display: none; }
+}
+@media (max-width: 900px) { .nav .nav-extra { display: none; } }
 .nav a:hover { color: var(--ink); }
 .nav a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--ink); }
 .account { font-size: 14px; color: var(--muted); display: flex; gap: 12px; align-items: center; min-height: 30px; }
@@ -572,8 +597,6 @@ h3 { font-size: 20px; }
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='12' viewBox='0 0 28 12'%3E%3Cpath d='M0 11 C6 11 8 9 8 6 C8 3 10.5 1 14 1 C17.5 1 19.5 3 19.5 5.2 C19.5 8 22.5 11 28 11 M19.5 5.2 C19.5 7.2 18 8.2 16.4 8.2 C15 8.2 14.2 7.3 14.2 6.2 C14.2 5.2 15 4.6 15.9 4.6' fill='none' stroke='black' stroke-width='1.25' stroke-linecap='round'/%3E%3C/svg%3E") repeat-x left center / 28px 12px;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='12' viewBox='0 0 28 12'%3E%3Cpath d='M0 11 C6 11 8 9 8 6 C8 3 10.5 1 14 1 C17.5 1 19.5 3 19.5 5.2 C19.5 8 22.5 11 28 11 M19.5 5.2 C19.5 7.2 18 8.2 16.4 8.2 C15 8.2 14.2 7.3 14.2 6.2 C14.2 5.2 15 4.6 15.9 4.6' fill='none' stroke='black' stroke-width='1.25' stroke-linecap='round'/%3E%3C/svg%3E") repeat-x left center / 28px 12px;
 }
-.topbar { padding-block: 20px 0; flex-direction: column; align-items: stretch; gap: 12px; }
-.topbar-row { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
 /* The signature: the winged sandal beside PYLOS in tracked inscription capitals. */
 .brand { display: inline-flex; align-items: center; gap: 12px; font-size: 24px; line-height: 1; text-transform: uppercase; }
 .brand .mark { flex: none; display: block; }
@@ -849,12 +872,15 @@ html, body { overflow-x: clip; }
    ===================================================================== */
 @media (max-width: 720px) {
   .shell { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
-  .topbar { position: relative; padding-top: max(14px, env(safe-area-inset-top, 0px)); gap: 10px; }
-  .topbar::before { background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
-  .topbar .nav { display: none; }
-  .topbar-row { flex-wrap: nowrap; justify-content: space-between; gap: 12px; }
+  .shell { padding-top: 22px; }
+  .topbar { position: relative; background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .topbar-row { gap: 12px; padding-top: max(14px, env(safe-area-inset-top, 0px)); padding-bottom: 10px; }
+  .topbar .nav, .topbar .account { display: none; }
+  .topbar-start, .topbar-end { flex: 0 1 auto; min-width: 0; }
+  .topbar-start { margin-right: auto; }
   .brand { font-size: 21px; gap: 10px; }
   .brand .mark { width: 50px; height: auto; }
+  .plan-cta { min-height: 38px; padding: 0 16px; font-size: 12px; letter-spacing: 0.12em; }
   .me-label { display: none; }
   .tabbar {
     display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
@@ -879,6 +905,8 @@ html, body { overflow-x: clip; }
   .dest > .row > .btn { flex: none; width: 100%; }
   .globe-zoom button { width: 40px; height: 40px; }
 }
+/* The smallest phones: "Plan" alone keeps the header on one line. */
+@media (max-width: 359px) { .plan-cta-more { display: none; } }
 /* The keyboard is up: give the form the room. */
 @media (max-width: 720px) {
   body:has(:is(input:not([type="checkbox"], [type="radio"], [type="range"]), textarea, select):focus) .tabbar { display: none; }
