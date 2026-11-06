@@ -71,10 +71,13 @@ function DestinationPanel({ d, detail, sampleBusy }: { d: BrowseDestination; det
       <p className="hint">Best months: {monthsLabel(d.bestMonths)}</p>
 
       <div className="dest-sample">
-        <span className="label">
-          {days} {days === 1 ? "day" : "days"} in {d.name}
-        </span>
-        {sample?.status === "ready" && <DaysSlider value={days} min={range.min} max={range.max} onChange={setDays} />}
+        {sample?.status === "ready" ? (
+          <DaysSlider value={days} min={range.min} max={range.max} onChange={setDays} />
+        ) : (
+          <span className="label">
+            {d.sampleDays} days in {d.name}
+          </span>
+        )}
         {sample?.status === "ready" && plan.itinerary ? (
           <>
             <ItineraryPreview days={previewFromItinerary(plan.itinerary)} route={plan.itinerary.route?.map((l) => ({ city: l.city, days: l.days }))} maxStops={3} compact />

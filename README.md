@@ -201,3 +201,42 @@ Follow friends, see their shared trips, browse the top-rated public trips in any
 - **Browse** (the home page, `/`; public, no account needed; `/browse` redirects here): a turning globe of trending destinations (2026 trend lists, seasonality and activity on Pylos), each with a cached sample itinerary (`/d/<key>`), the best public trips there, and "Plan my own". Signed-in travelers with a few logged places get "Picked for you" predictions. Run `supabase/migrations/20261106100000_browse.sql` to enable sample caching and picks. The trip planner lives at `/plan`; older `/?dest=…` and `/?from=…` links redirect there.
 - **Several stops**: choose "Several stops" on the planner (or `mode: "multi"` in the API) with a country or region and up to 14 days. The planner picks the route (stops, order, days, transfers), then plans every day and each stop's hotels in parallel.
 - **Speed**: the fast model writes the outline and days; malformed answers are repaired instead of re-planned; finished days stream to the page as they're ready.
+
+## Your taste, connected accounts, photos and planning together
+
+Run `supabase/migrations/20261107000000_taste_together.sql` after deploying this version (the app
+works before it, with these features off). It also stops travelers' browsers from writing trips
+directly: trips are now inserted and edited only by the server, which checks who is asking.
+
+- **Past trips: what you did.** On the You page (`/profile`), each logged trip can list where you
+  stayed, ate and went, with a thumbs up or down. Logging a Pylos trip ("I went") offers its hotels
+  and stops as "did you go?" chips.
+- **Taste profile.** Those places, imports and your thumbs on Pylos plans become `taste_signals`.
+  The fast model turns them into a cached profile (`taste_profiles`); the planner gets a TASTE
+  section (profile plus your strongest favourites, nearest to the trip first) for days, swaps,
+  rebuilt days and hotels, and marks matching picks "For you".
+- **Connected accounts and imports** (`components/connect.tsx`):
+  - Google Calendar: a one-time read of past trips, hotel stays and dinner reservations (Resy and
+    OpenTable bookings land in calendars). Set `GOOGLE_OAUTH_CLIENT_ID` and
+    `GOOGLE_OAUTH_CLIENT_SECRET` (Google Cloud → APIs & Services → Credentials → OAuth client,
+    type Web application, redirect URI `https://www.pylos.ai/api/connect/google_calendar/callback`,
+    enable the Google Calendar API, scope `calendar.readonly`). Until Google verifies the app, only
+    the test users you add on the consent screen can connect.
+  - Facebook: check-ins and tagged places with `META_APP_ID` / `META_APP_SECRET` (redirect URI
+    `/api/connect/facebook/callback`; `user_posts` and `user_tagged_places` need Meta app review).
+  - Files read in the browser (zips too): Google Maps Takeout, Instagram and Facebook data
+    downloads, Swarm exports, .ics calendars. Only the places found are sent to the server.
+  - Pasted text (Resy/OpenTable history, Beli lists, notes) → `/api/taste/extract`.
+  - Access tokens are used once and revoked; none are stored (`connections` keeps only dates/counts).
+- **Photos.** Google Places photos are captured when places are verified and served through
+  `/api/photo` (a cached redirect; author credited). Needs `GOOGLE_PLACES_API_KEY` with the Places
+  API (New) enabled; each photo size is fetched from Google about once a week.
+- **Plan together.** Owners add mutual-follow friends or share an invite link (`/join/<token>`,
+  two weeks). Everyone can react to stops ("I'm in" / "pass"), swap stops and rebuild days; rebuilt
+  days keep stops anyone is in for and blend everyone's taste. `trip_members`, `trip_invites`,
+  `trip_reactions`; edits use an `updated_at` check so simultaneous changes don't overwrite each other.
+- **Days slider.** Destination itineraries and shared trips can be fitted to fewer days instantly
+  (`fitItineraryToDays`); for more days, destinations use a longer version planned once
+  (`/api/browse/<key>/sample?long=1`) and trimmed the same way.
+- **Rate limits** are recorded in `rate_events` before the work starts (builds, edits, hotel
+  searches, imports, taste refreshes), so parallel requests count against each other.
