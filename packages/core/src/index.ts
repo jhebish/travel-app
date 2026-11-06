@@ -12,3 +12,4 @@ export * from "./countries";
 export * from "./community";
 export * from "./destinations";
 export * from "./route";
+export * from "./taste";
