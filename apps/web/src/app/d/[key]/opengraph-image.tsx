@@ -2,7 +2,7 @@ import { DESTINATIONS } from "@travel/core";
 import { OG_SIZE, OG_TYPE, destinationImage } from "@/lib/og";
 
 export const runtime = "nodejs";
-export const alt = "A Pylos destination, with a sample trip";
+export const alt = "A Pylos destination and its itinerary";
 export const size = OG_SIZE;
 export const contentType = OG_TYPE;
 
