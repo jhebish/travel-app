@@ -15,10 +15,10 @@ export function useMe(): Me | undefined {
   const [me, setMe] = useState<Me | undefined>(undefined);
   useEffect(() => {
     let alive = true;
-    // People opening a shared trip link just read it; don't create a guest account for them.
-    // Shared trips, Browse and destination samples are public: don't create guest accounts there.
+    // Browse (the home page), shared trips and destination samples are public: visitors just look,
+    // so don't create a guest account until they start planning.
     const path = window.location.pathname;
-    const publicPage = path.startsWith("/t/") || path.startsWith("/browse") || path.startsWith("/d/");
+    const publicPage = path === "/" || path.startsWith("/t/") || path.startsWith("/browse") || path.startsWith("/d/");
     const load = () => {
       (publicPage ? Promise.resolve() : ensureSession())
         .then(() => api<Me>("/api/me"))

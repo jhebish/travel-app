@@ -45,7 +45,7 @@ export default async function SharedTripPage({ params }: P) {
       <aside className="cta">
         <h2>Want a trip like this?</h2>
         <p className="lede">Tell Pylos where you&apos;re going and who&apos;s coming. You&apos;ll get a plan built from places the people who live there actually go.</p>
-        <Link className="btn" href="/">
+        <Link className="btn" href="/plan">
           Plan your own trip
         </Link>
       </aside>

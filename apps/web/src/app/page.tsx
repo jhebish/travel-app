@@ -1,418 +1,352 @@
 "use client";
 import {
-  ABOUT_OPTIONS,
-  AGE_BANDS,
-  BUDGETS,
-  INTERESTS,
-  MAX_DAYS,
-  PACES,
-  PARTIES,
-  STAY_PRICES,
-  STAY_STYLES,
+  DESTINATION_BY_KEY,
+  DESTINATION_TAGS,
+  flag,
+  monthsLabel,
   type BrowseDestination,
-  type BuildEvent,
-  type TripMode,
-  type TripRequest,
+  type CommunityTrip,
+  type Destination,
+  type DestinationTag,
+  type ForYouPick,
+  type Itinerary,
 } from "@travel/core";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
-import { Chips, SingleChips } from "@/components/Chips";
-import { TripView } from "@/components/TripView";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { TripCard } from "@/components/community";
+import { ItineraryPreview, previewFromItinerary } from "@/components/ItineraryPreview";
 import { useMe } from "@/components/useMe";
-import { api, streamEvents } from "@/lib/api";
-import { BuildProgress, initialBuild, reduceBuild, type BuildState } from "@/components/BuildProgress";
-import type { Trip } from "@/lib/trips";
+import { api } from "@/lib/api";
 
-const TypeformIntake = dynamic(() => import("@/components/TypeformIntake"), {
+const Globe = dynamic(() => import("@/components/Globe"), {
   ssr: false,
-  loading: () => <div className="tf-wrap tf-loading" aria-busy="true" />,
+  loading: () => <div className="globe globe-loading" aria-hidden="true" />,
 });
 
-const ABOUT_LABELS: Record<string, string> = {
-  "LGBTQ+ traveler": "LGBTQ+",
-  "Eats halal": "Halal",
-  Vegetarian: "Vegetarian",
-  "Doesn't drink alcohol": "Sober",
-  "Needs step-free access": "Step-free",
-  "First time visiting": "First visit",
-  "Has been before": "Been before",
-};
-const PARTY_LABELS: Record<string, string> = { Solo: "Solo", Couple: "Couple", "Family with kids": "Family", "Group of friends": "Friends" };
-const BUDGET_LABELS: Record<string, string> = { Budget: "$", "Mid-range": "$$", Splurge: "$$$" };
+type SampleState = { status: "ready"; itinerary: Itinerary } | { status: "pending" | "generating" | "failed" | "unavailable" };
+interface Detail {
+  destination: Destination;
+  sample: SampleState;
+  trips: CommunityTrip[];
+}
+interface ForYou {
+  picks: ForYouPick[];
+  placesLogged: number;
+  needMore: boolean;
+  member: boolean;
+  signedIn: boolean;
+}
 
-const blank: TripRequest = {
-  mode: "single",
-  destination: "",
-  days: 3,
-  startDate: null,
-  party: "Couple",
-  age: "25–34",
-  about: [],
-  budget: "Mid-range",
-  interests: ["Food"],
-  pace: "Balanced",
-  extra: "",
-  stay: { on: true, styles: ["Boutique"], price: "$150–300" },
-};
+const planHref = (d: Destination) =>
+  `/plan?dest=${encodeURIComponent(d.kind === "region" ? d.name : `${d.name}, ${d.country}`)}&mode=${d.kind === "region" ? "multi" : "single"}&days=${d.sampleDays}`;
 
-function Planner() {
+function DestinationPanel({ d, detail, sampleBusy }: { d: BrowseDestination; detail: Detail | null; sampleBusy: boolean }) {
+  const sample = detail?.sample;
+  return (
+    <div className="dest">
+      <div className="dest-head">
+        <span className="eyebrow">
+          <span aria-hidden="true">{flag(d.countryCode)}</span> {d.kind === "region" ? `Several stops · ${d.country}` : d.country}
+        </span>
+        <h2>{d.name}</h2>
+        <div className="badges">
+          {d.inSeason && <span className="badge season">In season now</span>}
+          {d.trend && <span className="badge trend">{d.trend}</span>}
+          {d.publicTrips > 0 && (
+            <span className="badge">
+              {d.publicTrips} {d.publicTrips === 1 ? "trip" : "trips"} on Pylos
+            </span>
+          )}
+        </div>
+      </div>
+      <p className="dest-blurb">{d.blurb}</p>
+      <p className="hint">Best months: {monthsLabel(d.bestMonths)}</p>
+
+      <div className="dest-sample">
+        <span className="label">
+          Sample {d.sampleDays}-day {d.kind === "region" ? "route" : "itinerary"}
+        </span>
+        {sample?.status === "ready" ? (
+          <>
+            <ItineraryPreview days={previewFromItinerary(sample.itinerary)} route={sample.itinerary.route?.map((l) => ({ city: l.city, days: l.days }))} maxStops={3} compact />
+            <Link className="linkbtn" href={`/d/${d.key}`}>
+              See the full sample itinerary →
+            </Link>
+          </>
+        ) : sample?.status === "unavailable" ? (
+          <p className="hint">Sample itineraries are coming soon.</p>
+        ) : sample?.status === "failed" && !sampleBusy ? (
+          <p className="hint">We couldn&apos;t sketch a sample just now. Plan your own below.</p>
+        ) : (
+          <div className="dest-sketching">
+            <span className="thinking">
+              <span className="dot" />
+              Sketching a sample {d.kind === "region" ? "route" : "trip"} with local picks…
+            </span>
+            <ItineraryPreview days={Array.from({ length: Math.min(3, d.sampleDays) }, (_, i) => ({ label: `Day ${i + 1}`, theme: "" }))} compact />
+          </div>
+        )}
+      </div>
+
+      <div className="row">
+        <Link className="btn" href={planHref(d)}>
+          Plan my own trip here
+        </Link>
+        {d.kind === "city" && (
+          <Link className="btn ghost" href={`/plan?dest=${encodeURIComponent(d.country)}&mode=multi&days=7`}>
+            Several stops in {d.country}
+          </Link>
+        )}
+      </div>
+
+      {!!detail?.trips.length && (
+        <div className="stack" style={{ gap: 12 }}>
+          <span className="label">Top trips from travelers</span>
+          <div className="tgrid">
+            {detail.trips.slice(0, 2).map((t) => (
+              <TripCard key={t.id} trip={t} />
+            ))}
+          </div>
+          <Link className="linkbtn" href={`/friends?tab=top&city=${encodeURIComponent(d.name)}`}>
+            All trips for {d.name}
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Browse() {
   const me = useMe();
   const router = useRouter();
   const params = useSearchParams();
-  const [trending, setTrending] = useState<BrowseDestination[]>([]);
-  const [req, setReq] = useState<TripRequest>(blank);
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<{ text: string; err?: boolean } | null>(null);
-  const [trip, setTrip] = useState<Trip | null>(null);
-  const [build, setBuild] = useState<BuildState | null>(null);
-  const progressRef = useRef<HTMLDivElement>(null);
-  const [customMix, setCustomMix] = useState<boolean | null>(null);
-  const tripRef = useRef<HTMLDivElement>(null);
-  // Typeform intake: undefined while checking, null when it isn't set up.
-  const [tfForm, setTfForm] = useState<string | null | undefined>(undefined);
-  const [mode, setMode] = useState<"typeform" | "quick">("typeform");
-  const [tfKey, setTfKey] = useState(0);
-  const [building, setBuilding] = useState<{ destination: string; days: number }>({ destination: "", days: 3 });
-  const set = <K extends keyof TripRequest>(k: K, v: TripRequest[K]) => setReq((r) => ({ ...r, [k]: v }));
+  const [dests, setDests] = useState<BrowseDestination[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [tag, setTag] = useState<DestinationTag | "All">("All");
+  const [selected, setSelected] = useState<string | null>(params.get("d"));
+  const [detail, setDetail] = useState<Detail | null>(null);
+  const [sampleBusy, setSampleBusy] = useState(false);
+  const [forYou, setForYou] = useState<ForYou | null>(null);
+  const requested = useRef(new Set<string>());
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    api<{ formId: string | null }>("/api/typeform")
-      .then((r) => setTfForm(r.formId))
-      .catch(() => setTfForm(null));
     api<{ destinations: BrowseDestination[] }>("/api/browse")
-      .then((r) => setTrending(r.destinations.slice(0, 6)))
-      .catch(() => {});
+      .then((r) => setDests(r.destinations))
+      .catch((e) => setErr((e as Error).message));
   }, []);
-
-  // Links from Browse and Friends: ?dest=Egypt&mode=multi&days=7
-  useEffect(() => {
-    const dest = params.get("dest");
-    if (!dest) return;
-    const m: TripMode = params.get("mode") === "multi" ? "multi" : "single";
-    const days = Number(params.get("days"));
-    setMode("quick");
-    setReq((r) => ({
-      ...r,
-      mode: m,
-      destination: dest.slice(0, 120),
-      days: days >= 1 ? Math.min(MAX_DAYS[m], Math.round(days)) : m === "multi" ? Math.max(r.days, 5) : Math.min(r.days, MAX_DAYS.single),
-    }));
-  }, [params]);
-
-  function setTripMode(m: TripMode) {
-    setReq((r) => ({ ...r, mode: m, days: m === "multi" ? Math.max(r.days, 5) : Math.min(r.days, MAX_DAYS.single) }));
-  }
-
-  function pickTrending(d: BrowseDestination) {
-    const m: TripMode = d.kind === "region" ? "multi" : "single";
-    setReq((r) => ({ ...r, mode: m, destination: d.kind === "region" ? d.name : `${d.name}, ${d.country}`, days: m === "multi" ? Math.max(r.days, d.sampleDays) : Math.min(r.days, MAX_DAYS.single) }));
-  }
 
   useEffect(() => {
     if (!me?.user) return;
-    api<{ prefs: { useCustom: boolean } | null }>("/api/prefs")
-      .then((p) => setCustomMix(!!p.prefs?.useCustom))
-      .catch(() => setCustomMix(false));
-    const from = params.get("from");
-    if (from)
-      api<{ trip: Trip }>(`/api/trips/${from}`)
-        .then(({ trip }) => {
-          setMode("quick");
-          setReq({ ...blank, ...trip.request, startDate: null });
-          setStatus({ text: "Loaded your earlier request. Adjust anything, then build." });
-        })
-        .catch(() => {});
-  }, [me?.user, params]);
+    api<ForYou>("/api/browse/foryou")
+      .then(setForYou)
+      .catch(() => {});
+  }, [me?.user]);
 
-  function onEvent(e: BuildEvent) {
-    setBuild((b) => (b ? reduceBuild(b, e) : b));
-  }
-
-  /** Stream a build from `path` and show live progress, then the finished trip. */
-  async function runBuild(path: string, body: unknown, info: { destination: string; days: number; hotels: boolean; multi?: boolean }) {
-    setBusy(true);
-    setStatus(null);
-    setTrip(null);
-    setBuilding({ destination: info.destination, days: info.days });
-    setBuild(initialBuild({ multi: info.multi, hotels: info.hotels }));
-    setTimeout(() => progressRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
-    let finished: Trip | null = null;
-    let failure: string | null = null;
-    let redirect: string | null = null;
-    try {
-      await streamEvents<BuildEvent>(path, body, (ev) => {
-        if (ev.type === "done") finished = ev.trip;
-        else if (ev.type === "error") failure = ev.message;
-        else if (ev.type === "redirect") redirect = ev.to;
-        else {
-          if (ev.type === "request") setBuilding({ destination: ev.request.destination, days: ev.request.days });
-          onEvent(ev);
-        }
-      });
-      if (redirect) {
-        router.push(redirect);
-        return;
-      }
-      if (finished) {
-        setBuild((b) => (b ? { ...b, pct: 100, label: "Done" } : b));
-        await new Promise((r) => setTimeout(r, 450)); // let the bar land at 100%
-        setTrip(finished);
-        setTimeout(() => tripRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
-      } else {
-        setStatus({ text: failure ?? "The connection dropped before your trip finished. Try again.", err: true });
-      }
-    } catch (err) {
-      setStatus({ text: (err as Error).message, err: true });
-    } finally {
-      setBusy(false);
-      setBuild(null);
-    }
-  }
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!req.destination.trim()) {
-      setStatus({ text: "Add a destination first.", err: true });
+  // Load the chosen destination; plan its sample the first time anyone opens it.
+  useEffect(() => {
+    if (!selected || !DESTINATION_BY_KEY[selected]) {
+      setDetail(null);
       return;
     }
-    await runBuild("/api/trips", req, { destination: req.destination.trim(), days: req.days, hotels: req.stay.on, multi: req.mode === "multi" });
+    let alive = true;
+    let poll: ReturnType<typeof setTimeout> | null = null;
+    const load = async (tries = 0) => {
+      try {
+        const d = await api<Detail>(`/api/browse/${selected}`);
+        if (!alive) return;
+        setDetail(d);
+        const st = d.sample.status;
+        if (st === "pending" || (st === "failed" && !requested.current.has(selected))) {
+          if (requested.current.has(selected)) return;
+          requested.current.add(selected);
+          setSampleBusy(true);
+          const { sample } = await api<{ sample: SampleState }>(`/api/browse/${selected}/sample`, { method: "POST" });
+          if (!alive) return;
+          setSampleBusy(false);
+          if (sample.status === "ready") setDetail((x) => (x ? { ...x, sample } : x));
+          else if (sample.status === "generating") poll = setTimeout(() => load(tries + 1), 4000);
+          else setDetail((x) => (x ? { ...x, sample } : x));
+        } else if (st === "generating" && tries < 30) {
+          poll = setTimeout(() => load(tries + 1), 4000);
+        }
+      } catch {
+        if (alive) setSampleBusy(false);
+      }
+    };
+    void load();
+    return () => {
+      alive = false;
+      if (poll) clearTimeout(poll);
+    };
+  }, [selected]);
+
+  function choose(key: string, scroll = false) {
+    setSelected(key);
+    router.replace(`/?d=${key}`, { scroll: false });
+    if (scroll) setTimeout(() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   }
 
-  function onTypeformSubmit(responseId: string) {
-    void runBuild("/api/typeform/build", { responseId }, { destination: "", days: 3, hotels: false });
-  }
-
-  const signedOut = me && !me.user;
-
-  const useTypeform = !!tfForm && mode === "typeform";
-  const modeSwitch = tfForm ? (
-    <p className="hint" style={{ textAlign: "center" }}>
-      {useTypeform ? (
-        <button type="button" className="linkbtn" onClick={() => setMode("quick")}>
-          Prefer a quick one-page form?
-        </button>
-      ) : (
-        <button type="button" className="linkbtn" onClick={() => setMode("typeform")}>
-          Answer one question at a time instead
-        </button>
-      )}
-    </p>
-  ) : null;
+  const shown = useMemo(() => (dests ?? []).filter((d) => tag === "All" || d.tags.includes(tag)), [dests, tag]);
+  const markers = useMemo(() => {
+    const max = Math.max(1, ...shown.map((d) => d.score));
+    return shown.map((d) => ({ key: d.key, name: d.name, sub: d.country, lat: d.lat, lng: d.lng, heat: d.score / max }));
+  }, [shown]);
+  const current = dests?.find((d) => d.key === selected) ?? null;
+  const signedOut = me !== undefined && !me.user;
+  const member = !!forYou?.member;
 
   return (
-    <>
-      {useTypeform && (
-        <section className="stack" style={{ gap: 14 }}>
-          <div className="where">
-            <h1>Where to?</h1>
-            <p className="lede">A minute of questions about who&apos;s coming and what you&apos;re into. Your plan is built from the places locals actually go.</p>
-          </div>
-          {me?.user ? (
-            busy || trip ? (
-              !busy && (
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={() => {
-                    setTrip(null);
-                    setStatus(null);
-                    setTfKey((k) => k + 1);
-                  }}
-                >
-                  Plan another trip
-                </button>
-              )
-            ) : (
-              <TypeformIntake key={tfKey} formId={tfForm!} uid={me.user.id} onSubmit={onTypeformSubmit} />
-            )
-          ) : (
-            <div className="tf-wrap tf-loading" aria-busy="true" />
-          )}
-          {status?.err && !busy && (
-            <>
-              <p className="status err" role="status">
-                {status.text}
-              </p>
-              <button type="button" className="btn ghost" onClick={() => { setStatus(null); setTfKey((k) => k + 1); }}>
-                Start the form again
-              </button>
-            </>
-          )}
-          {modeSwitch}
-        </section>
-      )}
-
-      {!useTypeform && tfForm !== undefined && (
-      <form className="stack" style={{ gap: 28 }} onSubmit={submit} autoComplete="off">
-        <div className="where">
-          <div className="seg triptype" role="radiogroup" aria-label="Kind of trip">
-            <button type="button" role="radio" aria-checked={req.mode === "single"} onClick={() => setTripMode("single")}>
-              One place
-            </button>
-            <button type="button" role="radio" aria-checked={req.mode === "multi"} onClick={() => setTripMode("multi")}>
-              Several stops
-            </button>
-            <button type="button" role="radio" aria-checked={false} onClick={() => router.push("/browse")}>
-              Not sure yet
-            </button>
-          </div>
-          <label htmlFor="dest">
-            <h1>{req.mode === "multi" ? "Which country or region?" : "Where to?"}</h1>
-          </label>
-          <input
-            id="dest"
-            type="text"
-            placeholder={req.mode === "multi" ? "Egypt, Japan, the Amalfi Coast…" : "Lisbon, Oaxaca, Kyoto…"}
-            value={req.destination}
-            onChange={(e) => set("destination", e.target.value)}
-          />
-          <p className="lede">
-            {req.mode === "multi"
-              ? "We'll choose the stops, the order and how long to spend in each, then plan every day the way locals would."
-              : "Tell us who's coming and what you're into. Your plan is built from the places locals actually go."}
-          </p>
-          {trending.length > 0 && (
-            <div className="trending" aria-label="Trending destinations">
-              <span className="label">Trending now</span>
-              <div className="chips">
-                {trending.map((d) => (
-                  <button key={d.key} type="button" className="chip" onClick={() => pickTrending(d)}>
-                    {d.name}
-                    {d.kind === "region" && <small>several stops</small>}
-                  </button>
-                ))}
-                <Link className="chip chip-link" href="/browse">
-                  See the globe →
-                </Link>
-              </div>
-            </div>
-          )}
-        </div>
-        <div className="card">
-        <div className="two">
-          <div className="field">
-            <span className="label">Days</span>
-            <div className="stepper">
-              <button type="button" aria-label="Fewer days" onClick={() => set("days", Math.max(1, req.days - 1))}>
-                −
-              </button>
-              <output>
-                {req.days} {req.days === 1 ? "day" : "days"}
-              </output>
-              <button type="button" aria-label="More days" onClick={() => set("days", Math.min(MAX_DAYS[req.mode], req.days + 1))}>
-                +
-              </button>
-            </div>
-          </div>
-          <div className="field">
-            <label className="label" htmlFor="start">
-              Start date <small>(optional, for live hotel rates)</small>
-            </label>
-            <input id="start" type="date" value={req.startDate ?? ""} onChange={(e) => set("startDate", e.target.value || null)} />
-          </div>
-        </div>
-        <div className="field">
-          <span className="label">Who&apos;s going</span>
-          <SingleChips label="Who's going" options={PARTIES.map((v) => ({ value: v, label: PARTY_LABELS[v] }))} value={req.party} onChange={(v) => set("party", v)} />
-        </div>
-        <div className="two">
-          <div className="field">
-            <span className="label">Age</span>
-            <SingleChips label="Age" options={AGE_BANDS} value={req.age} onChange={(v) => set("age", v)} />
-          </div>
-          <div className="field">
-            <span className="label">Budget</span>
-            <SingleChips label="Budget" options={BUDGETS.map((v) => ({ value: v, label: BUDGET_LABELS[v] }))} value={req.budget} onChange={(v) => set("budget", v)} />
-          </div>
-        </div>
-        <div className="field">
-          <span className="label">
-            About you <small>(optional, private to you)</small>
-          </span>
-          <Chips label="About you" options={ABOUT_OPTIONS.map((v) => ({ value: v, label: ABOUT_LABELS[v] }))} value={req.about} onChange={(v) => set("about", v)} />
-        </div>
-
-        <div className="field">
-          <label className="switch" htmlFor="stay-on">
-            <div>
-              <b>Suggest places to stay</b>
-              <span>{req.mode === "multi" ? "Two options at each stop." : "Three hotel options that fit the trip."}</span>
-            </div>
-            <input id="stay-on" type="checkbox" checked={req.stay.on} onChange={(e) => set("stay", { ...req.stay, on: e.target.checked })} />
-          </label>
-          {req.stay.on && (
-            <div className="stack" style={{ gap: 14 }}>
-              <div className="field">
-                <span className="label">Style</span>
-                <Chips label="Hotel style" options={STAY_STYLES} value={req.stay.styles} onChange={(styles) => set("stay", { ...req.stay, styles })} />
-              </div>
-              <div className="field">
-                <span className="label">Per night</span>
-                <SingleChips label="Price per night" options={STAY_PRICES} value={req.stay.price} onChange={(price) => set("stay", { ...req.stay, price })} />
-              </div>
-            </div>
-          )}
-        </div>
-
-        <details className="more">
-          <summary>More preferences</summary>
-          <div className="stack">
-            <div className="field">
-              <span className="label">Into</span>
-              <Chips label="Interests" options={INTERESTS} value={req.interests} onChange={(v) => set("interests", v)} />
-            </div>
-            <div className="field">
-              <span className="label">Pace</span>
-              <SingleChips label="Pace" options={PACES} value={req.pace} onChange={(v) => set("pace", v)} />
-            </div>
-            <div className="field">
-              <label className="label" htmlFor="extra">
-                Anything else
-              </label>
-              <textarea id="extra" maxLength={500} placeholder="Anniversary trip, hate crowds, staying near the old town…" value={req.extra} onChange={(e) => set("extra", e.target.value)} />
-            </div>
-          </div>
-        </details>
-
-        {me?.user && (
-          <p className="hint">
-            Using {customMix ? "your own source mix" : "the app's default sources"}. <Link href="/sources">Adjust my mix</Link>
-          </p>
-        )}
-        {signedOut ? (
-          <Link className="btn" href="/login?next=/">
-            Sign in to build your trip
+    <div className="browse bleed">
+      <header className="browse-head">
+        <span className="eyebrow">Trips planned the local way</span>
+        <h1>Where to next?</h1>
+        <p className="lede">Turn the globe and tap a pin for a sample itinerary and the best-rated trips there. Pins are this season&apos;s trending places.</p>
+        <div className="row browse-cta">
+          <Link className="btn" href="/plan">
+            Plan a trip
           </Link>
-        ) : (
-          <button className="btn" type="submit" disabled={busy || !me}>
-            {busy ? "Building your trip" : "Build my trip"}
-          </button>
-        )}
-        <p className={`status${status?.err ? " err" : ""}`} role="status" aria-live="polite">
-          {busy ? "" : status?.text}
-        </p>
+          <span className="hint">Know where you&apos;re going? Plan it around who&apos;s coming and what you love.</span>
         </div>
-        {modeSwitch}
-      </form>
-      )}
+      </header>
 
-      <div ref={progressRef}>{build && <BuildProgress state={build} destination={building.destination || "your destination"} daysRequested={building.days} />}</div>
-      <div ref={tripRef}>{trip && <TripView trip={trip} />}</div>
-      {trip && (
-        <p className="hint" style={{ textAlign: "center" }}>
-          Saved to <Link href="/trips">My trips</Link>.
-        </p>
+      <div className="chips" role="group" aria-label="Filter by what you're into">
+        {(["All", ...DESTINATION_TAGS] as const).map((t) => (
+          <button key={t} type="button" className="chip" aria-pressed={tag === t} onClick={() => setTag(t)}>
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {err && <p className="status err">{err}</p>}
+
+      <section className="browse-main">
+        <div className="globe-col">
+          <Globe markers={markers} selected={selected} onSelect={(k) => choose(k, window.innerWidth < 900)} />
+          <p className="hint globe-hint">Drag to turn · tap a pin</p>
+        </div>
+        <aside className="card dest-panel" ref={panelRef} aria-live="polite">
+          {current ? (
+            <DestinationPanel d={current} detail={detail?.destination.key === current.key ? detail : null} sampleBusy={sampleBusy} />
+          ) : (
+            <div className="stack" style={{ gap: 14 }}>
+              <span className="eyebrow">Trending this month</span>
+              <h2>Pick a place to start</h2>
+              <ol className="hotlist">
+                {(dests ?? []).slice(0, 6).map((d, i) => (
+                  <li key={d.key}>
+                    <button type="button" onClick={() => choose(d.key)}>
+                      <span className="hot-rank">{i + 1}</span>
+                      <span>
+                        <b>{d.name}</b>
+                        <small>
+                          {d.country}
+                          {d.inSeason ? " · in season" : ""}
+                        </small>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </aside>
+      </section>
+
+      {/* For you: predictions from logged places, or an invitation to log them. */}
+      {signedOut ? (
+        <section className="callout row between">
+          <span>
+            <b>Want destinations picked for you?</b>{" "}
+            <span className="hint">Create a free account and log a few places you&apos;ve been. Pylos learns your taste and predicts where you&apos;ll love next.</span>
+          </span>
+          <Link className="btn sm" href="/login?next=/profile">
+            Sign up free
+          </Link>
+        </section>
+      ) : member && forYou && forYou.picks.length > 0 ? (
+        <section className="card foryou">
+          <div className="head">
+            <span className="eyebrow">Picked for you</span>
+            <h2>Where you&apos;ll probably love next</h2>
+            <p className="hint">Based on the {forYou.placesLogged} places you&apos;ve logged.</p>
+          </div>
+          <div className="foryou-grid">
+            {forYou.picks.map((p) => {
+              const d = DESTINATION_BY_KEY[p.key];
+              if (!d) return null;
+              return (
+                <button key={p.key} type="button" className="foryou-card" onClick={() => choose(p.key, true)}>
+                  <span className="eyebrow">
+                    <span aria-hidden="true">{flag(d.countryCode)}</span> {d.country}
+                  </span>
+                  <b>{d.name}</b>
+                  <span>{p.why}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ) : forYou?.signedIn && forYou.needMore ? (
+        <section className="callout row between">
+          <span>
+            <b>Get destinations picked for you.</b>{" "}
+            <span className="hint">
+              Log {Math.max(1, 2 - forYou.placesLogged)} more {2 - forYou.placesLogged === 1 ? "place" : "places"} you&apos;ve been and Pylos will predict where you&apos;ll love next.
+            </span>
+          </span>
+          <Link className="btn sm" href="/profile">
+            Log places
+          </Link>
+        </section>
+      ) : null}
+
+      <section className="stack" style={{ gap: 14 }}>
+        <div className="head">
+          <h2>Trending now</h2>
+          <p className="hint">In season this month, named on 2026 trend lists, or popular on Pylos.</p>
+        </div>
+        <div className="destgrid">
+          {shown.map((d) => (
+            <button key={d.key} type="button" className={`destcard${d.key === selected ? " on" : ""}`} onClick={() => choose(d.key, true)}>
+              <span className="eyebrow">
+                <span aria-hidden="true">{flag(d.countryCode)}</span> {d.kind === "region" ? `${d.country} · several stops` : d.country}
+              </span>
+              <b>{d.name}</b>
+              <span className="destcard-blurb">{d.blurb}</span>
+              <span className="destcard-foot">
+                {d.inSeason ? <span className="badge season">In season</span> : <span className="hint">Best {monthsLabel(d.bestMonths)}</span>}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {(signedOut || (me?.user?.isGuest && !member)) && (
+        <aside className="cta signup">
+          <span className="eyebrow">Free account</span>
+          <h2>Let your past trips plan the next one</h2>
+          <p className="lede">Log the places you&apos;ve been and what you loved. Pylos learns your taste, predicts where you&apos;ll love next, and plans it in seconds, with the places locals actually go.</p>
+          <div className="row">
+            <Link className="btn" href="/login?next=/profile">
+              Sign up free
+            </Link>
+            <Link className="btn ghost" href="/plan">
+              Plan a trip without an account
+            </Link>
+          </div>
+        </aside>
       )}
-    </>
+    </div>
   );
 }
 
 export default function Page() {
   return (
     <Suspense>
-      <Planner />
+      <Browse />
     </Suspense>
   );
 }

@@ -103,7 +103,7 @@ function Top() {
         <div className="empty">
           <b>{city ? `No public trips for ${city} yet` : "No public trips yet"}</b>
           <span className="hint">Build one and set it to Everyone from its Share menu to be the first.</span>
-          <Link href={city ? `/?dest=${encodeURIComponent(city)}` : "/"}>Plan a trip</Link>
+          <Link href={city ? `/plan?dest=${encodeURIComponent(city)}` : "/plan"}>Plan a trip</Link>
         </div>
       ) : (
         <div className="tgrid">

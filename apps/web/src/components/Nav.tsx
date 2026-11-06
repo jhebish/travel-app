@@ -9,14 +9,14 @@ export function Nav() {
   const router = useRouter();
   const me = useMe();
   const links = [
-    { href: "/", label: "Plan" },
-    { href: "/browse", label: "Browse" },
+    { href: "/", label: "Browse" },
+    { href: "/plan", label: "Plan" },
     { href: "/trips", label: "My trips" },
     { href: "/friends", label: "Friends" },
     { href: "/sources", label: "Sources" },
     ...(canSubmitPicks(me?.role) ? [{ href: "/picks", label: "Local picks" }] : []),
   ];
-  const current = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
+  const current = (href: string) => (href === "/" ? path === "/" || path.startsWith("/d/") : path.startsWith(href));
   return (
     <header className="topbar">
       <div className="topbar-row">

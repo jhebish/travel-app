@@ -69,7 +69,7 @@ export default function TripsPage() {
           ) : !trips.length ? (
             <div className="empty">
               <b>{filter === "all" ? "No trips yet" : filter === "saved" ? "Nothing saved yet" : "Nothing rated yet"}</b>
-              <span className="meta">{filter === "all" ? <>Build one on the <Link href="/">Plan</Link> page and it will appear here.</> : "Open a trip and use the stars or Save button."}</span>
+              <span className="meta">{filter === "all" ? <>Build one on the <Link href="/plan">Plan</Link> page and it will appear here.</> : "Open a trip and use the stars or Save button."}</span>
             </div>
           ) : (
             <ul className="list">
@@ -97,7 +97,7 @@ export default function TripsPage() {
                     <Link className="btn ghost small" href={`/trips/${t.id}`}>
                       Open
                     </Link>
-                    <Link className="btn ghost small" href={`/?from=${t.id}`}>
+                    <Link className="btn ghost small" href={`/plan?from=${t.id}`}>
                       Plan again
                     </Link>
                     <button className={`btn ghost small${confirm === t.id ? " danger" : ""}`} onClick={() => remove(t.id)}>

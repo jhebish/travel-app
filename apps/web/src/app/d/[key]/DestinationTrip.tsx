@@ -62,13 +62,13 @@ export default function DestinationTrip({ dkey }: { dkey: string }) {
     };
   }, [sample, d]);
 
-  const planHref = `/?dest=${encodeURIComponent(d.kind === "region" ? d.name : `${d.name}, ${d.country}`)}&mode=${d.kind === "region" ? "multi" : "single"}&days=${d.sampleDays}`;
+  const planHref = `/plan?dest=${encodeURIComponent(d.kind === "region" ? d.name : `${d.name}, ${d.country}`)}&mode=${d.kind === "region" ? "multi" : "single"}&days=${d.sampleDays}`;
 
   return (
     <>
       <div className="byline">
         <span className="hint">
-          <Link href={`/browse?d=${d.key}`}>← Browse</Link> · <span aria-hidden="true">{flag(d.countryCode)}</span> Sample {d.kind === "region" ? "route" : "itinerary"} for {d.name} · best {monthsLabel(d.bestMonths)}
+          <Link href={`/?d=${d.key}`}>← Browse</Link> · <span aria-hidden="true">{flag(d.countryCode)}</span> Sample {d.kind === "region" ? "route" : "itinerary"} for {d.name} · best {monthsLabel(d.bestMonths)}
         </span>
         <Link className="btn sm" href={planHref}>
           Make it mine

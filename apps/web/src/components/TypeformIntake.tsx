@@ -21,7 +21,7 @@ export default function TypeformIntake({ formId, uid, onSubmit }: { formId: stri
         redirectTarget="_top"
         onSubmit={({ responseId }) => onSubmit(responseId)}
         onEndingButtonClick={({ ref }) => {
-          if (ref === TF_BROWSE_ENDING) router.push("/browse");
+          if (ref === TF_BROWSE_ENDING) router.push("/");
         }}
       />
     </div>

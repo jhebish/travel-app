@@ -178,11 +178,11 @@ Web requests authenticate with Supabase cookies; the mobile app sends `Authoriza
 
 ## Typeform intake (optional)
 
-The home page can use a Typeform instead of the built-in form. Answers are matched by each question's fixed `ref`, so you can reword, reorder or restyle the form in Typeform without breaking anything.
+The planner (`/plan`) can use a Typeform instead of the built-in form. Answers are matched by each question's fixed `ref`, so you can reword, reorder or restyle the form in Typeform without breaking anything.
 
 1. In Typeform → Settings → Personal tokens, create a token with scopes **forms:write, themes:write, responses:read**. Add it in Vercel as `TYPEFORM_TOKEN` and redeploy.
 2. Create the form: `POST https://<your-app>/api/typeform/setup` (allowed once, while no form is configured). It returns the form id and link.
-3. Add the id in Vercel as `TYPEFORM_FORM_ID` and redeploy. The home page now shows the Typeform, with a link to the quick form.
+3. Add the id in Vercel as `TYPEFORM_FORM_ID` and redeploy. The planner now shows the Typeform, with a link to the quick form.
 
 How it works: the embed passes the visitor's user id as a hidden `uid` field. On submit, the app fetches that response from the Typeform Responses API, checks the `uid`, maps the answers to a trip request (`packages/core/src/typeform.ts`) and streams the build with the usual progress bar. The mobile app keeps its native form.
 
@@ -198,6 +198,6 @@ Follow friends, see their shared trips, browse the top-rated public trips in any
 
 ## Browse, multi-city trips, and faster builds
 
-- **Browse** (`/browse`, public, no account needed): a turning globe of trending destinations (2026 trend lists, seasonality and activity on Pylos), each with a cached sample itinerary (`/d/<key>`), the best public trips there, and "Plan my own". Signed-in travelers with a few logged places get "Picked for you" predictions. Run `supabase/migrations/20261106100000_browse.sql` to enable sample caching and picks.
+- **Browse** (the home page, `/`; public, no account needed; `/browse` redirects here): a turning globe of trending destinations (2026 trend lists, seasonality and activity on Pylos), each with a cached sample itinerary (`/d/<key>`), the best public trips there, and "Plan my own". Signed-in travelers with a few logged places get "Picked for you" predictions. Run `supabase/migrations/20261106100000_browse.sql` to enable sample caching and picks. The trip planner lives at `/plan`; older `/?dest=…` and `/?from=…` links redirect there.
 - **Several stops**: choose "Several stops" on the planner (or `mode: "multi"` in the API) with a country or region and up to 14 days. The planner picks the route (stops, order, days, transfers), then plans every day and each stop's hotels in parallel.
 - **Speed**: the fast model writes the outline and days; malformed answers are repaired instead of re-planned; finished days stream to the page as they're ready.

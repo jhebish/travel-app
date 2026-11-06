@@ -31,7 +31,7 @@ export const POST = handler(async (req: Request) => {
       throw new HttpError(403, "These answers belong to a different session. Fill in the form again.", "typeform_owner");
     }
     if (typeformWantsBrowse(response.answers ?? [])) {
-      send({ type: "redirect", to: "/browse" });
+      send({ type: "redirect", to: "/" });
       return null;
     }
     let request;
