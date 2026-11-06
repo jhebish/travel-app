@@ -63,7 +63,7 @@ export async function createIntakeForm(): Promise<{ formId: string; url: string;
       body: JSON.stringify({
         name: "Pylos",
         font: "Karla",
-        colors: { question: "#1E2A3A", answer: "#2E5E8C", button: "#2E5E8C", background: "#F7F4EE" },
+        colors: { question: "#3B2D36", answer: "#3F7472", button: "#3B2D36", background: "#F6F0E8" },
         has_transparent_button: false,
         rounded_corners: "large",
       }),

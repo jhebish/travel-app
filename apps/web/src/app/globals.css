@@ -1,34 +1,41 @@
 /*
-  Pylos design system: Aegean
-  Whitewashed ground, pale sea-blue panels, one deep Aegean blue for actions, olive and ochre accents.
-  Shapes: Cycladic arches (round-topped hero and tabs) and a faint Greek key band as the only ornament.
+  Pylos design system
+  Pastel Levantine palette on warm paper: pistachio, rosewater, pale sea-turquoise, saffron cream, lavender.
+  Ink is a deep plum-brown; primary buttons are plum, links and focus are sea-teal.
+  Shapes: rounded Moorish/Cycladic arches, a faint eight-point star lattice, and one Greek touch:
+  the Pylos wave (a Vitruvian scroll) as the border under the header and along the trip arch.
   Type: Marcellus (classical inscription capitals) for headings and labels; EB Garamond for reading.
 */
 :root {
-  --bg: #f7f4ee;
-  --surface: #fffefb;
-  --sunk: #eef0ef;
-  --ink: #1e2a3a;
-  --muted: #566273;
-  --faint: #7f8896;
-  --line: #e3e1d8;
-  --accent: #2e5e8c;
-  --accent-hover: #244c73;
+  --bg: #f6f0e8;
+  --surface: #fffdf9;
+  --sunk: #efe7dc;
+  --ink: #3b2d36;
+  --muted: #6a5a63;
+  --faint: #8e7f87;
+  --line: #e4d9cc;
+  --accent: #3f7472;
+  --accent-hover: #335f5d;
   --accent-ink: #ffffff;
-  --accent-soft: #dde9f2;
-  --hero: #dce8f1;
-  --hero-ink: #1e2a3a;
-  --hero-soft: #3f4d60;
-  --hero-line: #b9cddd;
-  --olive: #e3e8d5;
-  --olive-ink: #4f6440;
-  --ochre: #f3e5c8;
-  --clay: #f1dcd2;
-  --warm: #c08a3e;
-  --good: #4f6d3c;
-  --bad: #b04a3e;
-  --s-locals: #2e5e8c; --s-hosts: #5f7a4a; --s-press: #7a5c93; --s-indie: #a8742c;
-  --s-reviews: #7f8896; --s-guidebooks: #a85a3c; --s-social: #b5527a; --s-sponsored: #b04a3e;
+  --accent-soft: #cde3e2;
+  --btn: #3b2d36;
+  --btn-hover: #2c2129;
+  --btn-ink: #fbf6ef;
+  --hero: #d5e4c8;
+  --hero-ink: #3b2d36;
+  --hero-soft: #4e4248;
+  --hero-line: #b5c8a6;
+  --olive: #d5e4c8;
+  --olive-ink: #4f6b47;
+  --ochre: #f3e1b6;
+  --clay: #f0d5d0;
+  --clay-line: #b48a86;
+  --lavender: #e3dcec;
+  --warm: #b8924a;
+  --good: #4f6b47;
+  --bad: #a84a42;
+  --s-locals: #3f7472; --s-hosts: #6b8a5a; --s-press: #8a6aa0; --s-indie: #b8924a;
+  --s-reviews: #8e7f87; --s-guidebooks: #b06a52; --s-social: #b5607f; --s-sponsored: #a84a42;
   --font: "EB Garamond", Georgia, "Times New Roman", serif;
   --font-display: "Marcellus", "EB Garamond", Georgia, serif;
   --r-panel: 18px;
@@ -37,30 +44,35 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0f1722;
-    --surface: #16202d;
-    --sunk: #1c2837;
-    --ink: #eef1f4;
-    --muted: #a7b1bd;
-    --faint: #7d8897;
-    --line: #27354a;
-    --accent: #8db6dc;
-    --accent-hover: #a8c8e6;
-    --accent-ink: #0f1722;
-    --accent-soft: #1d3149;
-    --hero: #1b2b3e;
-    --hero-ink: #eef1f4;
-    --hero-soft: #b9c6d4;
-    --hero-line: #33475f;
-    --olive: #253021;
-    --olive-ink: #b5c79f;
-    --ochre: #3a3020;
-    --clay: #3a2a26;
-    --warm: #e0ad6a;
-    --good: #9db884;
-    --bad: #e07c6e;
-    --s-locals: #8db6dc; --s-hosts: #9db884; --s-press: #b59ad0; --s-indie: #e0ad6a;
-    --s-reviews: #8a95a3; --s-guidebooks: #dd9470; --s-social: #e08bb0; --s-sponsored: #e07c6e;
+    --bg: #1d171c;
+    --surface: #261e24;
+    --sunk: #2e252c;
+    --ink: #f3ebe4;
+    --muted: #c0b2b9;
+    --faint: #93848c;
+    --line: #3b3038;
+    --accent: #9fcfcc;
+    --accent-hover: #b7dcda;
+    --accent-ink: #1d171c;
+    --accent-soft: #2a3d3c;
+    --btn: #f0d5d0;
+    --btn-hover: #f6e2de;
+    --btn-ink: #2c2129;
+    --hero: #2c3627;
+    --hero-ink: #f3ebe4;
+    --hero-soft: #cfd8c6;
+    --hero-line: #4a5a40;
+    --olive: #2c3627;
+    --olive-ink: #b5c9a2;
+    --ochre: #3d3322;
+    --clay: #3d2b2a;
+    --clay-line: #8a6460;
+    --lavender: #322b3b;
+    --warm: #dcb56d;
+    --good: #b5c9a2;
+    --bad: #e08a7e;
+    --s-locals: #9fcfcc; --s-hosts: #a9c493; --s-press: #c3a5d8; --s-indie: #dcb56d;
+    --s-reviews: #a0929a; --s-guidebooks: #e0a184; --s-social: #e39bb6; --s-sponsored: #e08a7e;
     color-scheme: dark;
   }
 }
@@ -514,7 +526,7 @@ td { padding: 10px 8px; border-bottom: 1px solid var(--line); text-align: right;
 
 
 /* =====================================================================
-   Aegean layer: classical type, arches and the Greek key.
+   Pylos layer: classical type, arches, star lattice and the Pylos wave.
    ===================================================================== */
 body { font-size: 18px; line-height: 1.5; font-feature-settings: "kern", "liga", "onum"; }
 h1, h2, h3, .brand, .tl-name, .tcard-title, .list-title, .profilename, .build h2 {
@@ -530,11 +542,11 @@ h3 { font-size: 20px; }
 }
 .label small { text-transform: none; letter-spacing: 0; font-family: var(--font); font-style: italic; font-size: 15px; }
 
-/* The Greek key: a thin meander band, drawn with a mask so it follows the theme colour. */
+/* The Pylos wave: a thin Vitruvian-scroll band, drawn with a mask so it follows the theme colour. */
 .meander {
-  height: 12px; background: var(--accent); opacity: .28;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='12' viewBox='0 0 24 12'%3E%3Cpath d='M0 11.5H24M2 11.5V1.5H14V8.5H7V4.5H10.5' fill='none' stroke='black' stroke-width='1.2'/%3E%3C/svg%3E") repeat-x left center / 24px 12px;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='12' viewBox='0 0 24 12'%3E%3Cpath d='M0 11.5H24M2 11.5V1.5H14V8.5H7V4.5H10.5' fill='none' stroke='black' stroke-width='1.2'/%3E%3C/svg%3E") repeat-x left center / 24px 12px;
+  height: 12px; background: var(--accent); opacity: .45;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='12' viewBox='0 0 28 12'%3E%3Cpath d='M0 11 C6 11 8 9 8 6 C8 3 10.5 1 14 1 C17.5 1 19.5 3 19.5 5.2 C19.5 8 22.5 11 28 11 M19.5 5.2 C19.5 7.2 18 8.2 16.4 8.2 C15 8.2 14.2 7.3 14.2 6.2 C14.2 5.2 15 4.6 15.9 4.6' fill='none' stroke='black' stroke-width='1.25' stroke-linecap='round'/%3E%3C/svg%3E") repeat-x left center / 28px 12px;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='12' viewBox='0 0 28 12'%3E%3Cpath d='M0 11 C6 11 8 9 8 6 C8 3 10.5 1 14 1 C17.5 1 19.5 3 19.5 5.2 C19.5 8 22.5 11 28 11 M19.5 5.2 C19.5 7.2 18 8.2 16.4 8.2 C15 8.2 14.2 7.3 14.2 6.2 C14.2 5.2 15 4.6 15.9 4.6' fill='none' stroke='black' stroke-width='1.25' stroke-linecap='round'/%3E%3C/svg%3E") repeat-x left center / 28px 12px;
 }
 .topbar { padding-block: 20px 0; flex-direction: column; align-items: stretch; gap: 12px; }
 .topbar-row { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
@@ -550,16 +562,17 @@ input[type=text], input[type=email], input[type=date], input[type=search], input
 .where input { font-family: var(--font-display); font-weight: 400; letter-spacing: 0; font-size: clamp(28px, 5vw, 36px); }
 
 /* Buttons: inscription capitals on Aegean blue. */
-.btn { font: 400 15px var(--font-display); letter-spacing: 0.14em; text-transform: uppercase; border-radius: 999px; min-height: 54px; }
+.btn { font: 400 15px var(--font-display); letter-spacing: 0.14em; text-transform: uppercase; border-radius: 999px; min-height: 54px; background: var(--btn); color: var(--btn-ink); }
+.btn:hover { background: var(--btn-hover); }
 .btn.ghost { font: 500 16px var(--font); letter-spacing: 0; text-transform: none; }
 .btn.small, .btn.sm { font-size: 13px; }
 .btn.ghost.sm { font-size: 15px; }
 
 /* Chips and tabs: pastel, not black. */
 .chip { font: 500 16px var(--font); background: var(--surface); }
-.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
+.chip[aria-pressed="true"] { background: var(--clay); border-color: var(--clay-line); color: var(--ink); }
 .seg { background: var(--sunk); }
-.seg button[aria-selected="true"], .seg button[aria-pressed="true"] { background: var(--surface); color: var(--accent); }
+.seg button[aria-selected="true"], .seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); }
 
 /* Cards: whitewash, hairline borders. */
 .card, .cta, .tcard { box-shadow: none; }
@@ -569,12 +582,14 @@ input[type=text], input[type=email], input[type=date], input[type=search], input
   border-radius: min(240px, 40vw) min(240px, 40vw) var(--r-panel) var(--r-panel);
   padding: clamp(56px, 12vw, 84px) clamp(24px, 6vw, 44px) 30px; text-align: center; align-items: center;
   box-shadow: inset 0 0 0 7px var(--bg), inset 0 0 0 8px var(--hero-line);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='34' height='34' viewBox='0 0 34 34'%3E%3Cg fill='none' stroke='white' stroke-opacity='.6' stroke-width='1'%3E%3Crect x='9' y='9' width='16' height='16'/%3E%3Crect x='9' y='9' width='16' height='16' transform='rotate(45 17 17)'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: repeat-x; background-size: 34px 34px; background-position: center 30px;
 }
 .hero::after {
   content: ""; position: absolute; left: 22px; right: 22px; bottom: 16px; top: auto; width: auto; height: 12px; border: 0; border-radius: 0;
   background: var(--accent); opacity: .25;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='12' viewBox='0 0 24 12'%3E%3Cpath d='M0 11.5H24M2 11.5V1.5H14V8.5H7V4.5H10.5' fill='none' stroke='black' stroke-width='1.2'/%3E%3C/svg%3E") repeat-x left center / 24px 12px;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='12' viewBox='0 0 24 12'%3E%3Cpath d='M0 11.5H24M2 11.5V1.5H14V8.5H7V4.5H10.5' fill='none' stroke='black' stroke-width='1.2'/%3E%3C/svg%3E") repeat-x left center / 24px 12px;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='12' viewBox='0 0 28 12'%3E%3Cpath d='M0 11 C6 11 8 9 8 6 C8 3 10.5 1 14 1 C17.5 1 19.5 3 19.5 5.2 C19.5 8 22.5 11 28 11 M19.5 5.2 C19.5 7.2 18 8.2 16.4 8.2 C15 8.2 14.2 7.3 14.2 6.2 C14.2 5.2 15 4.6 15.9 4.6' fill='none' stroke='black' stroke-width='1.25' stroke-linecap='round'/%3E%3C/svg%3E") repeat-x left center / 28px 12px;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='12' viewBox='0 0 28 12'%3E%3Cpath d='M0 11 C6 11 8 9 8 6 C8 3 10.5 1 14 1 C17.5 1 19.5 3 19.5 5.2 C19.5 8 22.5 11 28 11 M19.5 5.2 C19.5 7.2 18 8.2 16.4 8.2 C15 8.2 14.2 7.3 14.2 6.2 C14.2 5.2 15 4.6 15.9 4.6' fill='none' stroke='black' stroke-width='1.25' stroke-linecap='round'/%3E%3C/svg%3E") repeat-x left center / 28px 12px;
 }
 .hero .where-line { font-family: var(--font-display); font-weight: 400; letter-spacing: 0.18em; text-transform: uppercase; font-size: 13px; }
 .hero h1 { max-width: 20ch; }
@@ -582,12 +597,12 @@ input[type=text], input[type=email], input[type=date], input[type=search], input
 .hero .actions { justify-content: center; margin-bottom: 18px; }
 .hero .hbtn { background: var(--surface); color: var(--ink); border: 1px solid var(--hero-line); font: 500 16px var(--font); }
 .hero .hbtn:hover { background: var(--surface); border-color: var(--accent); }
-.hero .hbtn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.hero .hbtn[aria-pressed="true"] { background: var(--btn); color: var(--btn-ink); border-color: var(--btn); }
 
 /* Day tabs become small arches. */
 .daytabs { background: transparent; padding: 0; gap: 8px; border-radius: 0; }
 .daytabs button { border: 1px solid var(--line); background: var(--surface); border-radius: 26px 26px 6px 6px; padding: 10px 16px 8px; color: var(--muted); }
-.daytabs button[aria-selected="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); box-shadow: none; }
+.daytabs button[aria-selected="true"] { background: var(--clay); border-color: var(--clay-line); color: var(--ink); box-shadow: none; }
 
 /* Timeline numbers sit in an eight-point star. */
 .tl-node {
@@ -597,9 +612,13 @@ input[type=text], input[type=email], input[type=date], input[type=search], input
   content: ""; position: absolute; inset: 6px; background: var(--accent-soft); z-index: -1; border-radius: 2px;
 }
 .tl-node::after { transform: rotate(45deg); }
+.tl-item:nth-child(3n+1) .tl-node::before, .tl-item:nth-child(3n+1) .tl-node::after { background: var(--ochre); }
+.tl-item:nth-child(3n+2) .tl-node::before, .tl-item:nth-child(3n+2) .tl-node::after { background: var(--clay); }
+.tl-item:nth-child(3n) .tl-node::before, .tl-item:nth-child(3n) .tl-node::after { background: var(--accent-soft); }
 .tl-rail { position: relative; z-index: 0; }
 .tl-item.locked .tl-node { background: transparent; color: var(--accent-ink); }
-.tl-item.locked .tl-node::before, .tl-item.locked .tl-node::after { background: var(--accent); }
+.tl-item.locked .tl-node { color: var(--btn-ink); }
+.tl-item.locked .tl-node::before, .tl-item.locked .tl-node::after { background: var(--btn) !important; }
 .tl-line { background: none; border-left: 1.5px dotted var(--hero-line); width: 0; }
 .tl-time { font-style: italic; font-weight: 400; font-size: 16px; }
 .tl-name { font-size: 21px; }
@@ -616,14 +635,14 @@ input[type=text], input[type=email], input[type=date], input[type=search], input
 .stats > div { border-radius: 34px 34px 8px 8px; text-align: center; align-items: center; }
 .stats > div:nth-child(1) { background: var(--olive); }
 .stats > div:nth-child(2) { background: var(--clay); }
-.stats > div:nth-child(3) { background: var(--hero); }
+.stats > div:nth-child(3) { background: var(--accent-soft); }
 .stats b { font-family: var(--font-display); font-weight: 400; letter-spacing: 0; }
 .level { font-family: var(--font-display); font-weight: 400; letter-spacing: 0.12em; text-transform: uppercase; font-size: 11.5px; background: var(--ochre); color: var(--ink); }
-.tcard-rank { font-family: var(--font-display); font-weight: 400; background: var(--accent); color: var(--accent-ink); }
+.tcard-rank { font-family: var(--font-display); font-weight: 400; background: var(--btn); color: var(--btn-ink); }
 .tcard:nth-child(1) .tcard-rank { background: var(--warm); color: #fff; }
 .board-rank { font-family: var(--font-display); font-weight: 400; }
 .avatar { font-family: var(--font-display); font-weight: 400; }
-.callout { background: var(--hero); }
+.callout { background: var(--clay); }
 .place { font-size: 16px; font-weight: 500; }
 /* The big destination field stays a bare underline. */
 .where input[type=text] { background: transparent; border: 0; border-bottom: 1.5px solid var(--line); border-radius: 0; padding: 6px 0 10px; }
