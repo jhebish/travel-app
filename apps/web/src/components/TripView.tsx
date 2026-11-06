@@ -160,6 +160,11 @@ export function TripView({
   /** On a multi-city trip, a day's places belong to that day's city. */
   const dayCity = d.city ? `${d.city}, ${city}` : city;
 
+  const pickDay = (i: number) => {
+    setDay(i);
+    setSwapOpen(null);
+    setDayHintOpen(false);
+  };
   const apply = (t: Trip) => {
     setTrip(t);
     onChange?.(t);
@@ -597,16 +602,38 @@ export function TripView({
       {legCard}
 
       {/* ---------- day ---------- */}
-      <div className="daytabs" role="tablist" aria-label="Days">
+      <div
+        className="daytabs"
+        role="tablist"
+        aria-label="Days"
+        onKeyDown={(e) => {
+          // Arrow keys, Home and End move between days (one tab stop for the whole row).
+          const last = it.days.length - 1;
+          const to = e.key === "ArrowRight" ? Math.min(last, dIdx + 1) : e.key === "ArrowLeft" ? Math.max(0, dIdx - 1) : e.key === "Home" ? 0 : e.key === "End" ? last : null;
+          if (to == null) return;
+          e.preventDefault();
+          pickDay(to);
+          (e.currentTarget.children[to] as HTMLElement | undefined)?.focus();
+        }}
+      >
         {it.days.map((x, i) => (
-          <button key={i} type="button" role="tab" aria-selected={i === dIdx} onClick={() => { setDay(i); setSwapOpen(null); setDayHintOpen(false); }}>
+          <button
+            key={i}
+            type="button"
+            role="tab"
+            id={`daytab-${i}`}
+            aria-selected={i === dIdx}
+            aria-controls="day-panel"
+            tabIndex={i === dIdx ? 0 : -1}
+            onClick={() => pickDay(i)}
+          >
             {x.label}
             {x.city && <small className="tab-city">{x.city}</small>}
           </button>
         ))}
       </div>
 
-      <section className="card">
+      <section className="card" id="day-panel" role="tabpanel" aria-labelledby={`daytab-${dIdx}`}>
         {d.arrival && (
           <p className="arrival">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h15M13 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
