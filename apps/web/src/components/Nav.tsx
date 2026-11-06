@@ -46,7 +46,7 @@ export function Nav() {
             </button>
           </>
         ) : me ? (
-          <Link href="/login" title="Optional: keep your trips across devices">
+          <Link href={path === "/" || path.startsWith("/login") ? "/login" : `/login?next=${encodeURIComponent(path)}`} title="Optional: keep your trips across devices">
             Sign in
           </Link>
         ) : null}

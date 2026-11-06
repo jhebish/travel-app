@@ -1,12 +1,13 @@
 "use client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { safeNext } from "@/lib/safe-next";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 
 function Login() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next")?.startsWith("/") ? params.get("next")! : "/";
+  const next = safeNext(params.get("next"));
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [sent, setSent] = useState(false);
