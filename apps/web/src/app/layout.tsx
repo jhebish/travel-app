@@ -3,8 +3,12 @@ import "./globals.css";
 import { Nav } from "@/components/Nav";
 
 export const metadata: Metadata = {
+  // Absolute URLs for link-preview images. NEXT_PUBLIC_SITE_URL can point them at another domain.
+  metadataBase: new URL([process.env.NEXT_PUBLIC_SITE_URL?.trim(), "https://www.pylos.ai"].find((u) => !!u && URL.canParse(u))!),
   title: "Pylos",
   description: "Journeys built around you, from the people who live there.",
+  openGraph: { siteName: "Pylos", type: "website" },
+  twitter: { card: "summary_large_image" },
 };
 
 export const viewport: Viewport = {
