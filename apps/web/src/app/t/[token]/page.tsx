@@ -3,21 +3,24 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { readOnlyTrip } from "@/components/readOnlyTrip";
 import { ResizableTrip } from "@/components/ResizableTrip";
+import { linkDescription, tripPreview } from "@/lib/og";
 import { getSharedTrip } from "@/lib/share";
 
 export const dynamic = "force-dynamic";
 
 type P = { params: { token: string } };
 
+/** Link preview text; the image is ./opengraph-image.tsx. */
 export async function generateMetadata({ params }: P): Promise<Metadata> {
   const t = await getSharedTrip(params.token);
   if (!t) return { title: "Trip not found · Pylos" };
-  const description = t.itinerary.summary.slice(0, 200);
+  const { title, days, summary } = tripPreview(t.destination, t.title, t.itinerary);
+  const description = linkDescription(days, t.destination, summary);
   return {
-    title: `${t.title} · Pylos`,
+    title: `${title} · Pylos`,
     description,
-    openGraph: { title: t.title, description, type: "article", siteName: "Pylos" },
-    twitter: { card: "summary", title: t.title, description },
+    openGraph: { title, description, type: "article", siteName: "Pylos" },
+    twitter: { card: "summary_large_image", title, description },
     robots: { index: false }, // shared links are unlisted
   };
 }

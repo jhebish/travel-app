@@ -3,6 +3,12 @@ const nextConfig = {
   transpilePackages: ["@travel/core"],
   reactStrictMode: true,
   poweredByHeader: false,
+  experimental: {
+    // Link-preview images (src/lib/og.tsx) read their fonts from disk: ship the files with those functions.
+    outputFileTracingIncludes: {
+      "**/{opengraph,twitter}-image*": ["./src/app/og/fonts/*.woff"],
+    },
+  },
   async redirects() {
     return [
       // The community area is now called Friends.
