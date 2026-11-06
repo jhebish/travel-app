@@ -74,7 +74,13 @@ export async function createIntakeForm(browseUrl?: string): Promise<{ formId: st
     if (e instanceof HttpError && e.code === "typeform_auth") throw e;
     console.error("Typeform theme not created", e);
   }
-  const res = await tf("/forms", { method: "POST", body: JSON.stringify(typeformDefinition({ themeHref, browseUrl })) });
+  let res = await tf("/forms", { method: "POST", body: JSON.stringify(typeformDefinition({ themeHref, browseUrl })) });
+  if (!res.ok && browseUrl) {
+    // Redirecting from an ending screen is a paid Typeform feature; without it the app still
+    // sends "not sure yet" answers to Browse after submission.
+    console.error("Typeform form with ending redirect refused; retrying without it", res.status, (await res.text().catch(() => "")).slice(0, 300));
+    res = await tf("/forms", { method: "POST", body: JSON.stringify(typeformDefinition({ themeHref })) });
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     console.error("Typeform form not created", res.status, text);
