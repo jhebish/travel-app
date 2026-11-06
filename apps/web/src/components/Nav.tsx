@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { IconCompass, IconGlobe, IconPeople, IconSuitcase, IconUser } from "./icons";
+import { Mark } from "./Mark";
 import { canSubmitPicks, useMe } from "./useMe";
 
 const TABS = [
@@ -33,7 +34,8 @@ export function Nav() {
       <header className="topbar">
         <div className="topbar-row">
           <Link href="/" className="brand">
-            Pylos
+            <Mark width={60} tight cut="full" />
+            <span className="brand-word">Pylos</span>
           </Link>
           <nav className="nav" aria-label="Main">
             {links.map((l) => (

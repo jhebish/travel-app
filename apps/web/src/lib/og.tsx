@@ -10,7 +10,19 @@
  * and SVG children are plain elements (no components or fragments inside <svg>). Text is wrapped
  * here, with widths measured from these fonts, so titles break evenly and cuts land between words.
  */
-import { DESTINATION_BY_KEY, monthsLabel, type CommunityTrip, type Destination, type Itinerary } from "@travel/core";
+import {
+  BRAND,
+  DESTINATION_BY_KEY,
+  MARK_CUTS,
+  MARK_FRAME,
+  MARK_SOLE,
+  MARK_WING,
+  monthsLabel,
+  type CommunityTrip,
+  type Destination,
+  type Itinerary,
+  type MarkCut,
+} from "@travel/core";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { ImageResponse } from "next/og";
 import { readFile } from "node:fs/promises";
@@ -351,13 +363,15 @@ function Frame({ art, children }: { art: ReactElement; children: ReactNode }) {
 }
 
 function Footer() {
-  const word = 118; // "PYLOS" at 30px, tracked
+  const sandal = 64; // the mark, cropped to the drawing (2:1)
+  const word = 12 + 118; // a gap, then "PYLOS" at 30px, tracked
   const site = 82; // "pylos.ai" at 28px italic
   const gap = 28;
   return (
     <div style={{ position: "absolute", left: MARGIN, top: FOOT.y, width: W - MARGIN * 2, height: FOOT.h, display: "flex", alignItems: "center" }}>
-      <div style={{ width: word, fontFamily: DISPLAY, fontSize: 30, letterSpacing: 6, color: C.ink }}>PYLOS</div>
-      <div style={{ display: "flex", marginLeft: gap, marginRight: gap }}>{wave(W - MARGIN * 2 - word - site - gap * 2)}</div>
+      <div style={{ display: "flex", width: sandal }}>{markSvg(sandal, C.ink, C.warm)}</div>
+      <div style={{ width: 118, marginLeft: 12, fontFamily: DISPLAY, fontSize: 30, letterSpacing: 6, color: C.ink }}>PYLOS</div>
+      <div style={{ display: "flex", marginLeft: gap, marginRight: gap }}>{wave(W - MARGIN * 2 - sandal - word - site - gap * 2)}</div>
       <div style={{ width: site, display: "flex", justifyContent: "flex-end", fontStyle: "italic", fontSize: 28, color: C.muted }}>pylos.ai</div>
     </div>
   );
@@ -495,7 +509,7 @@ function DestinationCard({ d }: { d: Destination }) {
 
 function BrandCard() {
   return (
-    <Frame art={arch({ center: "globe" })}>
+    <Frame art={arch({ center: "mark" })}>
       <Title t={{ size: 112, lines: ["Where to", "next?"] }} />
       <div style={{ flexShrink: 0, marginTop: 24, fontStyle: "italic", fontSize: 44, lineHeight: 1.2, color: C.muted }}>Trips planned the local way</div>
     </Frame>
@@ -675,14 +689,14 @@ function wave(width: number, scale = 2) {
  * The tall pistachio arch: a white inner line, a lattice of small eight-point stars (whole ones
  * only, clear of the edges and of the centrepiece), and a rose-window star or a globe under the curve.
  */
-function arch({ center, star = C.ochre }: { center: "star" | "globe"; star?: string }) {
+function arch({ center, star = C.ochre }: { center: "star" | "globe" | "mark"; star?: string }) {
   const { w, h } = ARCH;
   const r = w / 2;
   const shape = (i: number) => `M${i} ${h} V${r} A${r - i} ${r - i} 0 0 1 ${w - i} ${r} V${h} Z`;
   const inset = 14;
   const cx = r;
   const cy = r + 6;
-  const big = center === "star" ? 88 : 116;
+  const big = center === "star" ? 88 : center === "mark" ? 112 : 116;
   const step = 44;
   const half = 7.5;
   const reach = half * Math.SQRT2;
@@ -711,10 +725,55 @@ function arch({ center, star = C.ochre }: { center: "star" | "globe"; star?: str
           <path d={octagram(cx, cy, big * 0.62)} fill="none" stroke="#ffffff" strokeOpacity="0.9" strokeWidth="2" strokeLinejoin="round" />
           <circle cx={cx} cy={cy} r="9" fill={C.teal} />
         </g>
+      ) : center === "mark" ? (
+        medallion(cx, cy, big)
       ) : (
         globe(cx, cy, big)
       )}
     </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The mark
+// ---------------------------------------------------------------------------
+/** The drawing's centre and width on the mark's 200 square (full cut; the other cuts are within 1%). */
+const MARK_MID = { x: 101, y: 103, w: 148 };
+
+/** The mark as SVG elements, its drawing centred on (cx, cy) and `width` wide. */
+function markGroup(cx: number, cy: number, width: number, ink: string, wing: string, cut?: MarkCut) {
+  const s = width / MARK_MID.w;
+  const c = MARK_CUTS[cut ?? (width >= 100 ? "full" : width > 30 ? "mid" : "tiny")];
+  const q = (n: number) => +n.toFixed(2);
+  return (
+    <g transform={`translate(${q(cx - MARK_MID.x * s)} ${q(cy - MARK_MID.y * s)}) scale(${q(s)})`}>
+      <g transform={MARK_FRAME}>
+        <path d={MARK_SOLE} fill={ink} stroke={c.sole ? ink : "none"} strokeWidth={c.sole} />
+        <path d={c.straps} fill="none" stroke={ink} strokeWidth={c.strap} strokeLinecap="round" strokeLinejoin="round" />
+        <path d={MARK_WING} fill={wing} transform={c.wing} />
+      </g>
+    </g>
+  );
+}
+
+/** The mark on its own, cropped to the drawing (about 2:1): for beside the wordmark. */
+function markSvg(width: number, ink: string, wing: string) {
+  const h = Math.round(width / 2);
+  return (
+    <svg width={width} height={h} viewBox={`0 0 ${width} ${h}`}>
+      {markGroup(width / 2, h / 2, width * 0.94, ink, wing)}
+    </svg>
+  );
+}
+
+/** The brand card's centrepiece: the winged sandal on a whitewashed coin, like a drachma. */
+function medallion(cx: number, cy: number, R: number) {
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={R} fill={C.surface} stroke={C.warm} strokeOpacity="0.55" strokeWidth="2" />
+      <circle cx={cx} cy={cy} r={R - 12} fill="none" stroke={C.pistachioLine} strokeWidth="1.5" strokeDasharray="2 7" strokeLinecap="round" />
+      {markGroup(cx, cy + 4, R * 1.5, C.ink, C.warm, "full")}
+    </g>
   );
 }
 
@@ -747,17 +806,14 @@ function globe(cx: number, cy: number, R: number) {
 // ---------------------------------------------------------------------------
 export const ICON_SIZE = { width: 180, height: 180 };
 
-/** The Pylos star on teal: the home-screen icon, and the site icon message apps show. */
+/** The winged sandal, cream on teal with a light-gold wing: the home-screen icon, and the site icon message apps show. */
 export function appleIconImage(): ImageResponse {
   const s = ICON_SIZE.width;
-  const c = s / 2;
   return new ImageResponse(
     (
-      <div style={{ width: s, height: s, display: "flex", backgroundColor: C.teal }}>
+      <div style={{ width: s, height: s, display: "flex", backgroundColor: BRAND.teal }}>
         <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
-          <path d={octagram(c, c, 66)} fill={C.paper} />
-          <path d={octagram(c, c, 41)} fill="none" stroke={C.teal} strokeWidth="5" strokeLinejoin="round" />
-          <circle cx={c} cy={c} r="9" fill={C.teal} />
+          {markGroup(s / 2, s / 2 + 2, s * 0.68, BRAND.cream, BRAND.goldLight, "full")}
         </svg>
       </div>
     ),

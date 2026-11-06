@@ -2,6 +2,7 @@
 import type { BuildEvent, Hotel, Itinerary } from "@travel/core";
 import { useEffect, useRef, useState } from "react";
 import { ItineraryPreview } from "./ItineraryPreview";
+import { Mark } from "./Mark";
 
 type Day = Itinerary["days"][number];
 
@@ -130,8 +131,14 @@ export function BuildProgress({ state, destination, daysRequested }: { state: Bu
           </div>
         </div>
 
-        <div className="bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Trip progress">
-          <span style={{ width: `${pct}%` }} />
+        <div className="bar-walk">
+          {/* The winged sandal walks the bar as the trip comes together. */}
+          <span className="walker" style={{ left: `${pct}%`, transform: `translateX(-${pct}%)` }} aria-hidden="true">
+            <Mark width={40} tight cut="mid" />
+          </span>
+          <div className="bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Trip progress">
+            <span style={{ width: `${pct}%` }} />
+          </div>
         </div>
         <div className="build-meta">
           <span>{state.label}</span>

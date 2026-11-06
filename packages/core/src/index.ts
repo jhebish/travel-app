@@ -16,3 +16,4 @@ export * from "./taste";
 export * from "./picks";
 export * from "./photos";
 export * from "./imports";
+export * from "./brand";

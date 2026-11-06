@@ -1,6 +1,7 @@
 "use client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { Mark } from "@/components/Mark";
 import { safeNext } from "@/lib/safe-next";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 
@@ -54,6 +55,7 @@ function Login() {
   return (
     <div className="card">
       <div className="head">
+        <Mark width={76} tight className="card-mark" />
         <h1>Sign in</h1>
         <p className="lede">Optional. Signing in keeps your trips and source mix across devices and browsers.</p>
       </div>
