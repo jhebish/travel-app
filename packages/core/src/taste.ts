@@ -238,5 +238,5 @@ export function tasteForPrompt(
   return `TASTE (learned from places ${together ? "these travelers have" : "this traveler has"} been and rated: use it to predict which hotels and restaurants ${together ? "they" : "they"} will love)
 ${parts.join("\n\n")}
 Prefer places with the same character as their favorites (the same feel, not the same place).${together ? " They're planning this trip together: favor places that suit everyone; where tastes differ, balance them across the days." : ""}
-When a pick clearly matches this taste, set "forYou" to a few words naming the link to one of their favorites or a trait above (e.g. ${example ? `"Like ${example}: same easy feel" or ` : ""}"Your kind of natural wine bar"). Otherwise leave "forYou" empty. Never invent favorites.`;
+Show the match: on the one or two picks per day (and the hotels) that best fit this taste, set "forYou" to a few words naming the link to one of their favorites or a trait above (e.g. ${example ? `"Like ${example}: same easy feel" or ` : ""}"Your kind of natural wine bar"). Leave "forYou" empty on picks that don't clearly fit. Never invent favorites.`;
 }
