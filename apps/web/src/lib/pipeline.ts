@@ -38,6 +38,10 @@ import {
   arrivalContext,
   buildRoutePrompt,
   fitRoute,
+  LEG_TOOL,
+  buildLegPrompt,
+  soonMonth,
+  type RouteLeg,
 } from "@travel/core";
 import { z } from "zod";
 import type { Ctx } from "./auth";
@@ -558,8 +562,11 @@ async function groundByCity(itin: Itinerary, candsByCity: Map<string, Candidate[
   if (!itin.days.length) throw new HttpError(502, "We couldn't verify enough places for this trip. Try again or adjust the request.", "unverified");
 }
 
-export async function generateTrip(ctx: Ctx, req: TripRequest, opts: { ip: string; tripsPerHour: number }, emit: Emit = () => {}) {
+export async function generateTrip(ctx: Ctx, reqIn: TripRequest, opts: { ip: string; tripsPerHour: number }, emit: Emit = () => {}) {
   const t0 = Date.now();
+  // No date and no month given (Typeform, the app): plan for the weeks ahead, so stops suit the season.
+  // An explicit null means "not sure yet": an evergreen route.
+  const req: TripRequest = reqIn.month === undefined && !reqIn.startDate ? { ...reqIn, month: soonMonth() } : reqIn;
   emit({ type: "progress", pct: 3, label: "Reading your request" });
   // Planning with friends: blend their taste in from the start.
   const companions = await companionsFromHandles(ctx, req.with ?? []);
@@ -756,6 +763,134 @@ export async function regenerateDay(ctx: Ctx, row: TripRow, day: number, hint: s
   itinerary.replaced = replaced;
   itinerary.days[day] = { ...current, theme: parsed.data.theme || current.theme, stops };
   return saveEdit(row, itinerary, votes);
+}
+
+const LegResultSchema = RouteLegSchema.pick({ region: true, why: true, season: true, transfer: true, dayThemes: true, alternatives: true }).extend({
+  found: z.boolean().catch(true).default(true),
+  city: z.string().trim().min(1).transform((v) => v.slice(0, 80)),
+  nextTransfer: RouteLegSchema.shape.transfer,
+  title: z.string().catch("").default("").transform((v) => v.trim().slice(0, 140)),
+  summary: z.string().catch("").default("").transform((v) => v.trim().slice(0, 600)),
+});
+
+const sameCity = (a: string, b: string) => cityKey(a) === cityKey(b);
+const arrivalText = (from: string, t: RouteLeg["transfer"]) => (t ? [`From ${from}`, t.mode, t.duration, t.note].filter(Boolean).join(" · ") : undefined);
+
+/**
+ * Multi-city trips: replace one stop on the route with another town. Its days are planned again
+ * (same number of days), with its hotels if the trip has them, the transfers either side, and
+ * the trip's title. The stop it replaces becomes a swap, so it's one tap to go back.
+ */
+export async function swapCity(ctx: Ctx, row: TripRow, legIndex: number, cityIn: string, people: EditPeople = noPeople) {
+  const it = row.itinerary;
+  const route = it.mode === "multi" ? (it.route ?? []) : [];
+  const old = route[legIndex];
+  if (!old || route.length < 2) throw new HttpError(404, "That stop isn't on this trip anymore. Reload and try again.");
+  const asked = cityIn.trim();
+  if (sameCity(asked, old.city)) return row;
+  if (route.some((l, i) => i !== legIndex && sameCity(l.city, asked))) throw new HttpError(400, `${asked} is already on this trip.`, "duplicate");
+  const dayIdx = it.days.map((d, i) => (d.city === old.city ? i : -1)).filter((i) => i >= 0);
+  if (!dayIdx.length) throw new HttpError(409, "This trip just changed. Reload and try again.", "conflict");
+  await rateLimit(ctx, "edit", 60, "That's a lot of changes this hour. Try again a little later.");
+
+  const { req: base, eff } = editContext(row);
+  const n = dayIdx.length;
+  const [{ lists }, history] = await Promise.all([
+    loadSources(ctx),
+    loadHistory(ctx, base.destination, { ownerId: row.user_id, companions: people.companions }),
+  ]);
+
+  // 1. The new stop: a theme per day, how to get there and on, and swaps of its own.
+  const { data: leg } = await step(
+    "swap city",
+    (attempt) => callTool(withHistory(history, buildLegPrompt(base, route, legIndex, asked, n, it.title)), LEG_TOOL, 2500, fastThenMain(attempt)),
+    LegResultSchema,
+    3,
+  );
+  if (!leg.found) throw new HttpError(400, `We couldn't find "${asked}". Check the spelling, or pick one of the suggestions.`, "not_found");
+  const city = leg.city;
+  if (route.some((l, i) => i !== legIndex && sameCity(l.city, city))) throw new HttpError(400, `${city} is already on this trip.`, "duplicate");
+  const prev = route[legIndex - 1];
+  const next = route[legIndex + 1];
+  const themes = Array.from({ length: n }, (_, k) => leg.dayThemes[k] ?? { theme: `${city} the local way`, area: city });
+
+  // 2. Its days, and its hotels if the old stop had some, all at once.
+  const legReq: TripRequest = { ...requestForCity(base, city), days: n };
+  const oldHotels = (it.hotels ?? []).filter((h) => h.city === old.city);
+  const elsewhere = new Set(
+    [...it.days.filter((_, i) => !dayIdx.includes(i)).flatMap((d) => d.stops), ...(it.hotels ?? []).filter((h) => h.city !== old.city)].map((p) => p.name.toLowerCase()),
+  );
+  const cands = selectCandidates(await gatherCandidates(legReq), eff, legReq).filter((c) => !elsewhere.has(c.name.toLowerCase()));
+  const ids = cands.filter((c) => c.category !== "stay").map((c) => c.id);
+  const outline: Outline = {
+    title: leg.title || it.title,
+    summary: leg.summary || it.summary,
+    notes: [],
+    days: themes.map((t, k) => ({ label: it.days[dayIdx[k]!]!.label, theme: t.theme, area: t.area || city, candidateIds: ids.filter((_, j) => j % n === k).slice(0, 6) })),
+  };
+  const dayJobs = themes.map(async (t, k): Promise<DayOut> => {
+    const context =
+      k === 0 && prev ? arrivalContext({ city, transfer: leg.transfer ?? null }, prev.city) : k === n - 1 && next ? `Tomorrow they travel on to ${next.city}; keep the evening easy.` : "";
+    const { data } = await step(
+      `swap day ${k + 1}`,
+      (attempt) => callTool(withHistory(history, buildPlanDayPrompt(legReq, eff, lists, outline, k, cands, context)), DAY_TOOL, 4000, fastThenMain(attempt)),
+      DayResultSchema,
+      3,
+    );
+    return {
+      label: it.days[dayIdx[k]!]!.label,
+      theme: data.theme || t.theme,
+      city,
+      arrival: k === 0 && prev ? arrivalText(prev.city, leg.transfer) : undefined,
+      stops: data.stops.filter((s) => !elsewhere.has(s.name.toLowerCase())).map((s) => ({ ...s, locked: false })),
+    };
+  });
+  const hotelJob = oldHotels.length
+    ? planHotels(legReq, eff, lists, history, themes.map((t) => t.area).filter(Boolean), cands.filter((c) => c.category === "stay"), Math.min(2, oldHotels.length), () => {}, () => {}, city)
+    : Promise.resolve([] as Hotel[]);
+  const [days, hotels] = await Promise.all([Promise.all(dayJobs), hotelJob]);
+
+  // 3. Check the new places exist, in the new town.
+  const drop = await ground([...days.flatMap((d) => d.stops), ...hotels], cands, `${city}, ${base.destination}`);
+  const newDays = days.map((d) => ({ ...d, stops: d.stops.filter((s) => !drop.has(s)) }));
+  if (newDays.some((d) => !d.stops.length)) throw new HttpError(502, `We couldn't verify enough places in ${city}. Try another town.`, "unverified");
+  const newHotels = hotels.filter((h) => !drop.has(h));
+
+  // 4. Put it together. Votes on the old stop's places go to the training log.
+  const itinerary: Itinerary = structuredClone(it);
+  const { votes: afterDays, replaced } = retireVotes(row, dayIdx.flatMap((di) => it.days[di]!.stops.map((_, si) => `${di}-${si}`)), itinerary);
+  const votes: TripRow["votes"] = Object.fromEntries(Object.entries(afterDays).filter(([k]) => !k.startsWith("h-")));
+  const kept = (it.hotels ?? []).map((h, i) => ({ h, i })).filter(({ h }) => h.city !== old.city);
+  const firstOld = (it.hotels ?? []).findIndex((h) => h.city === old.city);
+  const at = firstOld >= 0 ? kept.filter(({ i }) => i < firstOld).length : kept.length;
+  const hotelList = [...kept.slice(0, at), ...newHotels.map((h) => ({ h, i: -1 })), ...kept.slice(at)];
+  hotelList.forEach(({ i }, j) => {
+    const v = i >= 0 ? row.votes?.[`h-${i}`] : undefined;
+    if (v) votes[`h-${j}`] = v;
+  });
+  for (const { h, i } of (it.hotels ?? []).map((h, i) => ({ h, i })).filter(({ h }) => h.city === old.city)) {
+    const v = row.votes?.[`h-${i}`];
+    if (v) replaced.push({ source: h.source, vote: v });
+  }
+  itinerary.replaced = replaced.slice(-200);
+  itinerary.hotels = hotelList.map(({ h }) => h);
+  dayIdx.forEach((di, k) => (itinerary.days[di] = newDays[k]!));
+  const nextFirst = next ? itinerary.days.findIndex((d) => d.city === next.city) : -1;
+  if (next && nextFirst >= 0 && leg.nextTransfer) itinerary.days[nextFirst] = { ...itinerary.days[nextFirst]!, arrival: arrivalText(city, leg.nextTransfer) };
+
+  const onRoute = new Set([city, ...route.filter((_, i) => i !== legIndex).map((l) => l.city)].map(cityKey));
+  const alternatives = [{ city: old.city, why: "Your original pick" }, ...(leg.alternatives ?? [])].filter((a, i, all) => !onRoute.has(cityKey(a.city)) && all.findIndex((b) => sameCity(b.city, a.city)) === i).slice(0, 3);
+  itinerary.route = route.map((l, i): RouteLeg => {
+    if (i === legIndex) return { city, region: leg.region, days: n, why: leg.why, season: leg.season, alternatives, transfer: prev ? (leg.transfer ?? null) : null, dayThemes: [] };
+    if (i === legIndex + 1) return { ...l, transfer: leg.nextTransfer ?? l.transfer ?? null };
+    return l;
+  });
+  if (leg.title) itinerary.title = leg.title;
+  if (leg.summary) itinerary.summary = leg.summary;
+
+  const saved = await updateTrip(row, { itinerary, votes, title: itinerary.title });
+  await syncFeedback(saved);
+  return saved;
 }
 
 export async function setLocked(ctx: Ctx, row: TripRow, day: number, index: number, locked: boolean) {

@@ -1,11 +1,12 @@
 "use client";
-import { SIGNAL_KIND_LABELS, travelStats, type MyCommunityProfile, type PastTrip, type Trip, type Visibility } from "@travel/core";
+import { SIGNAL_KIND_LABELS, travelStats, type MyCommunityProfile, type PastTrip, type PickKind, type Trip, type Visibility } from "@travel/core";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { PlaceChip, PlaceForm, StatsRow, blankPlace, countryName } from "@/components/community";
+import { PlaceChip, PlaceForm, StatsRow, countryName } from "@/components/community";
 import { ConnectCard } from "@/components/connect";
-import { TasteCard, kindFromName, useTaste, type PlaceItem } from "@/components/taste";
+import { QuickLog, type PresetTrip } from "@/components/QuickLog";
+import { TasteCard, kindFromName, useTaste } from "@/components/taste";
 import { canSubmitPicks, useMe } from "@/components/useMe";
 import { api, ApiError } from "@/lib/api";
 import { supabaseBrowser } from "@/lib/supabase/browser";
@@ -41,21 +42,25 @@ function ProfileEditor() {
   const logTrip = params.get("log");
   const logCity = params.get("city") ?? "";
   const taste = useTaste(!!me?.user);
-  const [suggestions, setSuggestions] = useState<PlaceItem[]>([]);
+  const [preset, setPreset] = useState<PresetTrip | null>(null);
 
-  // Logging a Pylos trip ("I went"): offer its hotels and stops as "did you go?" chips.
+  // Logging a Pylos trip ("I went"): tick what you loved from that plan's hotels and stops.
   useEffect(() => {
     if (!logTrip || !me?.user) return;
     api<{ trip: Trip }>(`/api/trips/${logTrip}`)
       .then(({ trip }) => {
         const it = trip.itinerary;
-        setSuggestions([
-          ...(it.hotels ?? []).map((h) => ({ kind: "stay" as const, name: h.name, liked: true })),
-          ...it.days.flatMap((d) => d.stops).map((st) => ({ kind: kindFromName(st.name), name: st.name, liked: true })),
-        ]);
+        setPreset({
+          tripId: logTrip,
+          city: logCity || trip.destination.split(",")[0]!.trim(),
+          picks: [
+            ...(it.hotels ?? []).map((h) => ({ kind: "stay" as PickKind, name: h.name, note: h.neighborhood ?? "" })),
+            ...it.days.flatMap((d) => d.stops).map((st) => ({ kind: kindFromName(st.name) as PickKind, name: st.name, note: st.neighborhood ?? "" })),
+          ].slice(0, 40),
+        });
       })
       .catch(() => {});
-  }, [logTrip, me?.user]);
+  }, [logTrip, logCity, me?.user]);
 
   /** What they did on each logged trip, from their taste signals. */
   const itemsByTrip = useMemo(() => {
@@ -143,24 +148,21 @@ function ProfileEditor() {
       <section className="card stack">
         <div className="head">
           <h2>Places you&apos;ve been</h2>
-          <p className="hint">Log past trips, where you stayed and what you ate. Pylos learns your taste from them, and you climb the ranks among friends.</p>
+          <p className="hint">Type a city, tick what you loved, hit Next. Pylos learns your taste from it, and you climb the ranks among friends.</p>
         </div>
         <StatsRow stats={stats} showNext />
 
-        {logTrip && !alreadyLogged && (
-          <div className="callout stack">
-            <b>Log your {logCity || "Pylos"} trip</b>
-            <PlaceForm
-              initial={{ value: blankPlace(logCity, logTrip) }}
-              suggestions={suggestions}
-              onSaved={(p) => {
-                setPlaces((ps) => [p, ...ps]);
-                setMsg({ text: `${p.city} added.` });
-                taste.reload();
-              }}
-            />
-          </div>
-        )}
+        <QuickLog
+          preset={alreadyLogged ? null : preset}
+          onPresetDone={() => {
+            setPreset(null);
+            router.replace("/profile", { scroll: false });
+          }}
+          onSaved={(p) => {
+            setPlaces((ps) => [p, ...ps]);
+            taste.reload();
+          }}
+        />
 
         {places.length > 0 && (
           <ul className="placelist">
@@ -213,8 +215,8 @@ function ProfileEditor() {
           </ul>
         )}
 
-        <details className="more" open={places.length === 0 && !logTrip}>
-          <summary>Add a place</summary>
+        <details className="more">
+          <summary>Add a trip with more detail</summary>
           <PlaceForm
             onSaved={(p) => {
               setPlaces((ps) => [p, ...ps]);

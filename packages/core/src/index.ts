@@ -13,4 +13,5 @@ export * from "./community";
 export * from "./destinations";
 export * from "./route";
 export * from "./taste";
+export * from "./picks";
 export * from "./imports-stub";

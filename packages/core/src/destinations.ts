@@ -101,6 +101,8 @@ export function sampleRequest(d: Destination, days = d.sampleDays) {
     destination: d.kind === "region" ? d.name : `${d.name}, ${d.country}`,
     days,
     startDate: null,
+    // No month: an evergreen plan, with each stop's best season noted.
+    month: null,
     party: "Couple" as const,
     age: null,
     about: [],

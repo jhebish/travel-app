@@ -76,6 +76,8 @@ export const TripRequestSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional()
     .nullable(),
+  /** The month they travel (1–12) when there's no exact date yet, so stops and picks suit the season. */
+  month: z.number().int().min(1).max(12).nullable().optional(),
   party: z.enum(PARTIES),
   age: z.enum(AGE_BANDS).optional().nullable(),
   about: z.array(z.enum(ABOUT_OPTIONS)).max(ABOUT_OPTIONS.length).default([]),
@@ -206,6 +208,10 @@ export const RouteLegSchema = z.object({
   region: clip(80).default(""),
   days: z.preprocess(toInt, z.number().int().min(1).max(14)),
   why: clip(300).default(""),
+  /** What this stop is like in the travel month (or its best months when there's no date). */
+  season: clip(140).optional().catch(undefined),
+  /** Other stops that could take this one's place in the route: shown as swaps. */
+  alternatives: salvage(z.object({ city: clipReq(80), why: clip(120).default("") }), 0, 4).optional().catch(undefined),
   /** How to get here from the previous stop (absent for the first stop). */
   transfer: z
     .object({ mode: clip(40).default(""), duration: clip(40).default(""), note: clip(200).default("") })
@@ -236,6 +242,17 @@ export const EditSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("swap"), day: z.number().int().min(0).max(MAX_DAYS.multi - 1), index: z.number().int().min(0).max(7), hint: z.string().trim().max(200).default("") }),
   z.object({ action: z.literal("regenerate_day"), day: z.number().int().min(0).max(MAX_DAYS.multi - 1), hint: z.string().trim().max(200).default("") }),
   z.object({ action: z.literal("lock"), day: z.number().int().min(0).max(MAX_DAYS.multi - 1), index: z.number().int().min(0).max(7), locked: z.boolean() }),
+  /** Multi-city trips: replace one stop on the route with another town, and re-plan its days. */
+  z.object({
+    action: z.literal("swap_city"),
+    leg: z.number().int().min(0).max(7),
+    city: z
+      .string()
+      .trim()
+      .min(2)
+      .max(80)
+      .regex(/^[^<>{}\[\]\n\r\t"]+$/, "Just the name of a town or city."),
+  }),
 ]);
 export type EditRequest = z.infer<typeof EditSchema>;
 

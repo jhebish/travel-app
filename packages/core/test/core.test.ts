@@ -532,3 +532,54 @@ describe("fitItineraryToDays", () => {
     expect(six.days).toHaveLength(6);
   });
 });
+
+describe("seasons and city swaps", () => {
+  it("takes the travel month from the start date, then the picked month", async () => {
+    const { travelMonth, seasonBlock } = await import("../src");
+    expect(travelMonth({ startDate: "2027-07-14", month: 3 })).toBe(7);
+    expect(travelMonth({ startDate: null, month: 3 })).toBe(3);
+    expect(travelMonth({ startDate: null })).toBeNull();
+    const july = seasonBlock(TripRequestSchema.parse({ ...req, mode: "multi", destination: "Greece", days: 8, month: 7 }));
+    expect(july).toMatch(/They travel in July/);
+    expect(july).toMatch(/Beach, island and swimming stops only/);
+    expect(seasonBlock(TripRequestSchema.parse({ ...req, mode: "multi", destination: "Greece", days: 8 }))).toMatch(/haven't said when/);
+  });
+  it("keeps a route leg whose swaps or season came back malformed", async () => {
+    const { RouteLegSchema } = await import("../src");
+    const ok = RouteLegSchema.parse({ city: "Naxos", days: 3, why: "Beaches", season: "Sea at 25°C", alternatives: [{ city: "Paros", why: "Livelier" }, { why: "no city" }], dayThemes: [] });
+    expect(ok.alternatives).toEqual([{ city: "Paros", why: "Livelier" }]);
+    const bad = RouteLegSchema.parse({ city: "Naxos", days: 3, why: "", season: { x: 1 }, alternatives: "Paros", dayThemes: [] });
+    expect(bad.season).toBeUndefined();
+    expect(bad.alternatives).toBeUndefined();
+  });
+  it("accepts a city swap and rejects markup in the name", async () => {
+    const { EditSchema } = await import("../src");
+    expect(EditSchema.parse({ action: "swap_city", leg: 1, city: " Sorrento " })).toEqual({ action: "swap_city", leg: 1, city: "Sorrento" });
+    expect(EditSchema.safeParse({ action: "swap_city", leg: 1, city: "<b>x</b>" }).success).toBe(false);
+    expect(EditSchema.safeParse({ action: "swap_city", leg: 9, city: "Rome" }).success).toBe(false);
+  });
+});
+
+describe("city picks for quick logging", () => {
+  it("validates the country, drops bad and duplicate places", async () => {
+    const { CityPicksSchema } = await import("../src");
+    const r = CityPicksSchema.parse({
+      found: true,
+      city: "Lisbon",
+      countryCode: "pt",
+      picks: [
+        { kind: "food", name: "Taberna da Rua das Flores", note: "Petiscos · Chiado" },
+        { kind: "food", name: "taberna da rua das flores", note: "dupe" },
+        { kind: "spaceship", name: "Nope", note: "" },
+        { kind: "stay", name: "Memmo Alfama", note: "Boutique hotel · Alfama" },
+      ],
+    });
+    expect(r.countryCode).toBe("PT");
+    expect(r.picks.map((p) => p.name)).toEqual(["Taberna da Rua das Flores", "Memmo Alfama"]);
+    expect(CityPicksSchema.parse({ found: false, city: "Xyzzy", countryCode: "ZZ", picks: "none" })).toMatchObject({ found: false, countryCode: null, picks: [] });
+  });
+  it("groups every kind it asks for", async () => {
+    const { PICK_GROUPS, PICK_KINDS } = await import("../src");
+    expect(PICK_GROUPS.flatMap((g) => g.kinds).sort()).toEqual([...PICK_KINDS].sort());
+  });
+});

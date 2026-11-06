@@ -30,6 +30,7 @@ import {
   IconPeople,
   IconRefresh,
   IconShare,
+  IconSun,
   IconSwap,
   IconUnlock,
   IconUp,
@@ -90,7 +91,14 @@ function ForYou({ p }: { p: Stop | Hotel }) {
   );
 }
 
-type Busy = null | { kind: "swap"; key: string } | { kind: "day"; day: number } | { kind: "hotels" } | { kind: "share" } | { kind: "visibility" };
+type Busy =
+  | null
+  | { kind: "swap"; key: string }
+  | { kind: "day"; day: number }
+  | { kind: "city"; leg: number; city: string }
+  | { kind: "hotels" }
+  | { kind: "share" }
+  | { kind: "visibility" };
 type Vis = NonNullable<Trip["visibility"]>;
 const VIS: { value: Vis; label: string; hint: string }[] = [
   { value: "private", label: "Only me", hint: "Hidden from the community." },
@@ -251,6 +259,18 @@ export function TripView({
       .then((r) => apply(r.trip))
       .catch(fail);
   };
+  // ----- multi-city: swap a stop on the route for another town -----
+  const [cityPick, setCityPick] = useState<string | null>(null);
+  const [otherOpen, setOtherOpen] = useState(false);
+  const [otherCity, setOtherCity] = useState("");
+  const swapCity = async (leg: number, to: string) => {
+    const ok = await edit({ action: "swap_city", leg, city: to }, { kind: "city", leg, city: to });
+    if (ok) {
+      setCityPick(null);
+      setOtherOpen(false);
+      setOtherCity("");
+    }
+  };
   const regenerate = async () => {
     const ok = await edit({ action: "regenerate_day", day: dIdx, hint: dayHint }, { kind: "day", day: dIdx });
     if (ok) {
@@ -373,6 +393,98 @@ export function TripView({
     </div>
   );
 
+  // The stop the current day is in (multi-city): its season, why it's here, and towns to swap in.
+  const route = it.mode === "multi" || (it.route?.length ?? 0) > 1 ? (it.route ?? []) : [];
+  const legIdx = route.findIndex((l) => l.city === d.city);
+  const leg = legIdx >= 0 ? route[legIdx]! : null;
+  const onRoute = new Set(route.map((l) => l.city.trim().toLowerCase()));
+  const swaps = (leg?.alternatives ?? []).filter((a) => !onRoute.has(a.city.trim().toLowerCase())).slice(0, 3);
+  const lockedHere = leg ? it.days.filter((x) => x.city === leg.city).reduce((n, x) => n + x.stops.filter((s) => s.locked).length, 0) : 0;
+  useEffect(() => {
+    // Moving to another stop clears a half-made swap.
+    setCityPick(null);
+    setOtherOpen(false);
+  }, [legIdx]);
+  const legCard =
+    route.length > 1 && leg && (leg.season || leg.why || !readOnly) ? (
+      <section className="legcard" aria-label={`About ${leg.city}`}>
+        {(leg.season || leg.why) && (
+          <div className="legcard-text">
+            {leg.season && (
+              <p className="leg-season">
+                <IconSun />
+                <span>{leg.season}</span>
+              </p>
+            )}
+            {leg.why && <p className="leg-why">{leg.why}</p>}
+          </div>
+        )}
+        {!readOnly &&
+          (busy?.kind === "city" ? (
+            <span className="thinking" role="status">
+              <span className="dot" />
+              Planning {leg.days} {leg.days === 1 ? "day" : "days"} in {busy.city} instead of {leg.city}…
+            </span>
+          ) : cityPick ? (
+            <div className="leg-confirm" role="group" aria-label="Confirm the swap">
+              <p>
+                Swap {leg.city} for <b>{cityPick}</b>? Your {leg.days} {leg.days === 1 ? "day" : "days"} there
+                {lockedHere ? `, including ${lockedHere} locked ${lockedHere === 1 ? "stop" : "stops"},` : ""} will be planned again
+                {(it.hotels ?? []).some((h) => h.city === leg.city) ? ", with new hotels" : ""}.
+              </p>
+              <div className="row tight">
+                <button type="button" className="btn small" onClick={() => swapCity(legIdx, cityPick)} disabled={!!busy}>
+                  Swap to {cityPick}
+                </button>
+                <button type="button" className="btn ghost small" onClick={() => setCityPick(null)}>
+                  Keep {leg.city}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="leg-swap">
+              <span className="label">
+                <IconSwap /> Swap {leg.city} for
+              </span>
+              <div className="leg-alts">
+                {swaps.map((a) => (
+                  <button key={a.city} type="button" className="leg-alt" onClick={() => setCityPick(a.city)} disabled={!!busy}>
+                    <b>{a.city}</b>
+                    {a.why && <small>{a.why}</small>}
+                  </button>
+                ))}
+                <button type="button" className="leg-alt other" aria-expanded={otherOpen} onClick={() => setOtherOpen((o) => !o)} disabled={!!busy}>
+                  <b>Somewhere else</b>
+                  <small>Type any town</small>
+                </button>
+              </div>
+              {otherOpen && (
+                <form
+                  className="row tight leg-other"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const to = otherCity.trim();
+                    if (to.length >= 2) setCityPick(to);
+                  }}
+                >
+                  <input
+                    type="text"
+                    aria-label={`A town to visit instead of ${leg.city}`}
+                    placeholder="e.g. a town nearby"
+                    maxLength={80}
+                    value={otherCity}
+                    onChange={(e) => setOtherCity(e.target.value)}
+                  />
+                  <button className="btn small" type="submit" disabled={otherCity.trim().length < 2}>
+                    Next
+                  </button>
+                </form>
+              )}
+            </div>
+          ))}
+      </section>
+    ) : null;
+
   return (
     <article className="trip">
       {/* ---------- hero ---------- */}
@@ -468,6 +580,8 @@ export function TripView({
                     if (first >= 0) setDay(first);
                     setSwapOpen(null);
                     setDayHintOpen(false);
+                    setCityPick(null);
+                    setOtherOpen(false);
                   }}
                 >
                   <b>{l.city}</b>
@@ -480,6 +594,7 @@ export function TripView({
           })}
         </nav>
       )}
+      {legCard}
 
       {/* ---------- day ---------- */}
       <div className="daytabs" role="tablist" aria-label="Days">

@@ -970,3 +970,82 @@ html, body { overflow-x: clip; }
 .review-item input { width: 20px; height: 20px; margin-top: 3px; accent-color: var(--accent); flex: none; }
 .review-item span { display: flex; flex-direction: column; }
 .review-item small { color: var(--muted); font-size: 14px; }
+
+/* =====================================================================
+   Quick trip log: type a city, tick what you loved, hit Next
+   ===================================================================== */
+.quicklog { gap: 14px; }
+.ql-city { display: grid; grid-template-columns: minmax(0, 1fr) 140px auto; gap: 12px; align-items: end; }
+.ql-city .btn { min-height: 48px; }
+.ql-done { margin: 0; padding: 10px 14px; border-radius: 12px; background: var(--olive); color: var(--olive-ink); font-size: 16px; }
+.ql-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.ql-head h3 { margin: 2px 0 0; font-family: var(--font-display); font-weight: 400; font-size: 26px; line-height: 1.15; }
+.ql-group { display: flex; flex-direction: column; gap: 8px; }
+.ql-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.ql-item {
+  display: flex; align-items: flex-start; gap: 10px; text-align: left; min-height: 56px; padding: 10px 12px;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit;
+  cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background .15s, border-color .15s;
+}
+.ql-item:hover { border-color: var(--faint); }
+.ql-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ql-item[aria-pressed="true"] { background: var(--clay); border-color: var(--clay-line); }
+.ql-heart { flex: none; font-size: 18px; line-height: 1.2; color: var(--clay-line); }
+.ql-item[aria-pressed="true"] .ql-heart { color: var(--bad); animation: pop .25s ease-out; }
+.ql-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ql-text b { font-weight: 600; font-size: 16px; line-height: 1.25; overflow-wrap: anywhere; }
+.ql-text small { font-size: 14px; line-height: 1.25; font-style: italic; color: var(--muted); }
+.ql-item.skeleton { cursor: default; border-color: transparent; background: linear-gradient(90deg, var(--sunk) 0%, var(--surface) 50%, var(--sunk) 100%) 0 0 / 200% 100%; animation: shimmer 1.2s linear infinite; }
+.ql-other .row input { flex: 1 1 auto; min-width: 0; }
+.ql-bar {
+  position: sticky; bottom: 12px; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 12px 10px 16px; border-radius: 14px; border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 6px 24px rgb(0 0 0 / .08);
+}
+.ql-bar .btn { min-width: 120px; }
+@media (max-width: 720px) {
+  .ql-city { grid-template-columns: minmax(0, 1fr) 112px; }
+  .ql-city .btn { grid-column: 1 / -1; }
+  .ql-grid { grid-template-columns: 1fr 1fr; }
+  .ql-item { gap: 8px; padding: 9px 10px; }
+  .ql-text b { font-size: 15px; }
+  .ql-text small { font-size: 13px; }
+  .ql-bar { bottom: calc(70px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ql-item[aria-pressed="true"] .ql-heart, .ql-item.skeleton { animation: none; }
+}
+
+/* =====================================================================
+   Multi-city: each stop's season, and towns to swap in
+   ===================================================================== */
+.legcard { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; border-radius: var(--r-panel); background: var(--surface); border: 1px solid var(--line); }
+.legcard-text { display: flex; flex-direction: column; gap: 4px; }
+.leg-season { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 16.5px; }
+.leg-season svg { width: 18px; height: 18px; flex: none; margin-top: 3px; color: var(--warm); }
+.leg-why { margin: 0; font-size: 15.5px; font-style: italic; color: var(--muted); }
+.leg-swap { display: flex; flex-direction: column; gap: 8px; }
+.leg-swap .label { display: inline-flex; align-items: center; gap: 6px; }
+.leg-swap .label svg { width: 15px; height: 15px; }
+.leg-alts { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.leg-alt {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 9px 12px; text-align: left;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; transition: background .15s, border-color .15s;
+}
+.leg-alt:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
+.leg-alt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.leg-alt:disabled { opacity: .55; cursor: default; }
+.leg-alt b { font-family: var(--font-display); font-weight: 400; font-size: 17px; line-height: 1.2; }
+.leg-alt small { font-size: 14px; line-height: 1.25; font-style: italic; color: var(--muted); }
+.leg-alt.other { border-style: dashed; }
+.leg-other input { flex: 1 1 auto; min-width: 0; }
+.leg-confirm { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 12px; background: var(--ochre); }
+.leg-confirm p { margin: 0; font-size: 16px; }
+@media (max-width: 720px) {
+  .legcard { padding: 12px 14px; }
+  .leg-alts { grid-template-columns: 1fr 1fr; }
+}
+
+.when-hint { margin: -8px 0 0; }

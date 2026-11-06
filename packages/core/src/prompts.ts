@@ -1,5 +1,5 @@
 import type { Candidate } from "./ranking";
-import type { Itinerary, StayPrefs, TripRequest } from "./schemas";
+import type { Itinerary, RouteLeg, StayPrefs, TripRequest } from "./schemas";
 import { SOURCE_BY_ID, SOURCES } from "./sources";
 import { activeSources, type EffectiveSources } from "./weights";
 
@@ -20,11 +20,26 @@ const lines = (s: string) =>
     .map((x) => x.trim())
     .filter(Boolean);
 
+export const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/** The month they travel (1–12): from the start date, else the month they picked; null if they haven't said. */
+export function travelMonth(req: Pick<TripRequest, "startDate" | "month">): number | null {
+  const fromDate = req.startDate ? Number(req.startDate.slice(5, 7)) : NaN;
+  if (fromDate >= 1 && fromDate <= 12) return fromDate;
+  return req.month && req.month >= 1 && req.month <= 12 ? req.month : null;
+}
+
+/** The month someone planning today most likely travels in: about three weeks out. */
+export function soonMonth(now = new Date()): number {
+  return new Date(now.getTime() + 21 * 864e5).getUTCMonth() + 1;
+}
+
 export function travelerBlock(req: TripRequest): string {
   const per = req.pace === "Slow" ? "3–4" : req.pace === "Packed" ? "5–6" : "4–5";
+  const month = travelMonth(req);
   return `TRAVELER
 - Destination: ${req.destination}
-- Trip length: ${req.days} day(s)${req.startDate ? `, starting ${req.startDate}` : ""}
+- Trip length: ${req.days} day(s)${req.startDate ? `, starting ${req.startDate}` : month ? `, in ${MONTH_NAMES[month - 1]}` : ""}
 - Who: ${req.party}${req.age ? `, age ${req.age}` : ""}
 - About them: ${req.about.length ? req.about.join("; ") : "nothing specific"}
 - Budget: ${req.budget}
@@ -372,6 +387,25 @@ Call submit_day with the theme and stops.`;
 // Multi-city: plan the route first, then every day in parallel
 // ---------------------------------------------------------------------------
 
+const TRANSFER_PROPS = {
+  mode: { type: "string", description: "e.g. train, flight, ferry, car, sleeper train" },
+  duration: { type: "string", description: "Door-to-door estimate, e.g. \"2h 30m\"" },
+  note: { type: "string", description: "One practical tip (under 14 words)." },
+} as const;
+
+const ALTERNATIVES_PROP = {
+  type: "array",
+  description: "2–3 other stops that could take this one's slot: close enough that the route still flows, and good in their travel month.",
+  items: {
+    type: "object",
+    properties: {
+      city: { type: "string", description: "Town, city or small area." },
+      why: { type: "string", description: "How it differs from this stop, under 10 words (e.g. \"Quieter, cheaper, sandier beaches\")." },
+    },
+    required: ["city", "why"],
+  },
+} as const;
+
 export const ROUTE_TOOL = {
   name: "submit_route",
   description: "Submit the multi-city route: title, summary, notes, and the stops in order with days per stop.",
@@ -391,14 +425,12 @@ export const ROUTE_TOOL = {
             region: { type: "string", description: "Region or province, if useful." },
             days: { type: "integer", description: "Whole days spent here, including the arrival day." },
             why: { type: "string", description: "Why this stop suits the traveler (under 18 words)." },
+            season: { type: "string", description: "What this stop is like in their travel month, under 14 words (e.g. \"Sea is warm, about 24°C: beach season\")." },
+            alternatives: ALTERNATIVES_PROP,
             transfer: {
               type: ["object", "null"],
               description: "How to get here from the previous stop; null for the first stop.",
-              properties: {
-                mode: { type: "string", description: "e.g. train, flight, ferry, car, sleeper train" },
-                duration: { type: "string", description: "Door-to-door estimate, e.g. \"2h 30m\"" },
-                note: { type: "string", description: "One practical tip (under 14 words)." },
-              },
+              properties: TRANSFER_PROPS,
             },
             dayThemes: {
               type: "array",
@@ -413,13 +445,28 @@ export const ROUTE_TOOL = {
               },
             },
           },
-          required: ["city", "days", "why", "transfer", "dayThemes"],
+          required: ["city", "days", "why", "season", "alternatives", "transfer", "dayThemes"],
         },
       },
     },
     required: ["title", "summary", "notes", "legs"],
   },
 } as const;
+
+/** When they travel, and what that means for where to go. */
+export function seasonBlock(req: TripRequest): string {
+  const m = travelMonth(req);
+  if (!m) {
+    return `WHEN
+They haven't said when they travel. Choose stops that are good most of the year, and in "season" give each stop's best months in a few words.`;
+  }
+  const month = MONTH_NAMES[m - 1];
+  return `WHEN
+They travel in ${month}${req.startDate ? ` (from ${req.startDate})` : ""}. Choose stops that are at their best then:
+- Beach, island and swimming stops only where the sea is warm and the season is on in ${month} (ferries running, beach places open). Out of season, go for cities, food towns, hills, hot springs or somewhere with winter sun instead.
+- Skip places in monsoon, hurricane or rainy season, extreme heat or cold, or closed for the season, unless the traveler asked for them.
+- "season": one line on what ${month} is like at each stop.`;
+}
 
 /** Multi-city step 1: choose the stops, their order and days, and a theme for every day. */
 export function buildRoutePrompt(req: TripRequest, eff: EffectiveSources, lists: CuratorLists): string {
@@ -428,16 +475,81 @@ export function buildRoutePrompt(req: TripRequest, eff: EffectiveSources, lists:
 
 ${sourceBlock(eff, lists)}
 
+${seasonBlock(req)}
+
 TASK
 Design a ${req.days}-day multi-stop route through ${req.destination}. Do not plan individual places yet.
 - Choose ${stops} stops${req.pace === "Slow" ? " (fewer is better for this slow-paced traveler)" : req.pace === "Packed" ? " (this traveler is happy to move more)" : ""}. Usually at least 2 days per stop; a 1-day stop only for a small place on the way.
 - Order them as a sensible line with no backtracking; start and end near a major airport or rail hub when possible.
 - Be realistic about transfers: give mode and door-to-door time. A long transfer uses up much of the arrival day.
-- Fit the traveler: interests, budget, pace, needs, and the season${req.startDate ? ` (they travel from ${req.startDate})` : ""}. Favor places locals love over tourist circuits, but include the essentials of ${req.destination} when they fit.
+- Fit the traveler: interests, budget, pace and needs. Favor places locals love over tourist circuits, but include the essentials of ${req.destination} when they fit.
 - The stops' "days" must add up to exactly ${req.days}. Give one day theme and area per day at each stop.
+- For every stop, 2–3 "alternatives" the traveler could swap in: similar place on the route, also good then, each saying how it differs. Never a stop already on the route.
 - Notes: 2–3 practical tips for the whole route.
 
 Call submit_route.`;
+}
+
+// ---------------------------------------------------------------------------
+// Multi-city: swap one stop for another town
+// ---------------------------------------------------------------------------
+
+export const LEG_TOOL = {
+  name: "submit_stop",
+  description: "Submit the new stop for this slot of the route: its days, how to get there and on, swaps, and the trip's updated title and summary.",
+  input_schema: {
+    type: "object",
+    properties: {
+      found: { type: "boolean", description: "False if the requested place isn't a real town, city or area you know." },
+      city: { type: "string", description: "The town or city as usually written in English." },
+      region: { type: "string", description: "Region or province, if useful." },
+      why: { type: "string", description: "Why this stop suits the traveler (under 18 words)." },
+      season: { type: "string", description: "What it's like there in their travel month, under 14 words." },
+      transfer: { type: ["object", "null"], description: "How to get here from the previous stop; null if there is none.", properties: TRANSFER_PROPS },
+      nextTransfer: { type: ["object", "null"], description: "How to get from here to the next stop; null if there is none.", properties: TRANSFER_PROPS },
+      dayThemes: {
+        type: "array",
+        description: "One entry per day here, in order.",
+        items: {
+          type: "object",
+          properties: {
+            theme: { type: "string", description: "Short theme (under 8 words)." },
+            area: { type: "string", description: "Neighborhood or area for that day." },
+          },
+          required: ["theme", "area"],
+        },
+      },
+      alternatives: ALTERNATIVES_PROP,
+      title: { type: "string", description: "The trip's title, updated for the new route." },
+      summary: { type: "string", description: "Two sentences on the shape of the new route." },
+    },
+    required: ["found", "city", "why", "season", "transfer", "nextTransfer", "dayThemes", "alternatives", "title", "summary"],
+  },
+} as const;
+
+/** Swap step 1: the new stop's day themes, transfers and swaps, for the same number of days. */
+export function buildLegPrompt(req: TripRequest, route: RouteLeg[], index: number, city: string, days: number, title: string): string {
+  const prev = route[index - 1];
+  const next = route[index + 1];
+  const line = route.map((l, i) => (i === index ? `${city} (new, ${days} days)` : `${l.city} (${l.days} days)`)).join(" → ");
+  const others = route.filter((_, i) => i !== index).map((l) => l.city);
+  return `${travelerBlock(req)}
+
+${seasonBlock(req)}
+
+ROUTE
+"${title}": ${line}.
+The traveler is replacing ${route[index]!.city} with ${city}.
+
+TASK
+Plan the new stop. Do not plan individual places yet.
+- If "${city}" isn't a real place you know, set "found" to false.
+- Exactly ${days} day theme${days === 1 ? "" : "s"} with an area each.
+- "transfer": ${prev ? `from ${prev.city} to ${city}` : "null (it's the first stop)"}. "nextTransfer": ${next ? `from ${city} to ${next.city}` : "null (it's the last stop)"}. Mode and realistic door-to-door time.
+- 2–3 "alternatives" for this slot, other than ${[city, ...others].join(", ")}.
+- A new "title" and "summary" for the whole trip with ${city} in it.
+
+Call submit_stop.`;
 }
 
 /** Context line for the first day at a new stop. */

@@ -5,10 +5,13 @@ import {
   BUDGETS,
   INTERESTS,
   MAX_DAYS,
+  MONTH_NAMES,
   PACES,
   PARTIES,
   STAY_PRICES,
   STAY_STYLES,
+  soonMonth,
+  travelMonth,
   type BrowseDestination,
   type BuildEvent,
   type TripMode,
@@ -41,6 +44,15 @@ const ABOUT_LABELS: Record<string, string> = {
 };
 const PARTY_LABELS: Record<string, string> = { Solo: "Solo", Couple: "Couple", "Family with kids": "Family", "Group of friends": "Friends" };
 const BUDGET_LABELS: Record<string, string> = { Budget: "$", "Mid-range": "$$", Splurge: "$$$" };
+
+/** The next twelve months, starting with this one, for "When are you going?". */
+function upcomingMonths() {
+  const now = new Date();
+  return Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    return { value: d.getMonth() + 1, label: `${MONTH_NAMES[d.getMonth()]}${d.getFullYear() !== now.getFullYear() ? ` ${d.getFullYear()}` : ""}` };
+  });
+}
 
 const blank: TripRequest = {
   mode: "single",
@@ -77,6 +89,12 @@ function Planner() {
   const [tfKey, setTfKey] = useState(0);
   const [building, setBuilding] = useState<{ destination: string; days: number }>({ destination: "", days: 3 });
   const set = <K extends keyof TripRequest>(k: K, v: TripRequest[K]) => setReq((r) => ({ ...r, [k]: v }));
+  // When they travel decides the stops (beach towns only in beach season). Default: the weeks ahead.
+  const [months, setMonths] = useState<{ value: number; label: string }[]>([]);
+  useEffect(() => {
+    setMonths(upcomingMonths());
+    setReq((r) => (r.month === undefined && !r.startDate ? { ...r, month: soonMonth() } : r));
+  }, []);
   // Friends you can plan with (people you follow who follow you back).
   const [friends, setFriends] = useState<{ handle: string; displayName: string }[]>([]);
   useEffect(() => {
@@ -129,7 +147,7 @@ function Planner() {
       api<{ trip: Trip }>(`/api/trips/${from}`)
         .then(({ trip }) => {
           setMode("quick");
-          setReq({ ...blank, ...trip.request, startDate: null });
+          setReq({ ...blank, ...trip.request, startDate: null, month: travelMonth(trip.request) ?? soonMonth() });
           setStatus({ text: "Loaded your earlier request. Adjust anything, then build." });
         })
         .catch(() => {});
@@ -300,7 +318,7 @@ function Planner() {
           )}
         </div>
         <div className="card">
-        <div className="two">
+        <div className="three">
           <div className="field">
             <span className="label">Days</span>
             <div className="stepper">
@@ -316,12 +334,45 @@ function Planner() {
             </div>
           </div>
           <div className="field">
-            <label className="label" htmlFor="start">
-              Start date <small>(optional, for live hotel rates)</small>
+            <label className="label" htmlFor="month">
+              When
             </label>
-            <input id="start" type="date" value={req.startDate ?? ""} onChange={(e) => set("startDate", e.target.value || null)} />
+            <select
+              id="month"
+              value={travelMonth(req) ?? ""}
+              disabled={!!req.startDate}
+              onChange={(e) => set("month", e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">Not sure yet</option>
+              {months.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label className="label" htmlFor="start">
+              Start date <small>(optional)</small>
+            </label>
+            <input
+              id="start"
+              type="date"
+              value={req.startDate ?? ""}
+              onChange={(e) => {
+                const v = e.target.value || null;
+                setReq((r) => ({ ...r, startDate: v, month: v ? Number(v.slice(5, 7)) : r.month }));
+              }}
+            />
           </div>
         </div>
+        {req.mode === "multi" && (
+          <p className="hint when-hint">
+            {travelMonth(req)
+              ? `Stops are picked for ${MONTH_NAMES[travelMonth(req)! - 1]}: beach towns only when it's beach weather. You can swap any stop after.`
+              : "Not sure when? We'll pick stops that are good most of the year, and note each one's best season."}
+          </p>
+        )}
         <div className="field">
           <span className="label">Who&apos;s going</span>
           <SingleChips label="Who's going" options={PARTIES.map((v) => ({ value: v, label: PARTY_LABELS[v] }))} value={req.party} onChange={(v) => set("party", v)} />

@@ -33,7 +33,7 @@ export async function tripFor(ctx: Ctx, id: string, need: TripRole = "member"): 
  */
 export async function updateTrip(
   row: TripRow,
-  patch: Partial<{ itinerary: Itinerary; votes: Votes; request: TripRequest; shared: boolean; share_token: string; visibility: string }>,
+  patch: Partial<{ itinerary: Itinerary; votes: Votes; request: TripRequest; title: string; shared: boolean; share_token: string; visibility: string }>,
 ): Promise<TripRow> {
   const { data, error } = await supabaseAdmin().from("trips").update(patch).eq("id", row.id).eq("updated_at", row.updated_at).select("*").maybeSingle();
   if (error) throw error;

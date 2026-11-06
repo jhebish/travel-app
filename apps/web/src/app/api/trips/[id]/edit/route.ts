@@ -1,7 +1,7 @@
 import { EditSchema } from "@travel/core";
 import { requireUser } from "@/lib/auth";
 import { handler, json, parseBody } from "@/lib/http";
-import { regenerateDay, setLocked, swapStop } from "@/lib/pipeline";
+import { regenerateDay, setLocked, swapCity, swapStop } from "@/lib/pipeline";
 import { editPeople } from "@/lib/together";
 import { tripFor, tripForRole } from "@/lib/tripAccess";
 
@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Swap one stop, rebuild one day (keeping locked stops and ones a friend is in for), or lock a stop.
+ * Swap one stop, rebuild one day (keeping locked stops and ones a friend is in for), lock a stop,
+ * or swap a whole stop on a multi-city route for another town.
  * The owner and friends planning the trip can all edit; everyone's taste is blended in.
  */
 export const POST = handler(async (req: Request, { params }: { params: { id: string } }) => {
@@ -23,6 +24,8 @@ export const POST = handler(async (req: Request, { params }: { params: { id: str
       ? await swapStop(ctx, row, edit.day, edit.index, edit.hint, people)
       : edit.action === "regenerate_day"
         ? await regenerateDay(ctx, row, edit.day, edit.hint, people)
-        : await setLocked(ctx, row, edit.day, edit.index, edit.locked);
+        : edit.action === "swap_city"
+          ? await swapCity(ctx, row, edit.leg, edit.city, people)
+          : await setLocked(ctx, row, edit.day, edit.index, edit.locked);
   return json({ trip: tripForRole(saved, role) });
 });
