@@ -29,7 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="shell">
           <div className="app">
             <Nav />
-            {children}
+            <main className="main">{children}</main>
           </div>
         </div>
       </body>
