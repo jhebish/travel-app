@@ -159,7 +159,13 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
           {trip.destination}, {it.days.length} {it.days.length === 1 ? "day" : "days"}
         </Text>
         <Text style={{ color: t.heroInk, fontSize: 32, fontWeight: "800", letterSpacing: -1, lineHeight: 34 }}>{it.title}</Text>
-        <Text style={{ color: t.heroSoft, fontSize: 16, lineHeight: 23 }}>{it.summary}</Text>
+        {/* Only when their own trips and ratings give a reason; never a general description. */}
+        {it.forYou ? (
+          <Text style={{ color: t.heroSoft, fontSize: 16, lineHeight: 23 }}>
+            <Text style={{ fontWeight: "700" }}>For you · </Text>
+            {it.forYou}
+          </Text>
+        ) : null}
         <View style={[styles.row, { marginTop: 4 }]}>
           {[
             { label: trip.saved ? "Saved" : "Save", on: trip.saved, onPress: () => update({ saved: !trip.saved }) },
