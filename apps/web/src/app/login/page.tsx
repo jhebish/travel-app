@@ -15,6 +15,8 @@ const RESEND_AFTER = 60;
  * Set NEXT_PUBLIC_SIGNIN_CODES=1 once custom SMTP and those templates are in place.
  */
 const CODES = process.env.NEXT_PUBLIC_SIGNIN_CODES === "1";
+/** Google sign-in needs the Google provider switched on in Supabase first; until then the button would lead to an error page. */
+const GOOGLE = process.env.NEXT_PUBLIC_GOOGLE_SIGNIN === "1";
 
 /**
  * How the code is checked depends on how it was sent: a guest attaching an email to their
@@ -199,7 +201,7 @@ function Login() {
           </div>
         </form>
       )}
-      {!sentTo && (
+      {!sentTo && GOOGLE && (
         <button className="btn ghost" onClick={google}>
           Continue with Google
         </button>
