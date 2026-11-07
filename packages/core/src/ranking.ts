@@ -2,6 +2,7 @@ import type { TripRequest } from "./schemas";
 import type { PlaceVerification } from "./schemas";
 import { STAY_PRICE_RANGE, type SourceId, type StayPrice } from "./sources";
 import type { EffectiveSources } from "./weights";
+import { guessKind, kindFromHints } from "./imports/kind";
 
 export type CandidateCategory = "food" | "drink" | "culture" | "outdoors" | "shopping" | "nightlife" | "stay" | "other";
 
@@ -79,8 +80,10 @@ export function scoreCandidate(c: Candidate, eff: EffectiveSources, req: TripReq
 
   // Quality signals, kept small so they never outweigh the source mix
   if (c.rating != null) score += Math.max(0, c.rating - 4) * 0.1; // up to +0.1
-  // Locals-first: very heavily reviewed places skew touristy
-  if ((c.ratingCount ?? 0) > 8000) score -= 0.1;
+  // Locals-first: very heavily reviewed restaurants and bars skew touristy. Not sights: a place
+  // with that many reviews is usually what the destination is famous for (the Pyramids, the Colosseum).
+  const sight = c.category === "culture" || c.category === "outdoors";
+  if ((c.ratingCount ?? 0) > 8000) score += sight ? 0.1 : -0.1;
   if (c.origin === "local_pick") score += 0.1; // human-vetted
 
   return score;
@@ -109,9 +112,29 @@ export function selectCandidates(
     .map((c) => ({ c, s: scoreCandidate(c, eff, req) }))
     .filter((x) => Number.isFinite(x.s))
     .sort((a, b) => b.s - a.s);
-  const acts = scored.filter((x) => x.c.category !== "stay").slice(0, maxActivities);
+  // Keep the shortlist varied: a city whose top picks are all cafés would otherwise hand the
+  // planner nothing but cafés to build days from.
+  const caps = { coffee: 8, meal: 18 };
+  const used = { coffee: 0, meal: 0 };
+  const acts: typeof scored = [];
+  for (const x of scored) {
+    if (x.c.category === "stay" || acts.length >= maxActivities) continue;
+    const role = candidateRole(x.c);
+    if (role === "coffee" || role === "meal") {
+      if (used[role] >= caps[role]) continue;
+      used[role]++;
+    }
+    acts.push(x);
+  }
   const stays = req.stay.on ? scored.filter((x) => x.c.category === "stay").slice(0, maxStays) : [];
   return [...acts, ...stays].map((x) => x.c);
+}
+
+/** Coffee, a meal, or something else, from the candidate's Google types or category and its name. */
+export function candidateRole(c: Pick<Candidate, "name" | "category" | "tags">): "coffee" | "meal" | "other" {
+  if (c.category !== "food" && c.category !== "drink") return "other";
+  const k = kindFromHints(c.tags ?? []) ?? guessKind(c.name);
+  return k === "coffee" ? "coffee" : k === "food" ? "meal" : "other";
 }
 
 /** Search queries for Places, derived from the request. */
@@ -122,6 +145,9 @@ export function placesQueries(req: TripRequest): { query: string; category: Cand
   const halal = req.about.includes("Eats halal");
   const veg = req.about.includes("Vegetarian");
   add(halal ? "halal restaurants locals love" : veg ? "vegetarian restaurants locals love" : "neighborhood restaurants locals love", "food");
+  // Always the sights, whatever the interests: a day is more than meals, and a first visit to
+  // Egypt includes the Pyramids.
+  add("top attractions", "culture");
   add("local cafés", "food");
   for (const i of req.interests) {
     if (i === "Food") continue;

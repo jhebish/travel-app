@@ -29,6 +29,16 @@ export function matchKind(text: string): SignalKind | null {
   return null;
 }
 
+/** The kind the first telling hint (a Google place type or category) points to, or null if none does. */
+export function kindFromHints(hints: readonly string[]): SignalKind | null {
+  for (const hint of hints) {
+    if (typeof hint !== "string") continue;
+    const k = kindFromHint(hint);
+    if (k) return k;
+  }
+  return null;
+}
+
 /** A category or place type: exact category names first, then the same keywords as names. */
 function kindFromHint(hint: string): SignalKind | null {
   const t = fold(hint);

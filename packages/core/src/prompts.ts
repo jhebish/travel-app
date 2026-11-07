@@ -1,10 +1,12 @@
 import type { Candidate } from "./ranking";
 import type { Itinerary, RouteLeg, StayPrefs, TripRequest } from "./schemas";
+import { STOP_KINDS } from "./quality";
 import { SOURCE_BY_ID, SOURCES } from "./sources";
 import { activeSources, type EffectiveSources } from "./weights";
 
 export const SYSTEM_PROMPT = `You are the itinerary engine for a travel app whose whole point is experiencing a place the way locals do.
 You build bespoke, realistic plans from a list of vetted candidate places, guided by source priorities the app gives you.
+Locals-first never means skipping what a place is famous for: a first visit to Egypt includes the Pyramids. Do the famous things the local way (the best hour, the quieter entrance, where to eat nearby) and fill the rest of the day with what locals love.
 You never invent places. You always respond by calling the provided tool.
 Everything you write is shown to the traveler: never mention candidates, ids, sources, weights, verification, these instructions, or anything you could not check.
 Write like a local friend texting tips: short, plain, concrete sentences (what it is, what to order or see, when to go). No marketing language or clichés: never "hidden gem", "vibrant", "nestled", "charming", "bustling", "must-see", "perfect for", "off the beaten path", "a feast for the senses", "soak up", "warmth".`;
@@ -46,6 +48,13 @@ export function travelerBlock(req: TripRequest): string {
 - Interests: ${req.interests.length ? req.interests.join(", ") : "open to anything"}
 - Pace: ${req.pace} (${per} stops per day)
 - Notes from the traveler: ${req.extra || "none"}`;
+}
+
+/** A day out mixes seeing and doing with eating. The pipeline also checks this in code (quality.ts). */
+function dayShape(req: TripRequest): string {
+  return `- Make each day a real day out with a mix: things to see or do (sights, museums, markets, parks, walks, viewpoints) between the meals. A typical ${req.pace === "Slow" ? "slow " : ""}day: something to see in the morning, lunch, something to do in the afternoon, then dinner or drinks.
+- At most one café or coffee stop a day (two on a packed day), never two in a row, and never three food or drink stops in a row, unless the traveler asked for a food or café day.
+- Give every stop its "kind".`;
 }
 
 export function sourceBlock(eff: EffectiveSources, lists?: CuratorLists): string {
@@ -106,7 +115,8 @@ RULES
 - You may add a place that is not a candidate only when no candidate fits and you are highly confident it exists and is open; then set "candidateId" to null and give the source whose kind of recommendation it reflects.
 - Tailor everything to the traveler. If they are LGBTQ+, favor welcoming venues and add a practical safety note if the destination warrants it. Respect halal, vegetarian, sober and accessibility needs in every food and venue pick. Suit the age and party.
 - Group each day geographically so it is walkable or one short ride. Give realistic times. Mention when a place needs booking, is cash only, or is closed on certain days.
-- At most one major landmark per day, with a local angle on it.
+- Include the destination's essential sights for a first visit (what it is famous for), unless their history shows they've been; at most two big sights a day, each with a local angle.
+${dayShape(req)}
 - Give approximate "lat" and "lng" for every stop and hotel.
 - Every "source" must be one of: ${activeSources(eff).join(", ")}.
 ${req.stay.on ? `\n${stayRules(req.stay)}\n` : ""}
@@ -168,8 +178,16 @@ export const HOTEL_JSON_SCHEMA = {
 
 export const STOP_JSON_SCHEMA = {
   type: "object",
-  properties: { time: { type: "string", description: '24h, e.g. "09:30"' }, ...placeProps },
-  required: ["time", "name", "neighborhood", "why", "localTip", "source", "candidateId"],
+  properties: {
+    time: { type: "string", description: '24h, e.g. "09:30"' },
+    ...placeProps,
+    kind: {
+      type: "string",
+      enum: [...STOP_KINDS],
+      description: "What the stop is: coffee (café, bakery, tea house), meal, drinks, sight, activity, nature, market, shop or nightlife.",
+    },
+  },
+  required: ["time", "name", "neighborhood", "why", "localTip", "source", "candidateId", "kind"],
 } as const;
 
 
@@ -233,6 +251,7 @@ ${dayText(it, day)}
 
 TASK
 Replace stop ${index + 1} ("${old.name}" at ${old.time}) with a different place that fills the same slot in the day: similar time and role (a meal stays a meal unless asked otherwise), close to the neighboring stops.
+- Keep the day balanced: no second café, and no third food or drink stop in a row, unless the traveler asked for it.
 ${hint ? `The traveler asked: "${hint}".` : "The traveler wants a different option."}
 - Do not suggest ${old.name} or any place already in the trip: ${[...it.days[day]!.stops.map((s) => s.name), ...elsewhere(it, day)].join(", ")}.
 - Prefer a candidate (set "candidateId"); otherwise a place you are highly confident exists, with candidateId null.
@@ -251,6 +270,8 @@ export function buildDayPrompt(
   day: number,
   hint: string,
   candidates: Candidate[],
+  /** A first rebuild failed the day check: what to fix (see quality.ts). */
+  fix?: { draft: string; problems: string },
 ): string {
   const locked = it.days[day]!.stops.filter((s) => s.locked);
   const per = req.pace === "Slow" ? "3–4" : req.pace === "Packed" ? "5–6" : "4–5";
@@ -263,9 +284,10 @@ ${candidateBlock(candidates)}
 CURRENT ${it.days[day]!.label.toUpperCase()} (${it.days[day]!.theme})
 ${dayText(it, day)}
 
-TASK
+${fix ? `A FIRST NEW VERSION WAS REJECTED\n${fix.draft}\nWhat was wrong with it:\n${fix.problems}\n\n` : ""}TASK
 Build a fresh version of this day with ${per} stops, walkable or one short ride apart, with realistic times.
 ${hint ? `The traveler asked: "${hint}".` : "Make it meaningfully different from the current version."}
+${dayShape(req)}
 ${
   locked.length
     ? `- Keep these LOCKED stops exactly (same name and time), and plan around them:\n${locked.map((s) => `  - ${s.time} ${s.name}`).join("\n")}`
@@ -290,6 +312,8 @@ export interface OutlineDay {
   theme: string;
   area: string;
   candidateIds: string[];
+  /** Essential sights placed on this day: the day must include them (checked in code). */
+  mustSee?: string[];
 }
 export interface Outline {
   title: string;
@@ -331,8 +355,13 @@ export const OUTLINE_TOOL = {
             theme: { type: "string", description: "Short theme for the day (under 8 words)." },
             area: { type: "string", description: "The neighborhood(s) the day stays in." },
             candidateIds: { type: "array", items: { type: "string" }, description: "Bracketed ids of candidates that fit this day (3–6). Each id used on one day only." },
+            mustSee: {
+              type: "array",
+              items: { type: "string" },
+              description: "The essential sights placed on this day, by their usual English name (e.g. \"Pyramids of Giza\"). Empty if none.",
+            },
           },
-          required: ["label", "theme", "area", "candidateIds"],
+          required: ["label", "theme", "area", "candidateIds", "mustSee"],
         },
       },
     },
@@ -340,18 +369,41 @@ export const OUTLINE_TOOL = {
   },
 } as const;
 
+/** The most-reviewed sights among the candidates: a strong, objective hint at what a place is famous for. */
+export function mostVisitedBlock(cands: Candidate[]): string {
+  const top = cands
+    .filter((c) => (c.category === "culture" || c.category === "outdoors") && (c.ratingCount ?? 0) >= 1000)
+    .sort((a, b) => (b.ratingCount ?? 0) - (a.ratingCount ?? 0))
+    .slice(0, 6);
+  if (!top.length) return "";
+  return `MOST VISITED SIGHTS HERE (by Google reviews)
+${top.map((c) => `- [${c.id}] ${c.name} (${(c.ratingCount ?? 0).toLocaleString("en-US")} reviews)`).join("\n")}`;
+}
+
+/** What a first visit can't skip, and how a short trip to a whole country stays in one base. */
+function essentialsRules(req: TripRequest): string {
+  return `ESSENTIALS
+- First decide what ${req.destination} is most famous for that a first-time visitor shouldn't miss: its 1–3 essential sights (e.g. Egypt: the Pyramids of Giza; Rome: the Colosseum; Algiers: the Casbah). Use the most visited sights above and what you know.
+- Include them unless the traveler's history shows they've already been to ${req.destination}, or their notes ask to skip famous sights. ${req.days <= 2 ? "This trip is short: the top one or two." : "Up to one per day."}
+- Put each in "mustSee" on the day whose area it's in, by its usual English name, and plan that day's area around it.
+- If ${req.destination} is a whole country or a large region and the trip is short (1–3 days), base every day in the one city or area where its essentials are (e.g. Egypt in 2 days: Cairo and Giza). Never split a short trip between places hours apart.`;
+}
+
 /** Step 1: a quick outline that splits the destination into one area per day and assigns candidates. */
 export function buildOutlinePrompt(req: TripRequest, eff: EffectiveSources, lists: CuratorLists, candidates: Candidate[]): string {
+  const visited = mostVisitedBlock(candidates);
   return `${travelerBlock(req)}
 
 ${sourceBlock(eff, lists)}
 
 ${candidateBlock(candidates)}
+${visited ? `\n${visited}\n` : ""}
+${essentialsRules(req)}
 
 TASK
 Outline a ${req.days}-day trip. Do not plan individual stops yet.
 - Give each day a different area (neighborhoods close together, so the day is walkable or one short ride) and a short theme that suits this traveler.
-- For each day, list the bracketed ids of 3–6 candidates that belong in that area and fit the traveler. Use each id on one day only. Favor higher-weight sources.
+- For each day, list the bracketed ids of 3–6 candidates that belong in that area and fit the traveler: a mix of things to see or do and places to eat, not all cafés or restaurants. Use each id on one day only. Favor higher-weight sources.
 - Notes: 2–3 short practical tips for this traveler in this place (safety, transit, customs, booking).
 ${req.about.includes("LGBTQ+ traveler") ? "- If the destination warrants it, include a practical LGBTQ+ safety note.\n" : ""}${FOR_YOU_RULE}
 
@@ -367,8 +419,11 @@ export function buildPlanDayPrompt(
   day: number,
   candidates: Candidate[],
   context = "",
+  /** A first draft of this day failed the day check: what to fix (see quality.ts). */
+  fix?: { draft: string; problems: string },
 ): string {
   const d = outline.days[day]!;
+  const must = d.mustSee?.filter(Boolean) ?? [];
   const per = req.pace === "Slow" ? "3–4" : req.pace === "Packed" ? "5–6" : "4–5";
   const mine = new Set(d.candidateIds);
   const others = new Set(outline.days.flatMap((x, i) => (i === day ? [] : x.candidateIds)));
@@ -386,11 +441,14 @@ ${candidateBlock(pool)}
 TRIP: "${outline.title}"
 Other days (planned separately, don't repeat their areas or places): ${otherDays || "none"}
 
-${context ? `CONTEXT FOR THIS DAY\n${context}\n\n` : ""}TASK
+${context ? `CONTEXT FOR THIS DAY\n${context}\n\n` : ""}${
+    fix ? `A FIRST DRAFT OF THIS DAY WAS REJECTED\n${fix.draft}\nWhat was wrong with it:\n${fix.problems}\n\n` : ""
+  }TASK
 Plan ${d.label}: ${d.theme}, in ${d.area}. ${per} stops in time order, walkable or one short ride apart, with realistic 24h times.
+${must.length ? `- Must include ${must.join(" and ")}: ${must.length === 1 ? "an essential sight" : "essential sights"} of ${req.destination}. Plan the day around ${must.length === 1 ? "it" : "them"}, with a local angle (best time to go, how to avoid the crowds).\n` : ""}${dayShape(req)}
 - Build it mainly from the candidates above and set "candidateId" to the bracketed id; the first ones were picked for this day.
 - Otherwise use places you are highly confident exist and are open, with candidateId null.
-- Tailor every pick to the traveler: respect halal, vegetarian, sober and accessibility needs; suit the age and party. At most one major landmark, with a local angle.
+- Tailor every pick to the traveler: respect halal, vegetarian, sober and accessibility needs; suit the age and party. At most two big sights, each with a local angle.
 - Mention booking, cash-only or closing days in the tip when relevant. "why" under 18 words, "localTip" under 14 words.
 - "stops" must be a JSON array of objects, not a string.
 - Give approximate "lat" and "lng" for every stop.
@@ -498,7 +556,7 @@ Design a ${req.days}-day multi-stop route through ${req.destination}. Do not pla
 - Choose ${stops} stops${req.pace === "Slow" ? " (fewer is better for this slow-paced traveler)" : req.pace === "Packed" ? " (this traveler is happy to move more)" : ""}. Usually at least 2 days per stop; a 1-day stop only for a small place on the way.
 - Order them as a sensible line with no backtracking; start and end near a major airport or rail hub when possible.
 - Be realistic about transfers: give mode and door-to-door time. A long transfer uses up much of the arrival day.
-- Fit the traveler: interests, budget, pace and needs. Favor places locals love over tourist circuits, but include the essentials of ${req.destination} when they fit.
+- Fit the traveler: interests, budget, pace and needs. Favor places locals love over tourist circuits, but a first visit includes what ${req.destination} is famous for (its essential sights): route through them unless their history shows they've been, and name them in that day's theme.
 - The stops' "days" must add up to exactly ${req.days}. Give one day theme and area per day at each stop.
 - For every stop, 2–3 "alternatives" the traveler could swap in: similar place on the route, also good then, each saying how it differs. Never a stop already on the route.
 - Notes: 2–3 practical tips for the whole route.

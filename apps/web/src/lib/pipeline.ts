@@ -42,6 +42,12 @@ import {
   buildLegPrompt,
   soonMonth,
   type RouteLeg,
+  checkDay,
+  dayCheckOptions,
+  dayFixText,
+  stopRole,
+  type DayCheckOptions,
+  type StopRole,
 } from "@travel/core";
 import { z } from "zod";
 import type { Ctx } from "./auth";
@@ -229,6 +235,59 @@ async function step<T>(
   throw new HttpError(502, "The plan came back incomplete. Try again.", "bad_output");
 }
 
+/** Each stop's role (coffee, meal, sight…), trusting Google's place types for places found by a Places search. */
+function rolesFor(stops: Stop[], cands: Candidate[]): { name: string; time: string; role: StopRole }[] {
+  const byId = new Map(cands.map((c) => [c.id, c]));
+  return stops.map((s) => {
+    const c = s.candidateId ? byId.get(s.candidateId) : undefined;
+    return { name: s.name, time: s.time, role: stopRole(s, c?.origin === "google" ? (c.tags ?? []) : []) };
+  });
+}
+
+/** A draft day, one stop per line, for showing the model what it has to fix. */
+const draftText = (stops: { name: string; time: string; role: StopRole }[]) =>
+  stops.map((s, i) => `${i + 1}. ${s.time} ${s.name} (${s.role})`).join("\n");
+
+type Rebuild = (fix: { draft: string; problems: string }, attempt: number) => Promise<{ input: unknown; model: string }>;
+
+/**
+ * The day check (packages/core/src/quality.ts). A planned day that breaks the rules (four cafés,
+ * nothing to see, a missing essential) is rebuilt once with its problems spelled out, if there's
+ * time left. The rebuild is kept unless it's worse, and if it fails the first draft stands, so
+ * the check can only make a day better.
+ */
+async function balanceDay(
+  label: string,
+  stops: Stop[],
+  cands: Candidate[],
+  opts: DayCheckOptions,
+  rebuild: Rebuild,
+  until = Number.POSITIVE_INFINITY,
+): Promise<{ stops: Stop[]; theme?: string }> {
+  const first = rolesFor(stops, cands);
+  const issues = checkDay(first, opts);
+  if (!issues.length) return { stops };
+  const codes = issues.map((i) => i.code).join(", ");
+  if (Date.now() > until) {
+    console.warn(`${label} failed the day check (${codes}); no time left to rebuild it`);
+    return { stops };
+  }
+  console.warn(`${label} failed the day check (${codes}); rebuilding`);
+  try {
+    const { data } = await step(`${label} rebuild`, (attempt) => rebuild({ draft: draftText(first), problems: dayFixText(issues) }, attempt), DayResultSchema, 2);
+    const after = checkDay(rolesFor(data.stops, cands), opts);
+    if (after.length > issues.length) return { stops };
+    if (after.length) console.warn(`${label} rebuild still has: ${after.map((i) => i.code).join(", ")}`);
+    return { stops: data.stops, theme: data.theme };
+  } catch (e) {
+    console.error(`${label} rebuild failed; keeping the first draft`, e);
+    return { stops };
+  }
+}
+
+/** A rebuild asks the fast model first, the main model only if the answer comes back malformed. */
+const fastThenMainOnce = (attempt: number) => ({ fast: attempt === 0 });
+
 /** Remove a place that appears on more than one day (days are planned in parallel). */
 function dedupeAcrossDays(itin: Itinerary) {
   const seen = new Set<string>();
@@ -312,6 +371,8 @@ export interface PlanInputs {
   lists: CuratorLists;
   /** The traveler's travel history block for prompts (may be empty). */
   history: string;
+  /** Days that fail the day check are rebuilt only before this time (ms), so a build stays inside its time limit. */
+  rebuildUntil?: number;
 }
 
 type CuratorLists = { alwaysFeature: string; neverRecommend: string };
@@ -332,7 +393,9 @@ export function requestForCity(req: TripRequest, city: string | undefined): Trip
  * Every finished day is emitted straight away so the client can show it.
  */
 export async function planItinerary(req: TripRequest, inputs: PlanInputs, emit: Emit = () => {}): Promise<{ itin: Itinerary; model: string }> {
-  const out = req.mode === "multi" ? await planMulti(req, inputs, emit) : await planSingle(req, inputs, emit);
+  // The build route allows 120 s: a rebuild starting after ~65 s could run it out.
+  const withLimit = { ...inputs, rebuildUntil: inputs.rebuildUntil ?? Date.now() + 65_000 };
+  const out = req.mode === "multi" ? await planMulti(req, withLimit, emit) : await planSingle(req, withLimit, emit);
   dedupeAcrossDays(out.itin);
   emit({ type: "progress", pct: 88, label: placesEnabled() ? "Checking every place on the map" : "Finishing touches" });
   await groundByCity(out.itin, out.candsByCity, req);
@@ -346,7 +409,7 @@ interface Planned {
   candsByCity: Map<string, Candidate[]>;
 }
 
-async function planSingle(req: TripRequest, { eff, lists, history }: PlanInputs, emit: Emit): Promise<Planned> {
+async function planSingle(req: TripRequest, { eff, lists, history, rebuildUntil }: PlanInputs, emit: Emit): Promise<Planned> {
   const progress = (pct: number, label: string) => emit({ type: "progress", pct, label });
   progress(8, "Gathering local picks");
   const cands = selectCandidates(await gatherCandidates(req), eff, req);
@@ -376,7 +439,15 @@ async function planSingle(req: TripRequest, { eff, lists, history }: PlanInputs,
       DayResultSchema,
       3,
     );
-    const day: DayOut = { label: d.label || `Day ${i + 1}`, theme: data.theme || d.theme, stops: data.stops };
+    const balanced = await balanceDay(
+      `day ${i + 1}`,
+      data.stops,
+      cands,
+      dayCheckOptions([req.extra, ...req.interests], d.mustSee ?? []),
+      (fix, attempt) => callTool(withHistory(history, buildPlanDayPrompt(req, eff, lists, o, i, cands, "", fix)), DAY_TOOL, 4000, fastThenMainOnce(attempt)),
+      rebuildUntil,
+    );
+    const day: DayOut = { label: d.label || `Day ${i + 1}`, theme: balanced.theme || data.theme || d.theme, stops: balanced.stops };
     emit({ type: "day", index: i, day });
     tick(`${day.label} planned`);
     return day;
@@ -428,7 +499,7 @@ const RouteSchema = z.object({
   legs: salvage(RouteLegSchema, 1, 8),
 });
 
-async function planMulti(req: TripRequest, { eff, lists, history }: PlanInputs, emit: Emit): Promise<Planned> {
+async function planMulti(req: TripRequest, { eff, lists, history, rebuildUntil }: PlanInputs, emit: Emit): Promise<Planned> {
   const progress = (pct: number, label: string) => emit({ type: "progress", pct, label });
   progress(8, `Mapping a route through ${req.destination}`);
   const { data: route, model } = await step(
@@ -502,13 +573,27 @@ async function planMulti(req: TripRequest, { eff, lists, history }: PlanInputs, 
       DayResultSchema,
       3,
     );
+    const balanced = await balanceDay(
+      `day ${i + 1}`,
+      data.stops,
+      legCands[p.leg]!,
+      dayCheckOptions([req.extra, ...req.interests]),
+      (fix, attempt) =>
+        callTool(
+          withHistory(history, buildPlanDayPrompt(legReqs[p.leg]!, eff, lists, legOutlines[p.leg]!, p.within, legCands[p.leg]!, context, fix)),
+          DAY_TOOL,
+          4000,
+          fastThenMainOnce(attempt),
+        ),
+      rebuildUntil,
+    );
     const t = leg.transfer;
     const day: DayOut = {
       label: p.label,
-      theme: data.theme || p.theme,
+      theme: balanced.theme || data.theme || p.theme,
       city: p.city,
       arrival: p.within === 0 && p.leg > 0 && t ? [`From ${legs[p.leg - 1]!.city}`, t.mode, t.duration, t.note].filter(Boolean).join(" · ") : undefined,
-      stops: data.stops,
+      stops: balanced.stops,
     };
     emit({ type: "day", index: i, day });
     tick(`${day.label} planned`);
@@ -742,13 +827,25 @@ export async function regenerateDay(ctx: Ctx, row: TripRow, day: number, hint: s
   const cands = selectCandidates(gathered, eff, req).filter((c) => c.category !== "stay" && !otherDays.has(c.name.toLowerCase()));
   // Planning together: stops someone said they're in for stay, like locked ones.
   const keep = current.stops.map((s, i) => !!s.locked || people.liked.get(`${day}-${i}`) === s.name);
-  const prompt = buildDayPrompt(req, eff, lists, { ...row.itinerary, days: row.itinerary.days.map((d, i) => (i === day ? { ...d, stops: d.stops.map((s, j) => ({ ...s, locked: keep[j] })) } : d)) }, day, hint, cands);
-  const { data: parsedDay } = await step("rebuild day", (attempt) => callTool(withHistory(history, prompt), DAY_TOOL, 4000, fastThenMain(attempt)), DayResultSchema, 3);
-  const parsed = { data: parsedDay };
+  const started = Date.now();
+  const marked: Itinerary = { ...row.itinerary, days: row.itinerary.days.map((d, i) => (i === day ? { ...d, stops: d.stops.map((s, j) => ({ ...s, locked: keep[j] })) } : d)) };
+  const prompt = (fix?: { draft: string; problems: string }) => buildDayPrompt(req, eff, lists, marked, day, hint, cands, fix);
+  const { data: firstDraft } = await step("rebuild day", (attempt) => callTool(withHistory(history, prompt()), DAY_TOOL, 4000, fastThenMain(attempt)), DayResultSchema, 3);
 
   // Locked stops (and ones a friend is in for) are kept exactly, whatever the model returned.
   const locked = current.stops.filter((_, i) => keep[i]);
   const lockedNames = new Set(locked.map((s) => s.name.toLowerCase()));
+  // The same day check as new trips, judged on the whole day (kept stops included). The edit route
+  // allows 60 s, so a second pass only if the first came back quickly.
+  const balanced = await balanceDay(
+    "rebuilt day",
+    sortByTime([...locked, ...firstDraft.stops.filter((s) => !lockedNames.has(s.name.toLowerCase()))]),
+    cands,
+    dayCheckOptions([req.extra, ...req.interests, hint]),
+    (fix, attempt) => callTool(withHistory(history, prompt(fix)), DAY_TOOL, 4000, fastThenMainOnce(attempt)),
+    started + 25_000,
+  );
+  const parsed = { data: { theme: balanced.theme ?? firstDraft.theme, stops: balanced.stops } };
   const fresh = parsed.data.stops
     .filter((s) => !lockedNames.has(s.name.toLowerCase()) && !otherDays.has(s.name.toLowerCase()))
     .map((s) => ({ ...s, locked: false }));

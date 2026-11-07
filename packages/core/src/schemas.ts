@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { STOP_KINDS } from "./quality";
 import { SOURCE_IDS, STAY_PRICES, STAY_STYLES } from "./sources";
 
 const sourceId = z.enum(SOURCE_IDS);
@@ -152,6 +153,8 @@ export const StopSchema = z.object({
   neighborhood: clip(120).default(""),
   why: clip(400).default(""),
   localTip: clip(400).default(""),
+  /** What the stop is for (coffee, a meal, a sight…), from the model; the day check reads it. */
+  kind: z.enum(STOP_KINDS).optional().catch(undefined),
   /** When the pick matches the traveler's taste: a few words on why ("Like Septime: natural wine"). */
   forYou: z.preprocess((v) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 100) : undefined), z.string().optional()).catch(undefined),
   source: looseSource,
@@ -330,6 +333,8 @@ export const OutlineSchema = z.object({
       theme: clip(160).default(""),
       area: clip(160).default(""),
       candidateIds: salvage(z.preprocess(toText, z.string()), 0, 30).default([]),
+      /** The destination's essential sights placed on this day; the day must include them. */
+      mustSee: salvage(z.preprocess(toText, z.string().trim().min(1).max(120)), 0, 3).default([]),
     }),
     1,
     7,
