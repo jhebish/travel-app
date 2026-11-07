@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import Link from "next/link";
 import { Nav } from "@/components/Nav";
 
 export const metadata: Metadata = {
@@ -34,6 +35,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="shell">
           <div className="app">
             <main className="main">{children}</main>
+            <footer className="sitefoot">
+              <span className="sitefoot-word">Pylos</span>
+              <nav aria-label="About Pylos">
+                <Link href="/about">About</Link>
+                <Link href="/privacy">Privacy</Link>
+                <Link href="/terms">Terms</Link>
+                <a href="mailto:team@newcenturydevelopment.com">Contact</a>
+              </nav>
+            </footer>
           </div>
         </div>
       </body>
