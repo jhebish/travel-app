@@ -10,6 +10,10 @@ import {
   dayCheckOptions,
   dayFixText,
   defaultWeights,
+  ensureLandmarks,
+  famousSights,
+  historyForPrompt,
+  isReturnVisit,
   mostVisitedBlock,
   placesQueries,
   sameSight,
@@ -17,6 +21,7 @@ import {
   selectCandidates,
   stopRole,
   type Candidate,
+  type PastTrip,
   type StopRole,
 } from "../src";
 
@@ -44,8 +49,44 @@ describe("checkDay", () => {
 
   it("lets a café or food day be one, when the traveler asked", () => {
     const crawl = day(["Café 1", "coffee"], ["Café 2", "coffee"], ["Bakery", "coffee"], ["Lunch", "meal"]);
-    expect(checkDay(crawl, dayCheckOptions(["a coffee crawl please"]))).toEqual([]);
-    expect(checkDay(crawl, dayCheckOptions(["anniversary"]))).not.toEqual([]);
+    expect(checkDay(crawl, dayCheckOptions({ notes: "a coffee crawl please" }))).toEqual([]);
+    expect(checkDay(crawl, dayCheckOptions({ notes: "Café-hopping in Le Marais!" }))).toEqual([]);
+    expect(checkDay(crawl, dayCheckOptions({ notes: "anniversary" }))).not.toEqual([]);
+  });
+
+  it("doesn't relax for a mention of food: dietary notes, or 'Food' among the interests", () => {
+    // Interest chips aren't read at all; notes need an explicit food day.
+    for (const notes of ["We don't eat pork", "vegetarian, good restaurants nearby", ""]) {
+      const opts = dayCheckOptions({ notes });
+      expect(opts.foodFocus || opts.coffeeFocus).toBe(false);
+      const eating = day(["Breakfast", "meal"], ["Lunch", "meal"], ["Tasting", "meal"], ["Dinner", "meal"]);
+      expect(checkDay(eating, opts).map((i) => i.code)).toEqual(expect.arrayContaining(["few_sights", "food_in_a_row"]));
+    }
+  });
+
+  it("lets foodies eat three in a row, not four", () => {
+    const opts = dayCheckOptions({ notes: "We're foodies" });
+    expect(opts.foodFocus).toBe(true);
+    const three = day(["Market", "do"], ["Breakfast", "meal"], ["Lunch", "meal"], ["Tasting", "meal"], ["Old town", "see"], ["Dinner", "meal"]);
+    expect(checkDay(three, opts)).toEqual([]);
+    const four = day(["Old town", "see"], ["Breakfast", "meal"], ["Lunch", "meal"], ["Tasting", "meal"], ["Dinner", "meal"]);
+    expect(checkDay(four, opts).map((i) => i.code)).toContain("food_in_a_row");
+  });
+
+  it("allows a coffee lover a second café, never back to back", () => {
+    const opts = dayCheckOptions({ notes: "we love good coffee" });
+    expect(opts).toMatchObject({ coffeeLover: true, coffeeFocus: false });
+    const spaced = day(["Café 1", "coffee"], ["Museum", "see"], ["Lunch", "meal"], ["Café 2", "coffee"], ["Park", "see"]);
+    expect(checkDay(spaced, opts)).toEqual([]);
+    expect(checkDay(spaced).map((i) => i.code)).toEqual(["coffee"]);
+    const together = day(["Café 1", "coffee"], ["Café 2", "coffee"], ["Museum", "see"], ["Lunch", "meal"], ["Park", "see"]);
+    expect(checkDay(together, opts).map((i) => i.code)).toEqual(["coffee_in_a_row"]);
+  });
+
+  it("takes a rebuild hint as a direct ask for that day", () => {
+    expect(dayCheckOptions({ hint: "more cafés" }).coffeeFocus).toBe(true);
+    expect(dayCheckOptions({ hint: "more street food" }).foodFocus).toBe(true);
+    expect(dayCheckOptions({ hint: "somewhere quieter" })).toMatchObject({ foodFocus: false, coffeeFocus: false });
   });
 
   it("requires the day's essential sight", () => {
@@ -80,6 +121,12 @@ describe("stopRole", () => {
   });
   it("falls back to the name", () => {
     expect(stopRole({ name: "Café de la Paix" })).toBe("coffee");
+  });
+  it("counts a bakery, pâtisserie or ice cream shop as a café-type break, not a meal", () => {
+    expect(stopRole({ name: "Pâtisserie Aïn Taya", kind: "coffee" }, ["bakery", "food", "point_of_interest"])).toBe("coffee");
+    expect(stopRole({ name: "Gelateria del Teatro" }, ["ice_cream_shop", "food"])).toBe("coffee");
+    expect(stopRole({ name: "Pasticceria Marchesi" })).toBe("coffee");
+    expect(stopRole({ name: "Trattoria da Enzo" }, ["restaurant", "food"])).toBe("meal");
   });
   it("accepts and drops unknown kinds in stored stops", () => {
     const base = { time: "09:00", name: "X", source: "locals" };
@@ -143,5 +190,78 @@ describe("essentials in the prompts", () => {
 
   it("keeps old outlines without mustSee working", () => {
     expect(OutlineSchema.parse({ title: "x", days: [{ label: "Day 1", theme: "t", area: "a", candidateIds: [] }] }).days[0]!.mustSee).toEqual([]);
+  });
+});
+
+// Real coordinates: downtown Cairo, the Giza plateau (about 12 km away), and Karnak in Luxor (500 km).
+const at = (lat: number, lng: number) => ({ verification: { placeId: `p${lat}`, lat, lng } });
+const sight = (id: string, name: string, ratingCount: number, where: ReturnType<typeof at>): Candidate => ({
+  id,
+  origin: "google",
+  name,
+  category: "culture",
+  source: "reviews",
+  ratingCount,
+  ...where,
+});
+const CAIRO = at(30.0444, 31.2357);
+const GIZA = at(29.9792, 31.1342);
+const LUXOR = at(25.7188, 32.6573);
+const egypt: Candidate[] = [
+  sight("gp_karnak", "Karnak Temple Complex", 200_000, LUXOR),
+  sight("gp_pyr", "Pyramids of Giza", 150_000, GIZA),
+  sight("gp_pyr2", "Great Pyramid of Giza", 90_000, GIZA),
+  sight("gp_mus", "Egyptian Museum", 60_000, CAIRO),
+  sight("gp_cop", "Coptic Cairo", 15_000, at(30.006, 31.2302)),
+  { id: "gp_cafe", origin: "google", name: "Café Riche", category: "food", source: "reviews", ratingCount: 30_000, ...CAIRO },
+  { id: "lp_kosh", origin: "local_pick", name: "Koshary Abou Tarek", category: "food", source: "locals" },
+];
+const outlineDays = () => [
+  { label: "Day 1", theme: "Downtown", area: "Downtown Cairo", candidateIds: ["gp_mus", "gp_cafe", "lp_kosh"], mustSee: ["Egyptian Museum"] },
+  { label: "Day 2", theme: "Old Cairo", area: "Coptic Cairo", candidateIds: ["gp_cop", "lp_kosh"], mustSee: [] as string[] },
+];
+
+describe("famous sights, in code", () => {
+  it("ranks a place's headline sights, counting two listings of one sight once", () => {
+    expect(famousSights(egypt).map((c) => c.id)).toEqual(["gp_karnak", "gp_pyr", "gp_mus"]);
+  });
+
+  it("adds the Pyramids to two days in Cairo, and skips Luxor's temples", () => {
+    const { days, added } = ensureLandmarks(outlineDays(), egypt, { days: 2 });
+    expect(added).toEqual(["Pyramids of Giza"]);
+    // Day 2's Coptic Cairo is nearer the plateau than day 1's downtown picks.
+    expect(days[1]!.mustSee).toEqual(["Pyramids of Giza"]);
+    expect(days[1]!.candidateIds).toContain("gp_pyr");
+    expect(days.flatMap((d) => d.mustSee)).not.toContain("Karnak Temple Complex");
+    // The day check then holds day 2 to it.
+    const day2 = day(["Hanging Church", "see"], ["Lunch", "meal"], ["Old Cairo walk", "do"]);
+    expect(checkDay(day2, { mustSee: days[1]!.mustSee }).map((i) => i.code)).toEqual(["must_see"]);
+  });
+
+  it("leaves the outline alone when it already has them", () => {
+    const already = outlineDays();
+    already[0]!.mustSee.push("Giza Pyramid Complex");
+    expect(ensureLandmarks(already, egypt, { days: 2 }).added).toEqual([]);
+  });
+
+  it("uses the day the outline gave the sight, unless that's an arrival day with another day near", () => {
+    const given = outlineDays();
+    given[0]!.candidateIds.push("gp_pyr");
+    expect(ensureLandmarks(given, egypt, { days: 2 }).days[0]!.mustSee).toContain("Pyramids of Giza");
+    const moved = ensureLandmarks(outlineDays().map((d, i) => (i === 0 ? { ...d, candidateIds: [...d.candidateIds, "gp_pyr"] } : d)), egypt, { days: 2, avoid: [0] });
+    expect(moved.days[1]!.mustSee).toContain("Pyramids of Giza");
+    expect(moved.days[0]!.candidateIds).not.toContain("gp_pyr");
+  });
+
+  it("does nothing where nothing is famous enough, or nothing can be placed", () => {
+    expect(ensureLandmarks(outlineDays(), egypt.filter((c) => (c.ratingCount ?? 0) < 20_000), { days: 3 }).added).toEqual([]);
+    expect(ensureLandmarks([{ candidateIds: ["lp_kosh"] }], egypt, { days: 1 }).added).toEqual([]);
+  });
+
+  it("knows a returning traveler from their history", () => {
+    const trip = (city: string): PastTrip => ({ id: city, city, countryCode: "EG", year: 2019, month: 3, days: 4, rating: 5, highlights: "", tripId: null });
+    expect(isReturnVisit(historyForPrompt([trip("Cairo")], "Cairo", () => "Egypt"))).toBe(true);
+    expect(isReturnVisit(historyForPrompt([trip("Alexandria")], "Cairo", () => "Egypt"))).toBe(false);
+    expect(isReturnVisit("")).toBe(false);
   });
 });

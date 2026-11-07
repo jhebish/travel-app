@@ -195,6 +195,11 @@ export function publicItinerary(it: Itinerary, request?: { about?: readonly stri
   };
 }
 
+const BEEN_BEFORE = "They have been to";
+
+/** True when a history block (from historyForPrompt) says the traveler has been to this place before. */
+export const isReturnVisit = (history: string) => history.includes(`\n${BEEN_BEFORE} `);
+
 /** A short history block for the planner: where they've been and what they loved. */
 export function historyForPrompt(places: PastTrip[], destination: string, countryName: (c: string) => string): string {
   if (!places.length) return "";
@@ -212,7 +217,7 @@ export function historyForPrompt(places: PastTrip[], destination: string, countr
 Use it to read their taste: lean toward what they rated highly and what they say they loved. Don't explain the history back to them, except in the trip's one "forYou" line.
 ${lines.join("\n")}${
     been.length
-      ? `\nThey have been to ${been[0]!.city} before: skip the obvious first-timer sights unless asked, and favor neighborhoods and places a returning visitor wouldn't know.`
+      ? `\n${BEEN_BEFORE} ${been[0]!.city} before: skip the obvious first-timer sights unless asked, and favor neighborhoods and places a returning visitor wouldn't know.`
       : ""
   }`;
 }

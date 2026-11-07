@@ -45,6 +45,8 @@ import {
   checkDay,
   dayCheckOptions,
   dayFixText,
+  ensureLandmarks,
+  isReturnVisit,
   stopRole,
   type DayCheckOptions,
   type StopRole,
@@ -379,6 +381,17 @@ const withHistory = (history: string, prompt: string) => (history ? `${history}\
 /** The trip's personal line, only when there was history to draw on: never a general description. */
 const personalLine = (history: string, line: string) => (history ? line.trim() : "");
 
+/**
+ * Whether to make sure of the place's famous sights (ensureLandmarks): not for someone who has been
+ * before (they get places a first-timer wouldn't know), nor on a one-day food or café crawl they
+ * asked for.
+ */
+function wantsLandmarks(req: TripRequest, history: string): boolean {
+  if (isReturnVisit(history)) return false;
+  const ask = dayCheckOptions({ notes: req.extra });
+  return !(req.days <= 1 && (ask.foodFocus || ask.coffeeFocus));
+}
+
 /** Postgres/PostgREST "column doesn't exist" — the community migration hasn't been run yet. */
 const missingColumn = (e: { code?: string } | null) => !!e && (e.code === "42703" || e.code === "PGRST204");
 
@@ -446,6 +459,12 @@ async function planSingle(req: TripRequest, { eff, lists, history, rebuildUntil,
     3,
   );
   const o: Outline = { ...outline, forYou: personalLine(history, outline.forYou), days: outline.days.slice(0, req.days) };
+  // What the place is famous for, checked in code: the outline's own essentials come from the fast model.
+  if (wantsLandmarks(req, history)) {
+    const { days, added } = ensureLandmarks(o.days, cands, { days: req.days });
+    if (added.length) console.log(`[outline] made sure of ${added.join(", ")}`);
+    o.days = days;
+  }
   emit({ type: "outline", title: o.title, forYou: o.forYou, days: o.days.map((d) => ({ label: d.label, theme: d.theme })), hotels: req.stay.on });
 
   const jobs = o.days.length + (req.stay.on ? 1 : 0);
@@ -467,7 +486,7 @@ async function planSingle(req: TripRequest, { eff, lists, history, rebuildUntil,
       `day ${i + 1}`,
       data.stops,
       cands,
-      dayCheckOptions([req.extra, ...req.interests], d.mustSee ?? []),
+      dayCheckOptions({ notes: req.extra }, d.mustSee ?? []),
       (fix, attempt, deadline) =>
         callTool(withHistory(history, buildPlanDayPrompt(req, eff, lists, o, i, cands, "", fix)), DAY_TOOL, 4000, fastThenMainOnce(attempt, deadline)),
       rebuildUntil,
@@ -555,20 +574,21 @@ async function planMulti(req: TripRequest, { eff, lists, history, rebuildUntil, 
   const legReqs = legs.map((l) => ({ ...requestForCity(req, l.city), days: l.days }));
   const legCands = await Promise.all(legReqs.map(async (r) => selectCandidates(await gatherCandidates(r), eff, r)));
 
-  // Each stop gets its own outline, so a day knows the other days in the same place.
+  // Each stop gets its own outline, so a day knows the other days in the same place, and each stop
+  // keeps what it's famous for (not on the day they arrive, when another day there works).
+  const landmarks = wantsLandmarks(req, history);
   const legOutlines: Outline[] = legs.map((l, li) => {
     const ids = legCands[li]!.filter((c) => c.category !== "stay").map((c) => c.id);
-    return {
-      title: route.title,
-      forYou: "",
-      notes: [],
-      days: l.dayThemes.map((t, k) => ({
-        label: plan.find((p) => p.leg === li && p.within === k)!.label,
-        theme: t.theme,
-        area: t.area || l.city,
-        candidateIds: ids.filter((_, j) => j % l.days === k).slice(0, 6),
-      })),
-    };
+    const days = l.dayThemes.map((t, k) => ({
+      label: plan.find((p) => p.leg === li && p.within === k)!.label,
+      theme: t.theme,
+      area: t.area || l.city,
+      candidateIds: ids.filter((_, j) => j % l.days === k).slice(0, 6),
+    }));
+    if (!landmarks) return { title: route.title, forYou: "", notes: [], days };
+    const sure = ensureLandmarks(days, legCands[li]!, { days: l.days, avoid: li > 0 ? [0] : [] });
+    if (sure.added.length) console.log(`[route] ${l.city}: made sure of ${sure.added.join(", ")}`);
+    return { title: route.title, forYou: "", notes: [], days: sure.days };
   });
 
   const jobs = plan.length + (req.stay.on ? legs.length : 0);
@@ -603,7 +623,7 @@ async function planMulti(req: TripRequest, { eff, lists, history, rebuildUntil, 
       `day ${i + 1}`,
       data.stops,
       legCands[p.leg]!,
-      dayCheckOptions([req.extra, ...req.interests]),
+      dayCheckOptions({ notes: req.extra }, legOutlines[p.leg]!.days[p.within]?.mustSee ?? []),
       (fix, attempt, deadline) =>
         callTool(
           withHistory(history, buildPlanDayPrompt(legReqs[p.leg]!, eff, lists, legOutlines[p.leg]!, p.within, legCands[p.leg]!, context, fix)),
@@ -878,7 +898,7 @@ export async function regenerateDay(ctx: Ctx, row: TripRow, day: number, hint: s
     "rebuilt day",
     sortByTime([...locked, ...firstDraft.stops.filter((s) => !lockedNames.has(s.name.toLowerCase()))]),
     cands,
-    dayCheckOptions([req.extra, ...req.interests, hint]),
+    dayCheckOptions({ notes: req.extra, hint }),
     (fix, attempt, deadline) => callTool(withHistory(history, prompt(fix)), DAY_TOOL, 4000, fastThenMainOnce(attempt, deadline)),
     started + 25_000,
     began + 55_000,
