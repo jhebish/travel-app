@@ -52,8 +52,8 @@ export default function PrivacyPage() {
         <p>Connecting Google Calendar is optional. When you choose to connect it:</p>
         <ul>
           <li>
-            <b>What we access.</b> Read-only access to your calendar events (the <code>calendar.readonly</code> permission). We read events from the past six years once, at
-            the moment you connect: each event&rsquo;s title, location, notes and dates.
+            <b>What we access.</b> Read-only access to the events on your main calendar (the <code>calendar.events.readonly</code> permission). We read events from the past
+            six years once, at the moment you connect: each event&rsquo;s title, location, notes and dates. We can&rsquo;t see your other calendars, sharing or settings.
           </li>
           <li>
             <b>What we use it for.</b> Only to find trips you&rsquo;ve taken and places you&rsquo;ve been, such as hotel stays, flights and restaurant reservations, so we can learn your

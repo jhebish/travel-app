@@ -222,7 +222,7 @@ directly: trips are now inserted and edited only by the server, which checks who
     OpenTable bookings land in calendars). Set `GOOGLE_OAUTH_CLIENT_ID` and
     `GOOGLE_OAUTH_CLIENT_SECRET` (Google Cloud → APIs & Services → Credentials → OAuth client,
     type Web application, redirect URI `https://www.pylos.ai/api/connect/google_calendar/callback`,
-    enable the Google Calendar API, scope `calendar.readonly`). Until Google verifies the app, only
+    enable the Google Calendar API, scope `calendar.events.readonly`). Until Google verifies the app, only
     the test users you add on the consent screen can connect.
   - Facebook: check-ins and tagged places with `META_APP_ID` / `META_APP_SECRET` (redirect URI
     `/api/connect/facebook/callback`; `user_posts` and `user_tagged_places` need Meta app review).

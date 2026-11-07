@@ -38,7 +38,8 @@ export function authorizeUrl(p: Provider, origin: string, userId: string): { url
       client_id: env.googleOAuth().id,
       redirect_uri: redirectUri(origin, p),
       response_type: "code",
-      scope: "https://www.googleapis.com/auth/calendar.readonly",
+      // The narrowest scope that can read events: no calendar settings, sharing or other calendars' lists.
+      scope: "https://www.googleapis.com/auth/calendar.events.readonly",
       access_type: "online",
       prompt: "consent",
       state,
@@ -88,15 +89,9 @@ export async function googleCalendarEvents(code: string, verifier: string, origi
   });
   const auth = { headers: { Authorization: `Bearer ${tok.access_token}` } };
   try {
-    const list = await getJson<{ items?: { id: string; accessRole?: string; primary?: boolean }[] }>(
-      "https://www.googleapis.com/calendar/v3/users/me/calendarList?fields=items(id,accessRole,primary)",
-      auth,
-    );
-    // Your own calendars; not holidays, birthdays or other people's shared ones.
-    const cals = (list.items ?? [])
-      .filter((c) => c.primary || c.accessRole === "owner")
-      .filter((c) => !/#(holiday|contacts|weeknum)@|addressbook#contacts/.test(c.id))
-      .slice(0, 8);
+    // Your main calendar, where Gmail adds hotel, flight and restaurant bookings. Reading the list of
+    // other calendars would need a broader permission than reading events.
+    const cals = [{ id: "primary" }];
     const timeMin = new Date(Date.now() - 6 * 365 * 864e5).toISOString();
     const timeMax = new Date().toISOString();
     const out: CalendarEvent[] = [];
