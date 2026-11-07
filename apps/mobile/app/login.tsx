@@ -24,7 +24,6 @@ export default function Login() {
   const [sentTo, setSentTo] = useState<{ email: string; kind: CodeKind } | null>(null);
   const [busy, setBusy] = useState(false);
   const [wait, setWait] = useState(0);
-  const [showCode, setShowCode] = useState(CODES);
   const [msg, setMsg] = useState<{ text: string; err?: boolean } | null>(null);
   const input = { backgroundColor: t.bg, borderColor: t.line, borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 16, color: t.ink };
 
@@ -92,8 +91,7 @@ export default function Login() {
           </>
         ) : (
           <>
-            {!showCode && <Button ghost title="Got a code instead?" onPress={() => setShowCode(true)} />}
-            {showCode && (
+            {CODES && (
               <>
                 <Label>Code</Label>
                 <TextInput

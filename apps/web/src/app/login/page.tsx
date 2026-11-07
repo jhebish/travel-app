@@ -33,8 +33,6 @@ function Login() {
   const [sentTo, setSentTo] = useState<{ email: string; kind: CodeKind } | null>(null);
   const [busy, setBusy] = useState(false);
   const [wait, setWait] = useState(0);
-  // Without code emails the code box stays tucked away behind "Got a code instead?".
-  const [showCode, setShowCode] = useState(CODES);
   const [msg, setMsg] = useState<{ text: string; err?: boolean } | null>(
     params.get("error") ? { text: "That sign-in link didn't work or has expired. Send yourself a new one below.", err: true } : null,
   );
@@ -141,7 +139,7 @@ function Login() {
             void verify(code);
           }}
         >
-          {showCode && (
+          {CODES && (
             <>
             <div className="field">
               <label className="label" htmlFor="code">
@@ -172,18 +170,6 @@ function Login() {
             </>
           )}
           <div className="login-links">
-            {!showCode && (
-              <button
-                type="button"
-                className="linkbtn"
-                onClick={() => {
-                  setShowCode(true);
-                  setTimeout(() => codeRef.current?.focus(), 50);
-                }}
-              >
-                Got a code instead?
-              </button>
-            )}
             <button type="button" className="linkbtn" disabled={busy || wait > 0} onClick={() => void send(sentTo.email)}>
               {wait > 0 ? `Send another in ${wait}s` : CODES ? "Send a new code" : "Send another link"}
             </button>
