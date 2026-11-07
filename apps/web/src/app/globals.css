@@ -1014,6 +1014,13 @@ dialog.gallery::backdrop { background: rgba(14, 10, 12, .82); }
 /* "For you": a pick that matches what you've loved before */
 .foryou-note { margin: 2px 0 6px; font-size: 15.5px; display: inline-flex; gap: 8px; align-items: baseline; padding: 3px 12px 4px; border-radius: 999px; background: var(--ochre); color: var(--ink); }
 .foryou-note b { font-family: var(--font-display); font-weight: 400; letter-spacing: .12em; text-transform: uppercase; font-size: 11.5px; }
+/* What a stop costs, and "Hot right now" with the sources that say so. */
+.cost { margin: 0; font-size: 16px; }
+.cost b { color: var(--olive-ink); font-family: var(--font-display); font-weight: 400; letter-spacing: .1em; text-transform: uppercase; font-size: 12.5px; margin-right: 4px; }
+.hot-now { margin: 2px 0 4px; font-size: 15px; display: inline-flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; padding: 3px 12px 4px; border-radius: 14px; background: var(--clay); color: var(--ink); }
+.hot-now b { font-family: var(--font-display); font-weight: 400; letter-spacing: .12em; text-transform: uppercase; font-size: 11.5px; }
+.hot-now a { color: inherit; }
+.hot-now .when { color: var(--muted); }
 
 /* Planning together */
 .together-note { display: flex; gap: 10px; align-items: flex-start; margin: 0; padding: 12px 14px; border-radius: 14px; background: var(--accent-soft); font-size: 16px; }

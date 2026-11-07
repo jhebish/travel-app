@@ -114,6 +114,52 @@ function PlaceLinks({ p }: { p: Stop | Hotel }) {
   );
 }
 
+/** What a stop costs, roughly ("EGP 500 a boat for an hour (~$10)", "Free"). */
+function Cost({ p }: { p: Stop }) {
+  if (!p.cost) return null;
+  return (
+    <p className="cost">
+      <b>Cost</b> {p.cost}
+    </p>
+  );
+}
+
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** "2026-03" or "2026-03-14" → "Mar 2026". */
+const monthYear = (d: string) => {
+  const m = /^(\d{4})-(\d{2})/.exec(d);
+  return m && Number(m[2]) >= 1 && Number(m[2]) <= 12 ? `${MONTHS_SHORT[Number(m[2]) - 1]} ${m[1]}` : "";
+};
+
+/** A bar or club that recent sources call one of the places to go now, with those sources. */
+function HotNow({ p }: { p: Stop }) {
+  const sources = p.hot?.sources ?? [];
+  if (!sources.length) return null;
+  return (
+    <p className="hot-now">
+      <b>Hot right now</b>
+      <span>
+        {sources.map((s, i) => {
+          const when = s.date ? monthYear(s.date) : "";
+          return (
+            <Fragment key={`${s.name}-${i}`}>
+              {i > 0 && " · "}
+              {s.url ? (
+                <a href={s.url} target="_blank" rel="noopener noreferrer">
+                  {s.name}
+                </a>
+              ) : (
+                s.name
+              )}
+              {when && <span className="when"> {when}</span>}
+            </Fragment>
+          );
+        })}
+      </span>
+    </p>
+  );
+}
+
 /** Shown when a pick matches what you've loved before (from your taste profile). */
 function ForYou({ p }: { p: Stop | Hotel }) {
   if (!p.forYou) return null;
@@ -727,7 +773,9 @@ export function TripView({
                     <div className="tl-name">
                       {s.name} {s.neighborhood && <span className="hood">in {s.neighborhood}</span>}
                     </div>
+                    <HotNow p={s} />
                     <p className="tl-why">{s.why}</p>
+                    <Cost p={s} />
                     <ForYou p={s} />
                     {s.localTip && (
                       <p className="tip">

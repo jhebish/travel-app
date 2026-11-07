@@ -2,10 +2,28 @@ import { getCtx } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { HttpError, handler, json } from "@/lib/http";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { createIntakeForm } from "@/lib/typeform";
+import { addNightOutQuestion, createIntakeForm, intakeFormStatus } from "@/lib/typeform";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+async function adminOnly(req: Request) {
+  const ctx = await getCtx(req);
+  if (ctx.role !== "admin") throw new HttpError(403, "Only admins can change the intake form.", "forbidden");
+}
+
+/** Admins: is the live intake form up to date (does it ask about clubs)? */
+export const GET = handler(async (req: Request) => {
+  await adminOnly(req);
+  if (!env.typeformToken() || !env.typeformFormId()) return json({ formId: null, nightOut: false });
+  return json(await intakeFormStatus());
+});
+
+/** Admins: add "Clubs and dancing too?" to the live intake form (keeps everything else as it is). */
+export const PATCH = handler(async (req: Request) => {
+  await adminOnly(req);
+  return json(await addNightOutQuestion());
+});
 
 /**
  * One-time setup: create the intake form in the connected Typeform account.

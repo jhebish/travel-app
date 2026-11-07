@@ -1,8 +1,9 @@
 import type { TripRequest } from "./schemas";
-import type { PlaceVerification } from "./schemas";
+import type { HotNow, PlaceVerification } from "./schemas";
 import { STAY_PRICE_RANGE, type SourceId, type StayPrice } from "./sources";
 import type { EffectiveSources } from "./weights";
 import { guessKind, kindFromHints } from "./imports/kind";
+import { wantsClubs, wantsNightlife } from "./nightlife";
 
 export type CandidateCategory = "food" | "drink" | "culture" | "outdoors" | "shopping" | "nightlife" | "stay" | "other";
 
@@ -25,6 +26,8 @@ export interface Candidate {
   expediaPropertyId?: string | null;
   /** Google Places details from the search that found it, so it needn't be looked up again. */
   verification?: PlaceVerification;
+  /** A bar or club recent sources call one of the places to go now (from the night pulse). */
+  hot?: HotNow;
 }
 
 const INTEREST_CATEGORIES: Record<string, CandidateCategory[]> = {
@@ -85,6 +88,9 @@ export function scoreCandidate(c: Candidate, eff: EffectiveSources, req: TripReq
   const sight = c.category === "culture" || c.category === "outdoors";
   if ((c.ratingCount ?? 0) > 8000) score += sight ? 0.1 : -0.1;
   if (c.origin === "local_pick") score += 0.1; // human-vetted
+  // The night pulse: places recent sources agree are the ones to go to now (nightpulse.ts).
+  if (c.hot) score += 0.3;
+  else if (c.tags?.includes("night_pulse")) score += 0.1;
 
   return score;
 }
@@ -149,11 +155,16 @@ export function placesQueries(req: TripRequest): { query: string; category: Cand
   // Egypt includes the Pyramids.
   add("top attractions", "culture");
   add("local cafés", "food");
+  // Real operators: a felucca, a cooking class or a tour is somewhere you can find and book.
+  add("boat trips, tours and classes", "other");
   for (const i of req.interests) {
     if (i === "Food") continue;
-    if (i === "Nightlife" && (req.party === "Family with kids" || req.about.includes("Doesn't drink alcohol"))) continue;
+    if (i === "Nightlife") {
+      // A night out is drinks; clubs only when asked (below).
+      if (wantsNightlife(req) && !req.about.includes("Doesn't drink alcohol")) add("wine bars and cocktail bars locals love", "drink");
+      continue;
+    }
     const map: Record<string, [string, CandidateCategory]> = {
-      Nightlife: ["cocktail bars and late-night spots", "nightlife"],
       "Art & design": ["independent galleries and design shops", "culture"],
       History: ["historic sites and small museums", "culture"],
       "Nature & outdoors": ["parks, gardens and viewpoints", "outdoors"],
@@ -164,11 +175,14 @@ export function placesQueries(req: TripRequest): { query: string; category: Cand
     const m = map[i];
     if (m) add(m[0], m[1]);
   }
+  if (wantsClubs(req)) add("nightclubs where locals go dancing", "nightlife");
   if (req.about.includes("LGBTQ+ traveler")) add("LGBTQ+ friendly bars and cafés", "nightlife");
+  // Hotel searches are never the ones cut by the limit.
+  const stays: typeof q = [];
   if (req.stay.on) {
     const style = req.stay.styles[0]?.toLowerCase() ?? "boutique";
-    add(`${style} hotels`, "stay");
-    if (req.stay.styles.length > 1) add(`${req.stay.styles[1]!.toLowerCase()} hotels`, "stay");
+    stays.push({ query: `${style} hotels in ${city}`, category: "stay" });
+    if (req.stay.styles.length > 1) stays.push({ query: `${req.stay.styles[1]!.toLowerCase()} hotels in ${city}`, category: "stay" });
   }
-  return q.slice(0, 8);
+  return [...q.slice(0, 8 - stays.length), ...stays];
 }

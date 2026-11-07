@@ -1,3 +1,4 @@
+import { nightContext, nightPlan, nightRules, wantsClubs, type NightPlan } from "./nightlife";
 import type { Candidate } from "./ranking";
 import type { Itinerary, RouteLeg, StayPrefs, TripRequest } from "./schemas";
 import { STOP_KINDS } from "./quality";
@@ -45,16 +46,27 @@ export function travelerBlock(req: TripRequest): string {
 - Who: ${req.party}${req.age ? `, age ${req.age}` : ""}
 - About them: ${req.about.length ? req.about.join("; ") : "nothing specific"}
 - Budget: ${req.budget}
-- Interests: ${req.interests.length ? req.interests.join(", ") : "open to anything"}
+- Interests: ${req.interests.length ? req.interests.map((i) => (i === "Nightlife" && wantsClubs(req) ? "Nightlife (clubs and dancing too, out until late)" : i)).join(", ") : "open to anything"}${
+    wantsClubs(req) && !req.interests.includes("Nightlife") ? "\n- Nights: they want clubs and dancing" : ""
+  }
 - Pace: ${req.pace} (${per} stops per day)
 - Notes from the traveler: ${req.extra || "none"}`;
 }
+
+/**
+ * A plan, not a list of ideas: every stop is a real place or operator, with its price. The
+ * pipeline checks this in code too (quality.ts: vague activities and missing prices are rebuilt).
+ */
+const CONCRETE_RULES = `- Every stop is one specific place or operator, named as it appears on Google Maps: a café, a museum, a dock, a boat or tour company, a cooking school, a hammam. Never a generic activity like "felucca ride", "sunset cruise" or "walking tour": name where it happens or who runs it, and say where it starts.
+- For tours, boat trips, classes and other activities, say in "why" what you do and for how long, and in "localTip" whether to book ahead and how.
+- "cost" on every stop, in local currency with a rough US-dollar figure: entry ("EGP 700 entry (~$14)"), an activity per person or per boat ("EGP 500 a boat for an hour (~$10)"), a typical spend for meals and drinks ("~€25 a head", "~€12 a cocktail"), a club's cover, or "Free".`;
 
 /** A day out mixes seeing and doing with eating. The pipeline also checks this in code (quality.ts). */
 function dayShape(req: TripRequest): string {
   return `- Make each day a real day out with a mix: things to see or do (sights, museums, markets, parks, walks, viewpoints) between the meals. A typical ${req.pace === "Slow" ? "slow " : ""}day: something to see in the morning, lunch, something to do in the afternoon, then dinner or drinks.
 - At most one café or coffee stop a day (two on a packed day), never two in a row, and never three food or drink stops in a row, unless the traveler asked for a food or café day.
-- Give every stop its "kind".`;
+${CONCRETE_RULES}
+- Give every stop its "kind" (a bar is "drinks"; "nightlife" is a club or a dance night).`;
 }
 
 export function sourceBlock(eff: EffectiveSources, lists?: CuratorLists): string {
@@ -184,10 +196,14 @@ export const STOP_JSON_SCHEMA = {
     kind: {
       type: "string",
       enum: [...STOP_KINDS],
-      description: "What the stop is: coffee (café, bakery, tea house), meal, drinks, sight, activity, nature, market, shop or nightlife.",
+      description: "What the stop is: coffee (café, bakery, tea house), meal, drinks (a bar), sight, activity (a tour, boat trip, class…), nature, market, shop or nightlife (a club or dance night).",
+    },
+    cost: {
+      type: "string",
+      description: 'What it costs, in local currency with a rough US-dollar figure: "EGP 700 entry (~$14)", "EGP 500 a boat for an hour (~$10)", "~€25 a head", "€20 cover", "Free".',
     },
   },
-  required: ["time", "name", "neighborhood", "why", "localTip", "source", "candidateId", "kind"],
+  required: ["time", "name", "neighborhood", "why", "localTip", "source", "candidateId", "kind", "cost"],
 } as const;
 
 
@@ -252,6 +268,7 @@ ${dayText(it, day)}
 TASK
 Replace stop ${index + 1} ("${old.name}" at ${old.time}) with a different place that fills the same slot in the day: similar time and role (a meal stays a meal unless asked otherwise), close to the neighboring stops.
 - Keep the day balanced: no second café, and no third food or drink stop in a row, unless the traveler asked for it.
+${CONCRETE_RULES}
 ${hint ? `The traveler asked: "${hint}".` : "The traveler wants a different option."}
 - Do not suggest ${old.name} or any place already in the trip: ${[...it.days[day]!.stops.map((s) => s.name), ...elsewhere(it, day)].join(", ")}.
 - Prefer a candidate (set "candidateId"); otherwise a place you are highly confident exists, with candidateId null.
@@ -272,6 +289,8 @@ export function buildDayPrompt(
   candidates: Candidate[],
   /** A first rebuild failed the day check: what to fix (see quality.ts). */
   fix?: { draft: string; problems: string },
+  /** The night-out rules and what tonight holds (see nightlife.ts), when they asked for nightlife. */
+  night?: string,
 ): string {
   const locked = it.days[day]!.stops.filter((s) => s.locked);
   const per = req.pace === "Slow" ? "3–4" : req.pace === "Packed" ? "5–6" : "4–5";
@@ -283,7 +302,7 @@ ${candidateBlock(candidates)}
 
 CURRENT ${it.days[day]!.label.toUpperCase()} (${it.days[day]!.theme})
 ${dayText(it, day)}
-
+${night ? `\n${night}\n` : ""}
 ${fix ? `A FIRST NEW VERSION WAS REJECTED\n${fix.draft}\nWhat was wrong with it:\n${fix.problems}\n\n` : ""}TASK
 Build a fresh version of this day with ${per} stops, walkable or one short ride apart, with realistic times.
 ${hint ? `The traveler asked: "${hint}".` : "Make it meaningfully different from the current version."}
@@ -320,6 +339,8 @@ export interface Outline {
   forYou: string;
   notes: string[];
   days: OutlineDay[];
+  /** Each day's night (set in code from the request, see nightlife.ts): a club, drinks, or nothing in particular. */
+  nights?: NightPlan[];
 }
 
 /** The trip's title: plain, never a slogan. */
@@ -392,6 +413,12 @@ function essentialsRules(req: TripRequest): string {
 /** Step 1: a quick outline that splits the destination into one area per day and assigns candidates. */
 export function buildOutlinePrompt(req: TripRequest, eff: EffectiveSources, lists: CuratorLists, candidates: Candidate[]): string {
   const visited = mostVisitedBlock(candidates);
+  const nights = nightPlan(req, req.days);
+  const night = nightRules(
+    req,
+    nights,
+    nights.map((_, i) => `Day ${i + 1}`),
+  );
   return `${travelerBlock(req)}
 
 ${sourceBlock(eff, lists)}
@@ -399,11 +426,13 @@ ${sourceBlock(eff, lists)}
 ${candidateBlock(candidates)}
 ${visited ? `\n${visited}\n` : ""}
 ${essentialsRules(req)}
-
+${night ? `\n${night}\n` : ""}
 TASK
 Outline a ${req.days}-day trip. Do not plan individual stops yet.
 - Give each day a different area (neighborhoods close together, so the day is walkable or one short ride) and a short theme that suits this traveler.
-- For each day, list the bracketed ids of 3–6 candidates that belong in that area and fit the traveler: a mix of things to see or do and places to eat, not all cafés or restaurants. Use each id on one day only. Favor higher-weight sources.
+- For each day, list the bracketed ids of 3–6 candidates that belong in that area and fit the traveler: a mix of things to see or do and places to eat, not all cafés or restaurants. Use each id on one day only. Favor higher-weight sources.${
+    night ? "\n- Include a bar near the day's area on most days, and a club on each club night." : ""
+  }
 - Notes: 2–3 short practical tips for this traveler in this place (safety, transit, customs, booking).
 ${req.about.includes("LGBTQ+ traveler") ? "- If the destination warrants it, include a practical LGBTQ+ safety note.\n" : ""}${FOR_YOU_RULE}
 
@@ -432,6 +461,14 @@ export function buildPlanDayPrompt(
     .map((x, i) => (i === day ? null : `${x.label}: ${x.theme} (${x.area})`))
     .filter(Boolean)
     .join("; ");
+  const nights = outline.nights ?? [];
+  const night = nightRules(
+    req,
+    nights,
+    outline.days.map((x) => x.label),
+  );
+  const tonight = nightContext(nights, day);
+  const dayContext = [context, tonight].filter(Boolean).join("\n");
   return `${travelerBlock(req)}
 
 ${sourceBlock(eff, lists)}
@@ -440,8 +477,8 @@ ${candidateBlock(pool)}
 
 TRIP: "${outline.title}"
 Other days (planned separately, don't repeat their areas or places): ${otherDays || "none"}
-
-${context ? `CONTEXT FOR THIS DAY\n${context}\n\n` : ""}${
+${night ? `\n${night}\n` : ""}
+${dayContext ? `CONTEXT FOR THIS DAY\n${dayContext}\n\n` : ""}${
     fix ? `A FIRST DRAFT OF THIS DAY WAS REJECTED\n${fix.draft}\nWhat was wrong with it:\n${fix.problems}\n\n` : ""
   }TASK
 Plan ${d.label}: ${d.theme}, in ${d.area}. ${per} stops in time order, walkable or one short ride apart, with realistic 24h times.

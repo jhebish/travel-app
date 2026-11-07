@@ -5,6 +5,8 @@ import { HttpError } from "./http";
 
 let client: Anthropic | null = null;
 const anthropic = () => (client ??= new Anthropic({ apiKey: env.anthropicKey(), maxRetries: 2, timeout: 110_000 }));
+/** The shared client, for calls callTool doesn't cover (web search in nightPulse.ts). */
+export const anthropicClient = anthropic;
 
 interface ToolDef {
   name: string;

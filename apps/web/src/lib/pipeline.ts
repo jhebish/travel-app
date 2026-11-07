@@ -46,17 +46,29 @@ import {
   dayCheckOptions,
   dayFixText,
   ensureLandmarks,
+  isClubCandidate,
   isReturnVisit,
+  nightContext,
+  nightPlan,
+  nightRules,
   stopRole,
+  pulseCandidates,
+  scoreCandidate,
+  wantsClubs,
+  wantsNightlife,
+  type CheckedStop,
   type DayCheckOptions,
-  type StopRole,
+  type NightPlan,
+  type NightPulse,
 } from "@travel/core";
+import { waitUntil } from "@vercel/functions";
 import { z } from "zod";
 import type { Ctx } from "./auth";
 import { callTool } from "./claude";
 import { syncFeedback } from "./feedback";
 import { adultsFor, attachLiveRates } from "./hotels";
 import { HttpError } from "./http";
+import { nightPulse, readPulse } from "./nightPulse";
 import { PlacesError, placeById, placesCandidates, placesEnabled, verifyPlace } from "./places";
 import { supabaseAdmin } from "./supabase/server";
 import { tasteBlock } from "./taste";
@@ -149,12 +161,15 @@ async function ground(picks: Pick[], cands: Candidate[], city: string): Promise<
     // Only verification below may set these; never trust the model's own values.
     delete p.place;
     delete (p as Hotel).liveRate;
+    delete (p as Stop).hot;
     p.expediaPropertyId = null;
     const cand = p.candidateId ? byId.get(p.candidateId) : undefined;
     if (cand) {
       p.origin = cand.origin;
       p.source = cand.source; // the candidate's real source wins over the model's label
       if (cand.category === "stay") p.expediaPropertyId = cand.expediaPropertyId ?? null;
+      // "Hot right now" comes only from the night pulse's dated sources (nightPulse.ts).
+      if (cand.hot && cand.category !== "stay") (p as Stop).hot = cand.hot;
     } else {
       p.candidateId = null;
       p.origin = "ai";
@@ -245,18 +260,40 @@ async function step<T>(
   throw new HttpError(502, "The plan came back incomplete. Try again.", "bad_output");
 }
 
-/** Each stop's role (coffee, meal, sight…), trusting Google's place types for places found by a Places search. */
-function rolesFor(stops: Stop[], cands: Candidate[]): { name: string; time: string; role: StopRole }[] {
+/**
+ * Each stop as the day check sees it: its role (coffee, meal, sight…, trusting Google's place types
+ * for places found by a Places search), and whether it's a real candidate rather than the model's own idea.
+ */
+function rolesFor(stops: Stop[], cands: Candidate[]): CheckedStop[] {
   const byId = new Map(cands.map((c) => [c.id, c]));
   return stops.map((s) => {
     const c = s.candidateId ? byId.get(s.candidateId) : undefined;
-    return { name: s.name, time: s.time, role: stopRole(s, c?.origin === "google" ? (c.tags ?? []) : []) };
+    return { name: s.name, time: s.time, kind: s.kind, cost: s.cost, grounded: !!c, role: stopRole(s, c?.origin === "google" ? (c.tags ?? []) : []) };
   });
 }
 
 /** A draft day, one stop per line, for showing the model what it has to fix. */
-const draftText = (stops: { name: string; time: string; role: StopRole }[]) =>
-  stops.map((s, i) => `${i + 1}. ${s.time} ${s.name} (${s.role})`).join("\n");
+const draftText = (stops: CheckedStop[]) => stops.map((s, i) => `${i + 1}. ${s.time} ${s.name} (${s.role}${s.cost ? `, ${s.cost}` : ""})`).join("\n");
+
+/**
+ * The day check's options for day `i`: what the traveler asked for, where they are, and tonight's
+ * plan. A club night is only enforced when there's a club among the candidates to choose from.
+ */
+function checkOptions(
+  req: TripRequest,
+  place: string,
+  nights: readonly NightPlan[],
+  i: number,
+  cands: Candidate[],
+  more: { mustSee?: readonly string[]; hint?: string } = {},
+): DayCheckOptions {
+  return {
+    ...dayCheckOptions({ notes: req.extra, hint: more.hint }, more.mustSee ?? []),
+    place,
+    clubNight: nights[i] === "club" && !more.hint && cands.some(isClubCandidate),
+    lateStart: i > 0 && nights[i - 1] === "club",
+  };
+}
 
 /** `deadline` (ms since the epoch) must be passed on to callTool: the rebuild has to be over by then. */
 type Rebuild = (fix: { draft: string; problems: string }, attempt: number, deadline: number) => Promise<{ input: unknown; model: string }>;
@@ -301,6 +338,53 @@ async function balanceDay(
 }
 
 /** A rebuild asks the fast model first, the main model only if the answer comes back malformed. */
+// ---------------------------------------------------------------------------
+// The night pulse (nightPulse.ts): the bars and clubs that are hot right now
+// ---------------------------------------------------------------------------
+
+/**
+ * Nightlife travelers: the city's night pulse. Cached for a month; when there isn't one, it's
+ * researched now (30–60 s) and keeps going after the trip is ready, so the next trip has it.
+ */
+function startPulse(req: TripRequest, city: string, deadline: number): Promise<NightPulse | null> | null {
+  if (!wantsNightlife(req)) return null;
+  const job = nightPulse(city, deadline);
+  waitUntil(job);
+  return job;
+}
+
+/** The value if the promise settles within `ms`, else null (the promise keeps running). */
+async function within<T>(p: Promise<T | null> | null, ms: number): Promise<T | null> {
+  if (!p) return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([p, new Promise<null>((r) => (timer = setTimeout(() => r(null), ms)))]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Where the places Google found are, to keep the pulse to places near the trip. */
+const locations = (cands: Candidate[]) =>
+  cands.flatMap((c) => (c.verification?.lat != null && c.verification.lng != null ? [{ lat: c.verification.lat, lng: c.verification.lng }] : []));
+
+/**
+ * The pulse's places as candidates, ahead of the rest: when Google's search found the same place,
+ * the pulse's copy (with "Hot right now" and its door notes) is the one kept.
+ */
+function withPulse(gathered: Candidate[], pulse: NightPulse | null): Candidate[] {
+  return pulse ? [...pulseCandidates(pulse, { near: locations(gathered) }), ...gathered] : gathered;
+}
+
+/** Pulse places that arrived after the outline, added for the day plans (up to 8 not already there). */
+function latePulse(cands: Candidate[], pulse: NightPulse | null, eff: EffectiveSources, req: TripRequest): Candidate[] {
+  if (!pulse) return [];
+  const have = new Set(cands.map((c) => c.placeId ?? c.id));
+  return pulseCandidates(pulse, { near: locations(cands) })
+    .filter((c) => !have.has(c.placeId ?? c.id) && Number.isFinite(scoreCandidate(c, eff, req)))
+    .slice(0, 8);
+}
+
 const fastThenMainOnce = (attempt: number, deadline?: number) => ({
   fast: attempt === 0,
   deadline: deadline !== undefined && Number.isFinite(deadline) ? deadline : undefined,
@@ -449,7 +533,10 @@ interface Planned {
 async function planSingle(req: TripRequest, { eff, lists, history, rebuildUntil, rebuildDeadline }: PlanInputs, emit: Emit): Promise<Planned> {
   const progress = (pct: number, label: string) => emit({ type: "progress", pct, label });
   progress(8, "Gathering local picks");
-  const cands = selectCandidates(await gatherCandidates(req), eff, req);
+  // Nightlife: the bars and clubs that are hot now, if this city's pulse is ready in time.
+  const pulseJob = startPulse(req, req.destination, rebuildDeadline ?? Date.now() + 100_000);
+  const [gathered, early] = await Promise.all([gatherCandidates(req), within(pulseJob, 8_000)]);
+  const cands = selectCandidates(withPulse(gathered, early), eff, req);
 
   progress(15, `Sketching your ${req.days}-day outline`);
   const { data: outline, model } = await step(
@@ -465,6 +552,10 @@ async function planSingle(req: TripRequest, { eff, lists, history, rebuildUntil,
     if (added.length) console.log(`[outline] made sure of ${added.join(", ")}`);
     o.days = days;
   }
+  // Each night: drinks, a club (when they asked), or nothing in particular. Chosen in code, the same way the outline was told.
+  o.nights = nightPlan(req, o.days.length);
+  // A pulse that came in during the outline still reaches the day plans.
+  if (!early) cands.push(...latePulse(cands, await within(pulseJob, 0), eff, req));
   emit({ type: "outline", title: o.title, forYou: o.forYou, days: o.days.map((d) => ({ label: d.label, theme: d.theme })), hotels: req.stay.on });
 
   const jobs = o.days.length + (req.stay.on ? 1 : 0);
@@ -486,7 +577,7 @@ async function planSingle(req: TripRequest, { eff, lists, history, rebuildUntil,
       `day ${i + 1}`,
       data.stops,
       cands,
-      dayCheckOptions({ notes: req.extra }, d.mustSee ?? []),
+      checkOptions(req, req.destination, o.nights ?? [], i, cands, { mustSee: d.mustSee }),
       (fix, attempt, deadline) =>
         callTool(withHistory(history, buildPlanDayPrompt(req, eff, lists, o, i, cands, "", fix)), DAY_TOOL, 4000, fastThenMainOnce(attempt, deadline)),
       rebuildUntil,
@@ -572,11 +663,24 @@ async function planMulti(req: TripRequest, { eff, lists, history, rebuildUntil, 
 
   progress(22, `Finding local picks in ${legs.map((l) => l.city).join(", ")}`);
   const legReqs = legs.map((l) => ({ ...requestForCity(req, l.city), days: l.days }));
-  const legCands = await Promise.all(legReqs.map(async (r) => selectCandidates(await gatherCandidates(r), eff, r)));
+  // Each stop's night pulse, when it's ready in time (otherwise it's researched for next time).
+  const pulseJobs = legReqs.map((r) => startPulse(req, r.destination, rebuildDeadline ?? Date.now() + 100_000));
+  const legCands = await Promise.all(
+    legReqs.map(async (r, i) => {
+      const [gathered, pulse] = await Promise.all([gatherCandidates(r), within(pulseJobs[i]!, 8_000)]);
+      return selectCandidates(withPulse(gathered, pulse), eff, r);
+    }),
+  );
 
   // Each stop gets its own outline, so a day knows the other days in the same place, and each stop
   // keeps what it's famous for (not on the day they arrive, when another day there works).
   const landmarks = wantsLandmarks(req, history);
+  // Club nights (when asked): not the night they arrive somewhere new, nor the night before they
+  // move on, unless that leaves none at all.
+  const arrivals = plan.flatMap((p, i) => (p.within === 0 && p.leg > 0 ? [i] : []));
+  const moving = plan.flatMap((p, i) => (p.within === legs[p.leg]!.days - 1 && p.leg < legs.length - 1 ? [i] : []));
+  let nights = nightPlan(req, plan.length, [...arrivals, ...moving]);
+  if (wantsClubs(req) && !nights.includes("club")) nights = nightPlan(req, plan.length, arrivals);
   const legOutlines: Outline[] = legs.map((l, li) => {
     const ids = legCands[li]!.filter((c) => c.category !== "stay").map((c) => c.id);
     const days = l.dayThemes.map((t, k) => ({
@@ -585,10 +689,11 @@ async function planMulti(req: TripRequest, { eff, lists, history, rebuildUntil, 
       area: t.area || l.city,
       candidateIds: ids.filter((_, j) => j % l.days === k).slice(0, 6),
     }));
-    if (!landmarks) return { title: route.title, forYou: "", notes: [], days };
+    const legNights = plan.flatMap((p, i) => (p.leg === li ? [nights[i]!] : []));
+    if (!landmarks) return { title: route.title, forYou: "", notes: [], days, nights: legNights };
     const sure = ensureLandmarks(days, legCands[li]!, { days: l.days, avoid: li > 0 ? [0] : [] });
     if (sure.added.length) console.log(`[route] ${l.city}: made sure of ${sure.added.join(", ")}`);
-    return { title: route.title, forYou: "", notes: [], days: sure.days };
+    return { title: route.title, forYou: "", notes: [], days: sure.days, nights: legNights };
   });
 
   const jobs = plan.length + (req.stay.on ? legs.length : 0);
@@ -623,7 +728,7 @@ async function planMulti(req: TripRequest, { eff, lists, history, rebuildUntil, 
       `day ${i + 1}`,
       data.stops,
       legCands[p.leg]!,
-      dayCheckOptions({ notes: req.extra }, legOutlines[p.leg]!.days[p.within]?.mustSee ?? []),
+      checkOptions(req, leg.city, legOutlines[p.leg]!.nights ?? [], p.within, legCands[p.leg]!, { mustSee: legOutlines[p.leg]!.days[p.within]?.mustSee }),
       (fix, attempt, deadline) =>
         callTool(
           withHistory(history, buildPlanDayPrompt(legReqs[p.leg]!, eff, lists, legOutlines[p.leg]!, p.within, legCands[p.leg]!, context, fix)),
@@ -843,12 +948,13 @@ export async function swapStop(ctx: Ctx, row: TripRow, day: number, index: numbe
   await rateLimit(ctx, "edit", 60, "That's a lot of changes this hour. Try again a little later.");
   const { req: base, eff, inTrip } = editContext(row);
   const req = requestForCity(base, row.itinerary.days[day]?.city);
-  const [{ lists }, gathered, history] = await Promise.all([
+  const [{ lists }, gathered, history, pulse] = await Promise.all([
     loadSources(ctx),
     gatherCandidates(req),
     loadHistory(ctx, req.destination, { ownerId: row.user_id, companions: people.companions }),
+    wantsNightlife(req) ? readPulse(req.destination) : null,
   ]);
-  const cands = selectCandidates(gathered, eff, req).filter((c) => c.category !== "stay" && !inTrip.has(c.name.toLowerCase()));
+  const cands = selectCandidates(withPulse(gathered, pulse), eff, req).filter((c) => c.category !== "stay" && !inTrip.has(c.name.toLowerCase()));
   const { input } = await callTool(withHistory(history, buildSwapPrompt(req, eff, lists, row.itinerary, day, index, hint, cands)), STOP_TOOL, 2000, { fast: true });
   const parsed = z.object({ stop: StopSchema }).safeParse(input);
   if (!parsed.success) throw new HttpError(502, "The replacement came back incomplete. Try again.", "bad_output");
@@ -875,17 +981,24 @@ export async function regenerateDay(ctx: Ctx, row: TripRow, day: number, hint: s
   const otherDays = new Set(
     [...row.itinerary.days.flatMap((d, i) => (i === day ? [] : d.stops)), ...(row.itinerary.hotels ?? [])].map((p) => p.name.toLowerCase()),
   );
-  const [{ lists }, gathered, history] = await Promise.all([
+  const [{ lists }, gathered, history, pulse] = await Promise.all([
     loadSources(ctx),
     gatherCandidates(req),
     loadHistory(ctx, req.destination, { ownerId: row.user_id, companions: people.companions }),
+    wantsNightlife(req) ? readPulse(req.destination) : null,
   ]);
-  const cands = selectCandidates(gathered, eff, req).filter((c) => c.category !== "stay" && !otherDays.has(c.name.toLowerCase()));
+  const cands = selectCandidates(withPulse(gathered, pulse), eff, req).filter((c) => c.category !== "stay" && !otherDays.has(c.name.toLowerCase()));
   // Planning together: stops someone said they're in for stay, like locked ones.
   const keep = current.stops.map((s, i) => !!s.locked || people.liked.get(`${day}-${i}`) === s.name);
   const started = Date.now();
   const marked: Itinerary = { ...row.itinerary, days: row.itinerary.days.map((d, i) => (i === day ? { ...d, stops: d.stops.map((s, j) => ({ ...s, locked: keep[j] })) } : d)) };
-  const prompt = (fix?: { draft: string; problems: string }) => buildDayPrompt(req, eff, lists, marked, day, hint, cands, fix);
+  // The trip's nights as built: a day with a club stop is a club night (and the next morning starts late).
+  // (Only for trips that asked for clubs: older trips called bars "nightlife" too.)
+  const nights: NightPlan[] = row.itinerary.days.map((d) =>
+    wantsClubs(req) && d.stops.some((s) => s.kind === "nightlife") ? "club" : wantsNightlife(req) ? "drinks" : null,
+  );
+  const night = [nightRules(req, nights, row.itinerary.days.map((d) => d.label)), nightContext(nights, day)].filter(Boolean).join("\n");
+  const prompt = (fix?: { draft: string; problems: string }) => buildDayPrompt(req, eff, lists, marked, day, hint, cands, fix, night);
   const { data: firstDraft } = await step("rebuild day", (attempt) => callTool(withHistory(history, prompt()), DAY_TOOL, 4000, fastThenMain(attempt)), DayResultSchema, 3);
 
   // Locked stops (and ones a friend is in for) are kept exactly, whatever the model returned.
@@ -898,7 +1011,7 @@ export async function regenerateDay(ctx: Ctx, row: TripRow, day: number, hint: s
     "rebuilt day",
     sortByTime([...locked, ...firstDraft.stops.filter((s) => !lockedNames.has(s.name.toLowerCase()))]),
     cands,
-    dayCheckOptions({ notes: req.extra, hint }),
+    checkOptions(req, req.destination, nights, day, cands, { hint }),
     (fix, attempt, deadline) => callTool(withHistory(history, prompt(fix)), DAY_TOOL, 4000, fastThenMainOnce(attempt, deadline)),
     started + 25_000,
     began + 55_000,
@@ -986,6 +1099,8 @@ export async function swapCity(ctx: Ctx, row: TripRow, legIndex: number, cityIn:
     forYou: "",
     notes: [],
     days: themes.map((t, k) => ({ label: it.days[dayIdx[k]!]!.label, theme: t.theme, area: t.area || city, candidateIds: ids.filter((_, j) => j % n === k).slice(0, 6) })),
+    // Not a club on the night they arrive.
+    nights: nightPlan(legReq, n, legIndex > 0 ? [0] : []),
   };
   const dayJobs = themes.map(async (t, k): Promise<DayOut> => {
     const context =

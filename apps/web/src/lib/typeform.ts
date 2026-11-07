@@ -1,4 +1,4 @@
-import { typeformDefinition, type TypeformAnswer } from "@travel/core";
+import { TF, typeformDefinition, withNightOutQuestion, type TypeformAnswer } from "@travel/core";
 import { env } from "./env";
 import { HttpError } from "./http";
 
@@ -52,6 +52,42 @@ export async function fetchResponse(responseId: string, onWait?: (attempt: numbe
     if (item?.answers?.length) return item;
   }
   throw new HttpError(504, "We couldn't read your answers from Typeform. Try submitting again.", "typeform_timeout");
+}
+
+type TfForm = { fields?: { ref?: string }[]; logic?: { type: string; ref?: string; actions: unknown[] }[]; _links?: unknown };
+
+async function liveForm(): Promise<{ formId: string; form: TfForm }> {
+  const formId = env.typeformFormId();
+  if (!formId) throw new HttpError(503, "The Typeform intake isn't set up yet.", "typeform_off");
+  const res = await tf(`/forms/${encodeURIComponent(formId)}`);
+  if (!res.ok) {
+    console.error("Typeform form read failed", res.status, (await res.text().catch(() => "")).slice(0, 300));
+    throw new HttpError(502, `Typeform didn't return the intake form (${res.status}).`, "typeform_form");
+  }
+  return { formId, form: (await res.json()) as TfForm };
+}
+
+/** Whether the live intake form asks "Clubs and dancing too?". */
+export async function intakeFormStatus(): Promise<{ formId: string; nightOut: boolean }> {
+  const { formId, form } = await liveForm();
+  return { formId, nightOut: (form.fields ?? []).some((f) => f.ref === TF.clubs) };
+}
+
+/**
+ * Add "Clubs and dancing too?" to the live intake form, after "What are you into?" and only shown
+ * when Nightlife is picked. The form is read and written back whole, so edits made in Typeform stay.
+ */
+export async function addNightOutQuestion(): Promise<{ added: boolean; why?: string }> {
+  const { formId, form } = await liveForm();
+  const next = withNightOutQuestion(form);
+  if (!next.form) return { added: false, why: next.why };
+  const { _links: _l, ...body } = next.form;
+  const res = await tf(`/forms/${encodeURIComponent(formId)}`, { method: "PUT", body: JSON.stringify(body) });
+  if (!res.ok) {
+    console.error("Typeform form update failed", res.status, (await res.text().catch(() => "")).slice(0, 500));
+    throw new HttpError(502, `Typeform didn't accept the change (${res.status}). The details are in the server logs.`, "typeform_update");
+  }
+  return { added: true };
 }
 
 /** Create the Pylos intake form (and a matching theme) in the connected Typeform account. */

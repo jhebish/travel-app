@@ -13,6 +13,7 @@ export function readOnlyTrip(o: { destination: string; title: string; itinerary:
     about: [],
     budget: "Mid-range",
     interests: [],
+    clubs: false,
     pace: "Balanced",
     extra: "",
     stay: { on: false, styles: [], price: "$150–300" },

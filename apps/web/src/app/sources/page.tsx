@@ -19,6 +19,54 @@ interface Prefs {
 }
 type Msg = { text: string; err?: boolean } | null;
 
+/** Admins: bring the live Typeform intake up to date (the "Clubs and dancing too?" question). */
+function IntakeFormCard() {
+  const [state, setState] = useState<{ formId: string | null; nightOut: boolean } | null>(null);
+  const [msg, setMsg] = useState<Msg>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api<{ formId: string | null; nightOut: boolean }>("/api/typeform/setup")
+      .then(setState)
+      .catch((e) => setMsg({ text: (e as Error).message || "Couldn't read the Typeform intake.", err: true }));
+  }, []);
+  async function add() {
+    setBusy(true);
+    setMsg({ text: "Updating the form…" });
+    try {
+      const r = await api<{ added: boolean; why?: string }>("/api/typeform/setup", { method: "PATCH" });
+      setState((s) => (s ? { ...s, nightOut: r.added || s.nightOut } : s));
+      setMsg({ text: r.added ? "Added. Travelers who pick Nightlife now get the clubs question." : `Nothing changed (${r.why ?? "no reason given"}).` });
+    } catch (e) {
+      setMsg({ text: (e as Error).message, err: true });
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (!state?.formId && !msg) return null;
+  return (
+    <div className="card">
+      <div className="head">
+        <span className="pill">Admins only</span>
+        <h2>Typeform intake</h2>
+        <p className="lede">
+          Travelers who pick Nightlife get one more question: clubs and dancing too, or just drinks? It goes after &ldquo;What are you into?&rdquo;, and the rest of
+          your form stays as you&apos;ve edited it.
+        </p>
+      </div>
+      {state?.nightOut ? (
+        <p className="note">Your form asks the clubs question.</p>
+      ) : state?.formId ? (
+        <button className="btn" type="button" disabled={busy} onClick={add}>
+          Add the clubs question to the form
+        </button>
+      ) : null}
+      <p className={`status${msg?.err ? " err" : ""}`} role="status">
+        {msg?.text}
+      </p>
+    </div>
+  );
+}
+
 export default function SourcesPage() {
   const me = useMe();
   const curator = canCurate(me?.role);
@@ -178,6 +226,8 @@ export default function SourcesPage() {
           </div>
         )}
       </div>
+
+      {me?.role === "admin" && mode === "app" && <IntakeFormCard />}
 
       {curator && mode === "app" && (
         <div className="card">

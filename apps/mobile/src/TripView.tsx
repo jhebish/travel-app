@@ -61,6 +61,47 @@ function ContactLinks({ place }: { place?: PlaceVerification }) {
 }
 
 /** Shown when a pick matches what they've loved before (from their taste profile). */
+/** What a stop costs, roughly ("EGP 500 a boat for an hour (~$10)", "Free"). */
+function Cost({ text }: { text?: string }) {
+  const t = useTheme();
+  if (!text) return null;
+  return (
+    <Text style={{ color: t.ink, fontSize: 15.5 }}>
+      <Text style={{ color: t.olive, fontFamily: FONT.display, fontSize: 11.5, letterSpacing: 1.4, textTransform: "uppercase" }}>Cost </Text>
+      {text}
+    </Text>
+  );
+}
+
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const monthYear = (d?: string) => {
+  const m = /^(\d{4})-(\d{2})/.exec(d ?? "");
+  return m && Number(m[2]) >= 1 && Number(m[2]) <= 12 ? `${MONTHS_SHORT[Number(m[2]) - 1]} ${m[1]}` : "";
+};
+
+/** A bar or club that recent sources call one of the places to go now, with those sources. */
+function HotNow({ p }: { p: Stop }) {
+  const t = useTheme();
+  const sources = p.hot?.sources ?? [];
+  if (!sources.length) return null;
+  return (
+    <View style={{ alignSelf: "flex-start", backgroundColor: t.clay, borderRadius: 14, paddingVertical: 4, paddingHorizontal: 12, flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "baseline" }}>
+      <Text style={{ color: t.ink, fontFamily: FONT.display, fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase" }}>Hot right now</Text>
+      {sources.map((s, i) => (
+        <Text
+          key={`${s.name}-${i}`}
+          style={{ color: t.ink, fontSize: 14.5, textDecorationLine: s.url ? "underline" : "none" }}
+          onPress={s.url ? () => open(s.url) : undefined}
+          accessibilityRole={s.url ? "link" : undefined}
+        >
+          {s.name}
+          {s.date ? <Text style={{ color: t.muted }}> {monthYear(s.date)}</Text> : null}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
 function ForYou({ text }: { text?: string }) {
   const t = useTheme();
   if (!text) return null;
@@ -297,7 +338,9 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
                     {s.name}
                     {!!s.neighborhood && <Text style={{ color: t.muted, fontWeight: "500", fontSize: 14 }}> in {s.neighborhood}</Text>}
                   </Text>
+                  <HotNow p={s} />
                   <P>{s.why}</P>
+                  <Cost text={s.cost} />
                   <ForYou text={s.forYou} />
                   {!!s.localTip && (
                     <P muted style={{ fontSize: 15 }}>

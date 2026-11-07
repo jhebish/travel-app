@@ -63,6 +63,7 @@ const blank: TripRequest = {
   about: [],
   budget: "Mid-range",
   interests: ["Food"],
+  clubs: false,
   pace: "Balanced",
   extra: "",
   stay: { on: true, styles: ["Boutique"], price: "$150–300" },
@@ -109,6 +110,22 @@ function Planner() {
       .then((r) => setTrending(r.destinations.slice(0, 6)))
       .catch(() => {});
   }, []);
+
+  // Nightlife: get the city's bars and clubs of the moment ready while they finish the form (it
+  // takes the server about a minute the first time a city is asked for, then it's kept a month).
+  const warmed = useRef(new Set<string>());
+  const signedIn = !!me?.user;
+  useEffect(() => {
+    const dest = req.destination.trim();
+    if (!signedIn || req.mode !== "single" || dest.length < 3 || !req.interests.includes("Nightlife")) return;
+    const key = dest.toLowerCase();
+    if (warmed.current.has(key)) return;
+    const t = setTimeout(() => {
+      warmed.current.add(key);
+      api("/api/nightlife", { method: "POST", json: { destination: dest } }).catch(() => {});
+    }, 2000);
+    return () => clearTimeout(t);
+  }, [signedIn, req.mode, req.destination, req.interests]);
 
   // Links from Browse and Friends: /plan?dest=Egypt&mode=multi&days=7
   useEffect(() => {
@@ -346,7 +363,22 @@ function Planner() {
               <div className="stack">
                 <div className="field">
                   <span className="label">Into</span>
-                  <Chips label="Interests" options={INTERESTS} value={req.interests} onChange={(v) => set("interests", v)} />
+                  <Chips
+                    label="Interests"
+                    options={INTERESTS}
+                    value={req.interests}
+                    onChange={(v) => setReq((r) => ({ ...r, interests: v, clubs: v.includes("Nightlife") ? r.clubs : false }))}
+                  />
+                  {/* A night out is drinks; dancing until late is its own ask. */}
+                  {req.interests.includes("Nightlife") && req.party !== "Family with kids" && (
+                    <label className="switch" htmlFor="clubs">
+                      <div>
+                        <b>Clubs and dancing too</b>
+                        <span>Out late at the clubs locals go to. Without it, nights are drinks at good bars.</span>
+                      </div>
+                      <input id="clubs" type="checkbox" checked={req.clubs} onChange={(e) => set("clubs", e.target.checked)} />
+                    </label>
+                  )}
                 </div>
                 <div className="two">
                   <div className="field">

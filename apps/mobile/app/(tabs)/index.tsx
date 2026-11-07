@@ -12,7 +12,7 @@ import {
   type TripRequest,
 } from "@travel/core";
 import { useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, Switch, TextInput, View } from "react-native";
 import { api } from "../../src/api";
 import { useTheme } from "../../src/theme";
@@ -43,6 +43,7 @@ const blank: TripRequest = {
   about: [],
   budget: "Mid-range",
   interests: ["Food"],
+  clubs: false,
   pace: "Balanced",
   extra: "",
   stay: { on: true, styles: ["Boutique"], price: "$150–300" },
@@ -71,6 +72,20 @@ export default function Plan() {
       })
       .catch(() => {});
   }, [params.from]);
+
+  // Nightlife: get the city's bars and clubs of the moment ready while they finish the form.
+  const warmed = useRef(new Set<string>());
+  useEffect(() => {
+    const dest = req.destination.trim();
+    if (req.mode !== "single" || dest.length < 3 || !req.interests.includes("Nightlife")) return;
+    const key = dest.toLowerCase();
+    if (warmed.current.has(key)) return;
+    const t = setTimeout(() => {
+      warmed.current.add(key);
+      api("/api/nightlife", { method: "POST", json: { destination: dest } }).catch(() => {});
+    }, 2000);
+    return () => clearTimeout(t);
+  }, [req.mode, req.destination, req.interests]);
 
   async function build() {
     if (req.destination.trim().length < 2) return setMsg({ text: "Add a destination first.", err: true });
@@ -185,8 +200,22 @@ export default function Plan() {
           <>
             <View style={styles.field}>
               <Label>Into</Label>
-              <ChipRow options={INTERESTS} value={req.interests} onChange={(v) => set("interests", v)} />
+              <ChipRow
+                options={INTERESTS}
+                value={req.interests}
+                onChange={(v) => setReq((r) => ({ ...r, interests: v, clubs: v.includes("Nightlife") ? r.clubs : false }))}
+              />
             </View>
+            {/* A night out is drinks; dancing until late is its own ask. */}
+            {req.interests.includes("Nightlife") && req.party !== "Family with kids" && (
+              <View style={[styles.row, { justifyContent: "space-between", backgroundColor: t.bg, borderRadius: 12, padding: 12 }]}>
+                <View style={{ flexShrink: 1 }}>
+                  <Text style={{ color: t.ink, fontWeight: "700" }}>Clubs and dancing too</Text>
+                  <Text style={{ color: t.muted, fontSize: 13 }}>Out late at the clubs locals go to. Otherwise nights are drinks at good bars.</Text>
+                </View>
+                <Switch accessibilityLabel="Clubs and dancing too" value={req.clubs} onValueChange={(clubs) => set("clubs", clubs)} />
+              </View>
+            )}
             <View style={styles.field}>
               <Label>Pace</Label>
               <ChipRow options={PACES} value={[req.pace]} single onChange={([v]) => v && set("pace", v)} />

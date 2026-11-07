@@ -28,6 +28,7 @@ export const TF = {
   age: "age",
   budget: "budget",
   interests: "interests",
+  clubs: "clubs",
   pace: "pace",
   about: "about",
   stayOn: "stay_on",
@@ -98,6 +99,58 @@ function multiple<T extends string>(
   };
 }
 
+/** "Clubs and dancing too?": asked only when Nightlife was picked (see nightOutLogic). */
+export function nightOutField() {
+  return {
+    ref: TF.clubs,
+    title: "Clubs and dancing too, out until late?",
+    type: "yes_no",
+    properties: { description: "Otherwise nights out are drinks at good bars." },
+    validations: { required: false },
+  };
+}
+
+/** Skip the clubs question unless Nightlife was picked: jump from interests to the question after it. */
+export function nightOutLogic(interestsRef: string, nightlifeChoiceRef: string, nextRef: string) {
+  return {
+    action: "jump",
+    details: { to: { type: "field", value: nextRef } },
+    condition: { op: "is_not", vars: [{ type: "field", value: interestsRef }, { type: "choice", value: nightlifeChoiceRef }] },
+  };
+}
+
+interface TfField {
+  ref?: string;
+  title?: string;
+  properties?: { choices?: { ref?: string; label?: string }[] };
+}
+interface TfLogic {
+  type: string;
+  ref?: string;
+  actions: unknown[];
+}
+
+/**
+ * An existing intake form with the clubs question added after "What are you into?", and the jump
+ * that skips it unless Nightlife was picked. Everything else is kept as it is, so edits made in
+ * Typeform survive. `null` (with why) when it's already there or the form has no interests question.
+ */
+export function withNightOutQuestion<F extends { fields?: TfField[]; logic?: TfLogic[] }>(form: F): { form: F } | { form: null; why: string } {
+  const fields = form.fields ?? [];
+  if (fields.some((f) => f.ref === TF.clubs)) return { form: null, why: "already there" };
+  const at = fields.findIndex((f) => f.ref === TF.interests);
+  if (at < 0) return { form: null, why: "no interests question" };
+  const choice = fields[at]!.properties?.choices?.find((c) => c.ref === choiceRef(TF.interests, "Nightlife") || /nightlife/i.test(c.label ?? ""));
+  const next = fields[at + 1]?.ref;
+  if (!choice?.ref || !next) return { form: null, why: "no Nightlife choice or nothing after it" };
+  const jump = nightOutLogic(TF.interests, choice.ref, next);
+  const logic = [...(form.logic ?? [])];
+  const mine = logic.findIndex((l) => l.type === "field" && l.ref === TF.interests);
+  if (mine >= 0) logic[mine] = { ...logic[mine]!, actions: [...logic[mine]!.actions, jump] };
+  else logic.push({ type: "field", ref: TF.interests, actions: [jump] });
+  return { form: { ...form, fields: [...fields.slice(0, at + 1), nightOutField() as TfField, ...fields.slice(at + 1)], logic } };
+}
+
 /** The form Pylos creates through the Typeform Create API. */
 export function typeformDefinition(opts: { title?: string; themeHref?: string; browseUrl?: string } = {}) {
   return {
@@ -139,6 +192,7 @@ export function typeformDefinition(opts: { title?: string; themeHref?: string; b
       multiple(TF.age, "Your age range?", AGE_BANDS),
       multiple(TF.budget, "What's the budget feel?", BUDGETS, { labels: BUDGET_LABELS }),
       multiple(TF.interests, "What are you into?", INTERESTS, { multi: true, required: false, description: "Pick as many as you like." }),
+      nightOutField(),
       multiple(TF.pace, "How full should each day be?", PACES, { labels: PACE_LABELS }),
       multiple(TF.about, "Anything we should plan around?", ABOUT_OPTIONS, {
         multi: true,
@@ -162,6 +216,7 @@ export function typeformDefinition(opts: { title?: string; themeHref?: string; b
           },
         ],
       },
+      { type: "field", ref: TF.interests, actions: [nightOutLogic(TF.interests, choiceRef(TF.interests, "Nightlife"), TF.pace)] },
       {
         type: "field",
         ref: TF.stayOn,
@@ -258,6 +313,7 @@ export function typeformToRequest(answers: TypeformAnswer[]): TripRequest {
     about: many(TF.about, ABOUT_OPTIONS),
     budget: one(TF.budget, BUDGETS, BUDGET_LABELS) ?? "Mid-range",
     interests: many(TF.interests, INTERESTS),
+    clubs: by.get(TF.clubs)?.boolean ?? false,
     pace: one(TF.pace, PACES, PACE_LABELS) ?? "Balanced",
     extra: (by.get(TF.extra)?.text ?? "").trim().slice(0, 500),
     stay: {

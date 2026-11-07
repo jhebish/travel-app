@@ -60,6 +60,8 @@ export const TripRequestSchema = z.object({
   about: z.array(z.enum(ABOUT_OPTIONS)).max(ABOUT_OPTIONS.length).default([]),
   budget: z.enum(BUDGETS),
   interests: z.array(z.enum(INTERESTS)).max(INTERESTS.length).default([]),
+  /** With Nightlife: clubs and dancing too, out until late. Without it, a night out is drinks. */
+  clubs: z.boolean().default(false),
   pace: z.enum(PACES),
   extra: z.string().trim().max(500).default(""),
   stay: StaySchema.default({ on: false, styles: [], price: "$150–300" }),
@@ -121,6 +123,21 @@ export function salvage<T extends z.ZodTypeAny>(item: T, min = 0, max = 50) {
     });
 }
 
+/** Why a bar or club counts as hot right now: the recent sources that say so (see nightlife.ts). */
+export const HotNowSchema = z.object({
+  sources: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(60),
+        url: z.string().url().max(500).optional().catch(undefined),
+        /** When it was published (YYYY-MM or YYYY-MM-DD), if known. */
+        date: z.string().max(10).optional().catch(undefined),
+      }),
+    )
+    .max(3),
+});
+export type HotNow = z.infer<typeof HotNowSchema>;
+
 export const StopSchema = z.object({
   time: clip(20).default(""),
   name: clipReq(160),
@@ -131,6 +148,8 @@ export const StopSchema = z.object({
   kind: z.enum(STOP_KINDS).optional().catch(undefined),
   /** When the pick matches the traveler's taste: a few words on why ("Like Septime: natural wine"). */
   forYou: z.preprocess((v) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 100) : undefined), z.string().optional()).catch(undefined),
+  /** What it costs, roughly, in local currency with US dollars: "EGP 700 entry (~$14)", "~€25 a head", "Free". */
+  cost: z.preprocess((v) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 90) : undefined), z.string().optional()).catch(undefined),
   source: looseSource,
   candidateId: looseId,
   /** Where the pick really came from: a vetted local pick, a Places result, or the model's own knowledge. */
@@ -141,6 +160,8 @@ export const StopSchema = z.object({
   /** The traveler locked this stop: it survives day regeneration. */
   locked: z.boolean().optional().catch(undefined),
   place: PlaceVerificationSchema.optional(),
+  /** A bar or club that recent sources call one of the places to go now (set by the server, never the model). */
+  hot: HotNowSchema.optional().catch(undefined),
 });
 export type Stop = z.infer<typeof StopSchema>;
 

@@ -3,15 +3,18 @@
  * planItinerary as on the site. Claude, Google Places and the database are replaced at the module
  * boundary; everything else (prompts, schemas, checks, the rebuild) is the real code.
  */
-import { DAY_TOOL, OUTLINE_TOOL, ROUTE_TOOL, TripRequestSchema, blendWeights, defaultWeights, type Candidate } from "@travel/core";
+import { DAY_TOOL, NightSpotsSchema, OUTLINE_TOOL, ROUTE_TOOL, TripRequestSchema, blendWeights, buildPulse, defaultWeights, type Candidate } from "@travel/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
   callTool: vi.fn(),
   placesCandidates: vi.fn(),
+  /** The night pulse a city has cached (none unless a test sets one). */
+  pulse: { current: null as unknown },
 }));
 
 vi.mock("./claude", () => ({ callTool: h.callTool }));
+vi.mock("./nightPulse", () => ({ nightPulse: async () => h.pulse.current, readPulse: async () => h.pulse.current }));
 vi.mock("./places", () => ({
   PlacesError: class PlacesError extends Error {},
   placesCandidates: h.placesCandidates,
@@ -57,6 +60,7 @@ const ALGIERS = { lat: 36.7538, lng: 3.0588 };
 const CAIRO = { lat: 30.0444, lng: 31.2357 };
 const GIZA = { lat: 29.9792, lng: 31.1342 };
 const LUXOR = { lat: 25.6872, lng: 32.6396 };
+const LISBON = { lat: 38.7139, lng: -9.1334 };
 const near = (p: Where, dLat: number, dLng: number) => ({ lat: p.lat + dLat, lng: p.lng + dLng });
 
 const PLACES = [
@@ -80,12 +84,20 @@ const PLACES = [
   place("abou", "Koshary Abou Tarek", "food", ["restaurant", "food"], 20_000, near(CAIRO, 0.006, 0.006), "Cairo"),
   place("riche", "Café Riche", "food", ["cafe", "food"], 8000, near(CAIRO, -0.002, 0.004), "Cairo"),
   place("naguib", "Naguib Mahfouz Café", "food", ["restaurant", "food"], 5000, near(CAIRO, 0.004, 0.027), "Cairo"),
+
+  place("lux", "Lux Frágil", "nightlife", ["night_club"], 9000, near(LISBON, -0.008, 0.02), "Lisbon"),
+  place("park", "Park", "drink", ["bar"], 5000, near(LISBON, -0.012, -0.007), "Lisbon"),
+  place("sail", "Sail Lisbon", "other", ["tour_agency"], 400, near(LISBON, -0.02, -0.03), "Lisbon"),
+  place("castelo", "Castelo de São Jorge", "culture", ["tourist_attraction", "historical_landmark"], 90_000, LISBON, "Lisbon"),
+  place("flores", "Taberna da Rua das Flores", "food", ["restaurant", "food"], 4000, near(LISBON, -0.01, -0.005), "Lisbon"),
+  place("tasca", "Tasca do Chico", "food", ["restaurant", "food"], 6000, near(LISBON, -0.009, -0.006), "Lisbon"),
+  place("maat", "MAAT", "culture", ["museum", "tourist_attraction"], 30_000, near(LISBON, -0.025, -0.06), "Lisbon"),
 ];
 
 /** A Places search: the places in the city the query names (Egypt alone means all of Egypt), in the query's category. */
 h.placesCandidates.mockImplementation(async (query: string, category: string) => {
-  const city = ["Algiers", "Luxor", "Cairo"].find((c) => query.includes(c));
-  return PLACES.filter((p) => (city ? p.city === city : p.city !== "Algiers") && (p.category === category || category === "culture" && p.category === "outdoors")).map(({ city: _c, ...c }) => c);
+  const city = ["Algiers", "Luxor", "Cairo", "Lisbon"].find((c) => query.includes(c));
+  return PLACES.filter((p) => (city ? p.city === city : ["Luxor", "Cairo"].includes(p.city)) && (p.category === category || category === "culture" && p.category === "outdoors")).map(({ city: _c, ...c }) => c);
 });
 
 // ---------------------------------------------------------------------------
@@ -109,6 +121,7 @@ const names = (stops: { name: string }[]) => stops.map((s) => s.name);
 
 beforeEach(() => {
   h.callTool.mockReset();
+  h.pulse.current = null;
   vi.spyOn(console, "log").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
@@ -229,5 +242,104 @@ describe("a build with the famous-sights check", () => {
     expect([...day(0), ...day(1)]).toContain("Pyramids of Giza");
     expect(day(2)).not.toContain("Karnak Temple Complex"); // the travel day
     expect(day(3)).toContain("Karnak Temple Complex");
+  });
+});
+
+describe("a build with a night out", () => {
+  /** Lisbon's cached pulse: Lux Frágil, with two recent sources (so it's hot right now). */
+  const lisbonPulse = () => {
+    const daysAgo = (n: number) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+    const [lux] = NightSpotsSchema.parse({
+      spots: [
+        {
+          name: "Lux Frágil",
+          neighborhood: "Santa Apolónia",
+          type: "club",
+          style: "club on the river",
+          when: "Thu–Sat, fills after 1am",
+          door: "relaxed door, €12–20 cover",
+          why: "",
+          closed: false,
+          evidence: [
+            { source: "Resident Advisor", url: "https://ra.co/clubs/7155", date: daysAgo(40) },
+            { source: "Time Out Lisboa", url: "https://www.timeout.com/lisbon/nightlife/best-clubs-in-lisbon", date: daysAgo(25) },
+          ],
+        },
+      ],
+    }).spots;
+    const g = PLACES.find((p) => p.id === "gp_lux")!;
+    return buildPulse("Lisbon", [{ ...lux!, place: { placeId: g.placeId!, lat: g.verification!.lat, lng: g.verification!.lng, status: "OPERATIONAL" } }], null);
+  };
+  const pulseStop = (time: string, kind: string, cost: string) => ({
+    time,
+    name: "Lux Frágil",
+    neighborhood: "Santa Apolónia",
+    why: "",
+    localTip: "",
+    source: "press",
+    candidateId: `gp_${PLACES.find((p) => p.id === "gp_lux")!.placeId}`,
+    kind,
+    cost,
+  });
+
+  it("ends the club night at the hot club, starts the next day late, and swaps a vague boat trip for a real operator", async () => {
+    h.pulse.current = lisbonPulse();
+    h.callTool.mockImplementation(async (prompt: string, tool: unknown) => {
+      if (tool === OUTLINE_TOOL)
+        return reply({
+          title: "Lisbon by day and night",
+          days: [
+            { label: "Day 1", theme: "Alfama", area: "Alfama", candidateIds: ids("castelo", "tasca", "park"), mustSee: ["Castelo de São Jorge"] },
+            { label: "Day 2", theme: "Belém", area: "Belém", candidateIds: ids("maat", "sail", "flores"), mustSee: [] },
+          ],
+        });
+      if (tool === DAY_TOOL) {
+        if (prompt.includes("Plan Day 1"))
+          return isRebuild(prompt)
+            ? reply({ stops: [stop("10:00", "castelo", "sight"), stop("13:00", "tasca", "meal"), stop("20:00", "flores", "meal"), stop("22:30", "park", "drinks"), pulseStop("00:30", "nightlife", "€12–20 cover (~$13–22)")] })
+            : reply({ stops: [stop("10:00", "castelo", "sight"), stop("13:00", "tasca", "meal"), stop("20:00", "flores", "meal"), stop("22:30", "park", "drinks")] });
+        // Day 2: a first draft that starts early and books "a sunset sail" with no one in particular.
+        const sail = { time: "16:00", name: "Sunset sailing on the Tagus", neighborhood: "Belém", why: "", localTip: "", source: "locals", candidateId: null, kind: "activity", cost: "€30 per person" };
+        return isRebuild(prompt)
+          ? reply({ stops: [stop("11:30", "maat", "sight"), stop("13:30", "tasca", "meal"), { ...stop("16:00", "sail", "activity"), cost: "€35 per person for 2 hours (~$38)" }, stop("20:00", "flores", "meal")] })
+          : reply({ stops: [stop("09:00", "maat", "sight"), stop("13:00", "tasca", "meal"), sail, stop("20:00", "flores", "meal")] });
+      }
+      throw new Error("unexpected tool");
+    });
+    const { itin } = await planItinerary(request({ destination: "Lisbon", days: 2, interests: ["Nightlife"], clubs: true }), { eff, lists, history: "" });
+
+    const [d1, d2] = itin.days;
+    // The outline was told which night ends at a club.
+    const outlinePrompt = h.callTool.mock.calls.find((c) => c[1] === OUTLINE_TOOL)![0] as string;
+    expect(outlinePrompt).toMatch(/Club nights: Day 1\./);
+    // Day 1 forgot the club; rebuilt, it ends at Lux Frágil, tagged hot with its sources.
+    const lux = d1!.stops.at(-1)!;
+    expect(lux.name).toBe("Lux Frágil");
+    expect(lux.cost).toBe("€12–20 cover (~$13–22)");
+    expect(lux.hot?.sources.map((s) => s.name)).toEqual(["Resident Advisor", "Time Out"]);
+    // Day 2 started at 9 after a night out, with a sail nobody runs; rebuilt: 11:30, Sail Lisbon, its price.
+    expect(d2!.stops[0]!.time).toBe("11:30");
+    expect(names(d2!.stops)).toContain("Sail Lisbon");
+    expect(names(d2!.stops)).not.toContain("Sunset sailing on the Tagus");
+    expect(d2!.stops.find((s) => s.name === "Sail Lisbon")!.cost).toMatch(/€35/);
+    const rebuilds = dayPrompts().filter(isRebuild);
+    expect(rebuilds.some((p) => /Tonight was meant to end at a club/.test(p))).toBe(true);
+    expect(rebuilds.some((p) => /at a club until late last night/.test(p) && /"Sunset sailing on the Tagus" is an activity, not a place/.test(p))).toBe(true);
+    // Nobody else's stop is tagged hot, and the model can't tag one itself.
+    expect(itin.days.flatMap((d) => d.stops).filter((s) => s.hot)).toHaveLength(1);
+  });
+
+  it("plans drinks, not clubs, when they didn't ask for dancing", async () => {
+    h.pulse.current = lisbonPulse();
+    h.callTool.mockImplementation(async (_prompt: string, tool: unknown) => {
+      if (tool === OUTLINE_TOOL) return reply({ title: "Lisbon", days: [{ label: "Day 1", theme: "Alfama", area: "Alfama", candidateIds: ids("castelo", "tasca", "park"), mustSee: [] }] });
+      if (tool === DAY_TOOL) return reply({ stops: [stop("10:00", "castelo", "sight"), stop("13:00", "tasca", "meal"), stop("20:00", "flores", "meal"), stop("22:30", "park", "drinks")] });
+      throw new Error("unexpected tool");
+    });
+    await planItinerary(request({ destination: "Lisbon", days: 1, interests: ["Nightlife"] }), { eff, lists, history: "" });
+    const [day] = dayPrompts();
+    expect(day).toMatch(/Tonight: a drink at a good bar near dinner\. No club\./);
+    expect(day).not.toMatch(/Club nights/);
+    expect(dayPrompts()).toHaveLength(1); // no club demanded, nothing rebuilt
   });
 });
