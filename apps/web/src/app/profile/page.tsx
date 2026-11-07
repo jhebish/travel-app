@@ -9,13 +9,15 @@ import { QuickLog, type PresetTrip } from "@/components/QuickLog";
 import { TasteCard, kindFromName, useTaste } from "@/components/taste";
 import { canSubmitPicks, useMe } from "@/components/useMe";
 import { api, ApiError } from "@/lib/api";
-import { supabaseBrowser } from "@/lib/supabase/browser";
 
 const VIS: { value: Visibility; label: string }[] = [
   { value: "private", label: "Only me" },
   { value: "followers", label: "Followers" },
   { value: "public", label: "Everyone" },
 ];
+
+/** The Supabase client is only needed to sign out, so it's loaded when someone does. */
+const supabase = () => import("@/lib/supabase/browser").then((m) => m.supabaseBrowser());
 
 const suggestHandle = (s: string) =>
   s
@@ -53,7 +55,9 @@ function ProfileEditor() {
     try {
       await api("/api/me", { method: "DELETE", json: { confirm: "delete" } });
       // The account is gone; drop this browser's session too.
-      await supabaseBrowser().auth.signOut({ scope: "local" }).catch(() => {});
+      await supabase()
+        .then((sb) => sb.auth.signOut({ scope: "local" }))
+        .catch(() => {});
       window.location.href = "/";
     } catch (e) {
       setDeleteErr(e instanceof ApiError ? e.message : "We couldn't delete your account. Try again.");
@@ -345,7 +349,7 @@ function ProfileEditor() {
               type="button"
               className="linkbtn"
               onClick={async () => {
-                await supabaseBrowser().auth.signOut();
+                await (await supabase()).auth.signOut();
                 router.push("/");
                 router.refresh();
               }}

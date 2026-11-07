@@ -36,8 +36,9 @@
   --bad: #a84a42;
   --s-locals: #3f7472; --s-hosts: #6b8a5a; --s-press: #8a6aa0; --s-indie: #b8924a;
   --s-reviews: #8e7f87; --s-guidebooks: #b06a52; --s-social: #b5607f; --s-sponsored: #a84a42;
-  --font: "EB Garamond", Georgia, "Times New Roman", serif;
-  --font-display: "Marcellus", "EB Garamond", Georgia, serif;
+  /* Self-hosted (src/app/fonts.ts). The Extended faces come first: they only cover accented letters. */
+  --font: var(--font-garamond-ext), var(--font-garamond), Georgia, "Times New Roman", serif;
+  --font-display: var(--font-marcellus-ext), var(--font-marcellus), var(--font-garamond), Georgia, serif;
   --r-panel: 18px;
   --r-ctl: 10px;
   color-scheme: light;

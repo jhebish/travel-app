@@ -1,22 +1,13 @@
 import { z } from "zod";
 import { isCountryCode } from "./countries";
 import { salvage } from "./schemas";
-import type { SignalKind } from "./taste";
+import { PICK_GROUPS, PICK_KINDS, type PickKind } from "./labels";
+export { PICK_GROUPS, PICK_KINDS, type PickKind } from "./labels";
 
 /**
  * Quick trip logging: type a city, then tick the places you loved from a ready-made list of its
  * best-known stays, restaurants, bars and sights. The list is written once per city and cached.
  */
-export const PICK_KINDS = ["stay", "food", "drink", "coffee", "nightlife", "sight", "activity", "shop"] as const satisfies readonly SignalKind[];
-export type PickKind = (typeof PICK_KINDS)[number];
-
-/** How the list is grouped on screen, in order. */
-export const PICK_GROUPS: { label: string; kinds: PickKind[] }[] = [
-  { label: "Where you stayed", kinds: ["stay"] },
-  { label: "Where you ate", kinds: ["food"] },
-  { label: "Drinks and coffee", kinds: ["drink", "coffee", "nightlife"] },
-  { label: "What you saw and did", kinds: ["sight", "activity", "shop"] },
-];
 
 const text = (max: number) => z.preprocess((v) => (typeof v === "string" ? v.trim().slice(0, max) : ""), z.string());
 

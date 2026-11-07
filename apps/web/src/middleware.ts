@@ -1,7 +1,12 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-/** Refreshes the Supabase session cookie on each page request. */
+/**
+ * Keeps the Supabase session cookie fresh on page requests. getSession() reads the cookie and only
+ * calls Supabase when the access token has expired (to refresh it), so pages and the background
+ * prefetches Next.js makes for links don't each wait on a round trip to Supabase. Nothing here
+ * decides access: API routes and server pages check the user themselves with getUser().
+ */
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
   const supabase = createServerClient(
@@ -18,7 +23,7 @@ export async function middleware(request: NextRequest) {
       },
     },
   );
-  await supabase.auth.getUser();
+  await supabase.auth.getSession();
   return response;
 }
 

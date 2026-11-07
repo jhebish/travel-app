@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { isCountryCode } from "./countries";
+import { cityKey, travelStats, TRAVEL_LEVELS, type TravelLevel, type TravelStats } from "./stats";
+export { cityKey, travelStats, TRAVEL_LEVELS, type TravelLevel, type TravelStats } from "./stats";
 import type { Itinerary } from "./schemas";
 import type { TasteSignal } from "./taste";
 
@@ -8,17 +10,6 @@ export type Visibility = (typeof VISIBILITIES)[number];
 export const VisibilitySchema = z.enum(VISIBILITIES);
 export const VISIBILITY_LABELS: Record<Visibility, string> = { private: "Only me", followers: "Followers", public: "Everyone" };
 
-/** "Lisbon, Portugal" → "lisbon"; "São Paulo" → "sao paulo". Used to group trips by city. */
-export function cityKey(destination: string): string {
-  return destination
-    .split(",")[0]!
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9 '-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 /** Title-case a city key for display when we have nothing better. */
 export const cityLabel = (key: string) => key.replace(/\b[a-z]/g, (c) => c.toUpperCase());
@@ -96,45 +87,9 @@ export interface PastTrip {
   tripId: string | null;
 }
 
-export interface TravelStats {
-  countries: number;
-  cities: number;
-  trips: number;
-  level: TravelLevel;
-  next: { level: TravelLevel; countriesToGo: number } | null;
-}
 
-export interface TravelLevel {
-  name: string;
-  min: number; // countries needed
-}
 
-export const TRAVEL_LEVELS: TravelLevel[] = [
-  { name: "Homebody", min: 0 },
-  { name: "Day-tripper", min: 1 },
-  { name: "Explorer", min: 3 },
-  { name: "Voyager", min: 8 },
-  { name: "Globetrotter", min: 15 },
-  { name: "Nomad", min: 30 },
-  { name: "Legend", min: 50 },
-];
 
-/** Distinct countries and cities from someone's places. Cities are counted per country. */
-export function travelStats(places: Pick<PastTrip, "city" | "countryCode">[]): TravelStats {
-  const countries = new Set(places.map((p) => p.countryCode.toUpperCase()));
-  const cities = new Set(places.map((p) => `${p.countryCode.toUpperCase()}:${cityKey(p.city)}`));
-  const n = countries.size;
-  let idx = 0;
-  for (let i = 0; i < TRAVEL_LEVELS.length; i++) if (n >= TRAVEL_LEVELS[i]!.min) idx = i;
-  const nextLevel = TRAVEL_LEVELS[idx + 1];
-  return {
-    countries: n,
-    cities: cities.size,
-    trips: places.length,
-    level: TRAVEL_LEVELS[idx]!,
-    next: nextLevel ? { level: nextLevel, countriesToGo: nextLevel.min - n } : null,
-  };
-}
 
 /** Most-travelled first: countries, then cities, then trips logged. */
 export function rankTravellers<T extends { stats: Pick<TravelStats, "countries" | "cities" | "trips"> }>(people: T[]): (T & { rank: number })[] {

@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { STOP_KINDS } from "./quality";
+// Plain lists and limits live in labels.ts (no zod) so the browser can use them on their own.
+import { PARTIES, AGE_BANDS, BUDGETS, PACES, ABOUT_OPTIONS, INTERESTS, TRIP_MODES, MAX_DAYS, MAX_PLACE_PHOTOS, PICK_CATEGORIES, type TripMode } from "./labels";
+export { PARTIES, AGE_BANDS, BUDGETS, PACES, ABOUT_OPTIONS, INTERESTS, TRIP_MODES, MAX_DAYS, MAX_PLACE_PHOTOS, PICK_CATEGORIES, type TripMode } from "./labels";
 import { SOURCE_IDS, STAY_PRICES, STAY_STYLES } from "./sources";
 
 const sourceId = z.enum(SOURCE_IDS);
@@ -31,29 +34,6 @@ const looseId = z.preprocess(
 const weight = z.number().int().min(0).max(10);
 export const WeightsSchema = z.record(sourceId, weight);
 
-export const PARTIES = ["Solo", "Couple", "Family with kids", "Group of friends"] as const;
-export const AGE_BANDS = ["18–24", "25–34", "35–49", "50–64", "65+"] as const;
-export const BUDGETS = ["Budget", "Mid-range", "Splurge"] as const;
-export const PACES = ["Slow", "Balanced", "Packed"] as const;
-export const ABOUT_OPTIONS = [
-  "LGBTQ+ traveler",
-  "Eats halal",
-  "Vegetarian",
-  "Doesn't drink alcohol",
-  "Needs step-free access",
-  "First time visiting",
-  "Has been before",
-] as const;
-export const INTERESTS = [
-  "Food",
-  "Nightlife",
-  "Art & design",
-  "History",
-  "Nature & outdoors",
-  "Markets & shopping",
-  "Live music",
-  "Wellness",
-] as const;
 
 export const StaySchema = z.object({
   on: z.boolean(),
@@ -62,10 +42,6 @@ export const StaySchema = z.object({
 });
 export type StayPrefs = z.infer<typeof StaySchema>;
 
-export const TRIP_MODES = ["single", "multi"] as const;
-export type TripMode = (typeof TRIP_MODES)[number];
-/** Longest trip for each mode. One place: a week. Several stops: two weeks. */
-export const MAX_DAYS: Record<TripMode, number> = { single: 7, multi: 14 };
 
 export const TripRequestSchema = z.object({
   /** "single": one city or area. "multi": several stops inside a country or region. */
@@ -102,8 +78,6 @@ export const PlacePhotoSchema = z.object({
 });
 export type PlacePhoto = z.infer<typeof PlacePhotoSchema>;
 
-/** Up to Google's ten photos of a place: the first on the card, the rest in its gallery. */
-export const MAX_PLACE_PHOTOS = 10;
 
 export const PlaceVerificationSchema = z.object({
   placeId: z.string(),
@@ -300,7 +274,6 @@ export const AppConfigSchema = z.object({
 });
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 
-export const PICK_CATEGORIES = ["food", "drink", "culture", "outdoors", "shopping", "nightlife", "stay", "other"] as const;
 
 export const LocalPickInputSchema = z.object({
   city: z.string().trim().min(2).max(120),

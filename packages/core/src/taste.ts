@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { SIGNAL_KINDS, SIGNAL_KIND_LABELS, SIGNAL_SOURCES, SIGNAL_SOURCE_LABELS, type SignalKind, type SignalSource } from "./labels";
+export { SIGNAL_KINDS, SIGNAL_KIND_LABELS, SIGNAL_SOURCES, SIGNAL_SOURCE_LABELS, type SignalKind, type SignalSource } from "./labels";
 
 /**
  * Taste signals: single places a traveler has been to and how they felt about them, from
@@ -6,46 +8,7 @@ import { z } from "zod";
  * The planner turns them into a taste profile that steers which hotels and restaurants it picks.
  */
 
-export const SIGNAL_KINDS = ["stay", "food", "drink", "coffee", "nightlife", "sight", "activity", "shop", "city"] as const;
-export type SignalKind = (typeof SIGNAL_KINDS)[number];
-export const SIGNAL_KIND_LABELS: Record<SignalKind, string> = {
-  stay: "Stayed",
-  food: "Ate",
-  drink: "Drinks",
-  coffee: "Coffee",
-  nightlife: "Night out",
-  sight: "Saw",
-  activity: "Did",
-  shop: "Shopped",
-  city: "Visited",
-};
 
-/**
- * Where a signal came from. New ones only come from typing them in, signing in (Google Calendar,
- * Facebook) or allowing the phone's calendar ("ics"). The others are kept for places saved by
- * earlier file imports; the database accepts the same list.
- */
-export const SIGNAL_SOURCES = [
-  "manual", // typed into Pylos
-  "google_calendar", // signed-in Google Calendar (trips, hotel stays, dinner reservations)
-  "ics", // the calendars on the person's phone, read in the app with their permission
-  "google_takeout", // earlier imports only
-  "instagram", // earlier imports only
-  "facebook", // signed-in Facebook (check-ins, tagged places)
-  "swarm", // earlier imports only
-  "paste", // earlier imports only
-] as const;
-export type SignalSource = (typeof SIGNAL_SOURCES)[number];
-export const SIGNAL_SOURCE_LABELS: Record<SignalSource, string> = {
-  manual: "Added by you",
-  google_calendar: "Google Calendar",
-  ics: "Phone calendar",
-  google_takeout: "Google Maps",
-  instagram: "Instagram",
-  facebook: "Facebook",
-  swarm: "Swarm",
-  paste: "Pasted list",
-};
 
 export interface TasteSignal {
   source: SignalSource;

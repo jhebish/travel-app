@@ -1,5 +1,4 @@
 "use client";
-import { supabaseBrowser } from "./supabase/browser";
 
 let pending: Promise<void> | null = null;
 
@@ -10,6 +9,8 @@ let pending: Promise<void> | null = null;
  */
 export function ensureSession(): Promise<void> {
   pending ??= (async () => {
+    // Loaded on demand: pages that never need a session don't download the Supabase client.
+    const { supabaseBrowser } = await import("./supabase/browser");
     const sb = supabaseBrowser();
     const { data } = await sb.auth.getSession();
     if (data.session) return;

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Link from "next/link";
 import { Nav } from "@/components/Nav";
+import { fontVariables } from "./fonts";
 
 export const metadata: Metadata = {
   // Absolute URLs for link-preview images. NEXT_PUBLIC_SITE_URL can point them at another domain.
@@ -20,16 +21,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Marcellus&family=EB+Garamond:ital,wght@0,400..700;1,400..600&display=swap"
-        />
-      </head>
+    <html lang="en" className={fontVariables}>
       <body>
         <Nav />
         <div className="shell">

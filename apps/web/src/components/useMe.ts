@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { onAuthChanged } from "@/lib/authEvents";
 import { ensureSession } from "@/lib/session";
-import { supabaseBrowser } from "@/lib/supabase/browser";
 
 export type Role = "traveler" | "local" | "curator" | "admin";
 export interface Me {
@@ -51,10 +51,9 @@ export function useMe(): Me | undefined {
       setMe(snapshot);
     }
     if (!listening) {
+      // Sign-ins and sign-outs in this tab (from pages that load the Supabase client) refresh the answer.
       listening = true;
-      supabaseBrowser().auth.onAuthStateChange((event) => {
-        if (event === "SIGNED_IN" || event === "SIGNED_OUT" || event === "USER_UPDATED") void load(false);
-      });
+      onAuthChanged(() => void load(false));
     }
     return () => {
       listeners.delete(setMe);
