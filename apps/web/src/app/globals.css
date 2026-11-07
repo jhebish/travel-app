@@ -1162,6 +1162,13 @@ dialog.gallery::backdrop { background: rgba(14, 10, 12, .82); }
   .tl-item { grid-template-columns: 28px minmax(0, 1fr); gap: 0 10px; }
   .tl-node { width: 28px; height: 28px; font-size: 13px; }
   .tl-tools { flex-wrap: wrap; }
+  /* Sheets use more of the screen, and a three-way switch ("Only me / Followers / Everyone")
+     keeps each label on one line down to 360px-wide phones. */
+  dialog.sheet { width: calc(100vw - 20px); padding: 22px 18px; }
+  .seg button { padding: 7px 10px; letter-spacing: .06em; }
+}
+@media (max-width: 359px) {
+  .seg button { padding: 7px; letter-spacing: .03em; font-size: 12px; }
 }
 /* Touch screens: buttons at least 44px, with room between them. */
 @media (pointer: coarse) {
