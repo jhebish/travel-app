@@ -30,17 +30,25 @@ export default function SourcesPage() {
   const [myMsg, setMyMsg] = useState<Msg>(null);
   const [appMsg, setAppMsg] = useState<Msg>(null);
 
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    api<{ config: Config }>("/api/config").then(({ config }) => {
-      setConfig(config);
-      setDraft(config);
-      setPrefs((p) => (p.useCustom ? p : { ...p, weights: config.weights }));
-    });
-  }, []);
+    setLoadErr(null);
+    api<{ config: Config }>("/api/config")
+      .then(({ config }) => {
+        setConfig(config);
+        setDraft(config);
+        setPrefs((p) => (p.useCustom ? p : { ...p, weights: config.weights }));
+      })
+      .catch((e) => setLoadErr((e as Error).message || "Couldn't load the sources."));
+  }, [attempt]);
+  const userId = me?.user?.id;
   useEffect(() => {
-    if (!me?.user) return;
-    api<{ prefs: Prefs | null }>("/api/prefs").then(({ prefs }) => prefs && setPrefs(prefs));
-  }, [me?.user]);
+    if (!userId) return;
+    api<{ prefs: Prefs | null }>("/api/prefs")
+      .then(({ prefs }) => prefs && setPrefs(prefs))
+      .catch(() => setMyMsg({ text: "Couldn't load your saved mix. Showing the app's defaults.", err: true }));
+  }, [userId]);
   useEffect(() => {
     if (curator && mode === "app") api<{ insights: Insights }>("/api/insights").then((r) => setInsights(r.insights)).catch(() => {});
   }, [curator, mode]);
@@ -67,6 +75,15 @@ export default function SourcesPage() {
     }
   }
 
+  if (loadErr)
+    return (
+      <div className="card stack">
+        <p className="status err">{loadErr}</p>
+        <button type="button" className="btn ghost" style={{ alignSelf: "flex-start" }} onClick={() => setAttempt((a) => a + 1)}>
+          Try again
+        </button>
+      </div>
+    );
   if (!config || !draft) return <span className="thinking"><span className="dot" />Loading sources…</span>;
 
   const appLocked = config.blocked;
@@ -79,16 +96,19 @@ export default function SourcesPage() {
           <h1>Sources</h1>
           <p className="lede">Choose how heavily trips lean on each kind of source. Every stop is tagged with the source it came from.</p>
         </div>
-        <div className="seg" role="tablist" aria-label="Which settings">
-          <button role="tab" aria-selected={mode === "mine"} onClick={() => setMode("mine")}>
-            My mix
-          </button>
-          <button role="tab" aria-selected={mode === "app"} onClick={() => setMode("app")}>
-            App defaults
-          </button>
-        </div>
+        {/* The app-wide defaults are for curators; travelers only see their own mix. */}
+        {curator && (
+          <div className="seg" role="tablist" aria-label="Which settings">
+            <button role="tab" aria-selected={mode === "mine"} onClick={() => setMode("mine")}>
+              My mix
+            </button>
+            <button role="tab" aria-selected={mode === "app"} onClick={() => setMode("app")}>
+              App defaults
+            </button>
+          </div>
+        )}
 
-        {mode === "mine" ? (
+        {mode === "mine" || !curator ? (
           <div className="stack">
             {me && !me.user && (
               <p className="note">
@@ -212,7 +232,7 @@ function InsightsView({ insights, draft, onApply }: { insights: Insights; draft:
                 <tr key={r.id}>
                   <td><span className="src"><i style={{ background: `var(--s-${r.id})` }} />{SOURCE_BY_ID[r.id].name}</span></td>
                   <td>{r.stopsRated}</td>
-                  <td>{r.upRate == null ? "–" : <span className="up">{Math.round(r.upRate * 100)}%</span>}</td>
+                  <td>{r.upRate == null ? "–" : <span className="uprate">{Math.round(r.upRate * 100)}%</span>}</td>
                   <td>{r.avgStars == null ? "–" : r.avgStars.toFixed(1)}</td>
                   <td>
                     {r.suggested == null || r.suggested === cur ? (
@@ -235,7 +255,7 @@ function InsightsView({ insights, draft, onApply }: { insights: Insights; draft:
               <thead><tr><th>Style</th><th>Hotels rated</th><th>Thumbs up</th></tr></thead>
               <tbody>
                 {insights.hotelStyles.map((h) => (
-                  <tr key={h.style}><td>{h.style}</td><td>{h.rated}</td><td><span className="up">{Math.round(h.upRate * 100)}%</span></td></tr>
+                  <tr key={h.style}><td>{h.style}</td><td>{h.rated}</td><td><span className="uprate">{Math.round(h.upRate * 100)}%</span></td></tr>
                 ))}
               </tbody>
             </table>

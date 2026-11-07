@@ -6,6 +6,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { FollowButton, LevelBadge, PersonLine, TripCard } from "@/components/community";
 import { useMe } from "@/components/useMe";
 import { api, ApiError } from "@/lib/api";
+import { planHref } from "@/lib/links";
 
 type Tab = "friends" | "top" | "travelled" | "people";
 const TABS: { id: Tab; label: string }[] = [
@@ -103,7 +104,7 @@ function Top() {
         <div className="empty">
           <b>{city ? `No public trips for ${city} yet` : "No public trips yet"}</b>
           <span className="hint">Build one and set it to Everyone from its Share menu to be the first.</span>
-          <Link href={city ? `/plan?dest=${encodeURIComponent(city)}` : "/plan"}>Plan a trip</Link>
+          <Link href={city ? planHref(city) : "/plan"}>Plan a trip</Link>
         </div>
       ) : (
         <div className="tgrid">

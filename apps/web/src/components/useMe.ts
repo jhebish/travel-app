@@ -22,11 +22,18 @@ let inflight: Promise<void> | null = null;
 let listening = false;
 const listeners = new Set<(m: Me) => void>();
 
+const sameMe = (a: Me, b: Me) =>
+  a.role === b.role && a.user?.id === b.user?.id && a.user?.isGuest === b.user?.isGuest && a.user?.email === b.user?.email;
+
 function load(startGuest: boolean): Promise<void> {
   const run = (startGuest ? ensureSession() : Promise.resolve())
     .then(() => api<Me>("/api/me"))
     .catch((): Me => ({ user: null, role: "traveler" }))
     .then((m) => {
+      // Supabase reports a sign-in each time the tab comes back into view. When nothing changed,
+      // keep the same object: pages' effects that depend on it would otherwise re-run and
+      // overwrite forms people are in the middle of editing.
+      if (snapshot && sameMe(snapshot, m)) return;
       snapshot = m;
       listeners.forEach((l) => l(m));
     });

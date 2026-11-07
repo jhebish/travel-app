@@ -22,7 +22,6 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { Chips, SingleChips } from "@/components/Chips";
-import { TripView } from "@/components/TripView";
 import { useMe } from "@/components/useMe";
 import { api, streamEvents } from "@/lib/api";
 import { BuildProgress, initialBuild, reduceBuild, type BuildState } from "@/components/BuildProgress";
@@ -78,11 +77,9 @@ function Planner() {
   const [req, setReq] = useState<TripRequest>(blank);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ text: string; err?: boolean } | null>(null);
-  const [trip, setTrip] = useState<Trip | null>(null);
   const [build, setBuild] = useState<BuildState | null>(null);
   const progressRef = useRef<HTMLDivElement>(null);
   const [customMix, setCustomMix] = useState<boolean | null>(null);
-  const tripRef = useRef<HTMLDivElement>(null);
   // Typeform intake: undefined while checking, null when it isn't set up.
   const [tfForm, setTfForm] = useState<string | null | undefined>(undefined);
   const [mode, setMode] = useState<"typeform" | "quick">("typeform");
@@ -161,7 +158,6 @@ function Planner() {
   async function runBuild(path: string, body: unknown, info: { destination: string; days: number; hotels: boolean; multi?: boolean }) {
     setBusy(true);
     setStatus(null);
-    setTrip(null);
     setBuilding({ destination: info.destination, days: info.days });
     setBuild(initialBuild({ multi: info.multi, hotels: info.hotels }));
     setTimeout(() => progressRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
@@ -185,8 +181,8 @@ function Planner() {
       if (finished) {
         setBuild((b) => (b ? { ...b, pct: 100, label: "Done" } : b));
         await new Promise((r) => setTimeout(r, 450)); // let the bar land at 100%
-        setTrip(finished);
-        setTimeout(() => tripRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+        // The trip opens on its own page: it survives a reload and can be bookmarked or linked.
+        router.push(`/trips/${(finished as Trip).id}`);
       } else {
         setStatus({ text: failure ?? "The connection dropped before your trip finished. Try again.", err: true });
       }
@@ -237,23 +233,12 @@ function Planner() {
             <p className="lede">A minute of questions about who&apos;s coming and what you&apos;re into. Your plan is built from the places locals actually go.</p>
           </div>
           {me?.user ? (
-            busy || trip ? (
-              !busy && (
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={() => {
-                    setTrip(null);
-                    setStatus(null);
-                    setTfKey((k) => k + 1);
-                  }}
-                >
-                  Plan another trip
-                </button>
-              )
-            ) : (
-              <TypeformIntake key={tfKey} formId={tfForm!} uid={me.user.id} onSubmit={onTypeformSubmit} />
-            )
+            busy ? null : <TypeformIntake key={tfKey} formId={tfForm!} uid={me.user.id} onSubmit={onTypeformSubmit} />
+          ) : me ? (
+            // No session (a guest account couldn't be started): sign in instead of an endless placeholder.
+            <Link className="btn" href="/login?next=/plan">
+              Sign in to build your trip
+            </Link>
           ) : (
             <div className="tf-wrap tf-loading" aria-busy="true" />
           )}
@@ -469,12 +454,6 @@ function Planner() {
       )}
 
       <div ref={progressRef}>{build && <BuildProgress state={build} destination={building.destination || "your destination"} />}</div>
-      <div ref={tripRef}>{trip && <TripView trip={trip} />}</div>
-      {trip && (
-        <p className="hint" style={{ textAlign: "center" }}>
-          Saved to <Link href="/trips">My trips</Link>.
-        </p>
-      )}
     </>
   );
 }

@@ -24,7 +24,7 @@ export function Nav() {
     { href: "/", label: "Browse" },
     { href: "/trips", label: "My trips" },
     { href: "/friends", label: "Friends" },
-    { href: "/sources", label: "Sources" },
+    // Sources is a setting: reached from You and the planner, not the main menu.
     ...(canSubmitPicks(me?.role) ? [{ href: "/picks", label: "Local picks" }] : []),
   ];
   const current = (href: string) =>
@@ -43,7 +43,7 @@ export function Nav() {
           </div>
           <nav className="nav" aria-label="Main">
             {links.map((l) => (
-              <Link key={l.href} href={l.href} className={l.href === "/sources" ? "nav-extra" : undefined} aria-current={current(l.href) ? "page" : undefined}>
+              <Link key={l.href} href={l.href} aria-current={current(l.href) ? "page" : undefined}>
                 {l.label}
               </Link>
             ))}

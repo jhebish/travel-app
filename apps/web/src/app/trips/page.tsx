@@ -17,16 +17,24 @@ export default function TripsPage() {
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
 
+  const userId = me?.user?.id;
   useEffect(() => {
-    if (!me?.user) return;
+    if (!userId) return;
+    // Switching filters quickly: only the latest request's answer is shown.
+    let alive = true;
     setTrips(null);
+    setError(null);
     api<{ trips: TripSummary[]; shared?: (TripSummary & { owner: string })[] }>(`/api/trips${filter === "all" ? "" : `?filter=${filter}`}`)
       .then((r) => {
+        if (!alive) return;
         setTrips(r.trips);
         if (filter === "all") setShared(r.shared ?? []);
       })
-      .catch((e) => setError((e as Error).message));
-  }, [me?.user, filter]);
+      .catch((e) => alive && setError((e as Error).message));
+    return () => {
+      alive = false;
+    };
+  }, [userId, filter]);
 
   async function remove(id: string) {
     if (confirm !== id) return setConfirm(id);
@@ -41,28 +49,6 @@ export default function TripsPage() {
 
   return (
     <>
-    {shared.length > 0 && (
-      <section className="card stack">
-        <div className="head">
-          <span className="eyebrow">Planning together</span>
-          <h2>Trips friends are planning with you</h2>
-        </div>
-        <ul className="list">
-          {shared.map((t) => (
-            <li key={t.id}>
-              <div className="list-top">
-                <div className="list-title">
-                  <Link href={`/trips/${t.id}`}>{t.title}</Link>
-                </div>
-              </div>
-              <div className="meta">
-                {t.days} {t.days === 1 ? "day" : "days"} in {t.destination} · with {t.owner}
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
-    )}
     <div className="card">
       <div className="head">
         <h1>My trips</h1>
@@ -121,9 +107,6 @@ export default function TripsPage() {
                     </div>
                   )}
                   <div className="row">
-                    <Link className="btn ghost small" href={`/trips/${t.id}`}>
-                      Open
-                    </Link>
                     <Link className="btn ghost small" href={`/plan?from=${t.id}`}>
                       Plan again
                     </Link>
@@ -138,6 +121,28 @@ export default function TripsPage() {
         </>
       )}
     </div>
+    {shared.length > 0 && (
+      <section className="card stack">
+        <div className="head">
+          <span className="eyebrow">Planning together</span>
+          <h2>Trips friends are planning with you</h2>
+        </div>
+        <ul className="list">
+          {shared.map((t) => (
+            <li key={t.id}>
+              <div className="list-top">
+                <div className="list-title">
+                  <Link href={`/trips/${t.id}`}>{t.title}</Link>
+                </div>
+              </div>
+              <div className="meta">
+                {t.days} {t.days === 1 ? "day" : "days"} in {t.destination} · with {t.owner}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
     </>
   );
 }

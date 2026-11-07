@@ -1,6 +1,6 @@
 "use client";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 
 type Provider = "google_calendar" | "facebook";
@@ -37,11 +37,17 @@ export function ConnectCard({ onImported }: { onImported: () => void }) {
     api<Status>("/api/connect/status").then(setStatus).catch(() => {});
   }, []);
 
-  // Back from Google or Facebook.
+  // Back from Google or Facebook: handle each return once, whatever re-renders follow.
+  const handled = useRef<string | null>(null);
+  const imported = useRef(onImported);
+  imported.current = onImported;
   useEffect(() => {
     const connected = params.get("connected");
     const error = params.get("connect_error");
     if (!connected && !error) return;
+    const key = params.toString();
+    if (handled.current === key) return;
+    handled.current = key;
     if (connected) {
       const found = Number(params.get("found") ?? 0);
       const trips = Number(params.get("trips") ?? 0);
@@ -51,12 +57,17 @@ export function ConnectCard({ onImported }: { onImported: () => void }) {
           ? `Read ${name} once: ${found} ${found === 1 ? "place" : "places"}${trips ? ` and ${trips} past ${trips === 1 ? "trip" : "trips"}` : ""}. Access was handed straight back; we don't keep it.`
           : `Connected ${name}, but found no trips, stays or reservations.`,
       });
-      if (found) onImported();
+      if (found) imported.current();
     } else {
       setMsg({ text: ERRORS[error ?? ""] ?? ERRORS.failed!, err: true });
     }
     router.replace("/profile#connect", { scroll: false });
-  }, [params, router, onImported]);
+  }, [params, router]);
+
+  // Only services that are set up are offered; with none, the card isn't shown (a message from a
+  // return trip to Google still is).
+  const rows = ROWS.filter((r) => status?.providers[r.provider]?.configured);
+  if (!rows.length && !msg) return null;
 
   return (
     <section className="card stack connect" id="connect">
@@ -73,7 +84,7 @@ export function ConnectCard({ onImported }: { onImported: () => void }) {
         </p>
       )}
       <ul className="connect-list">
-        {ROWS.map((r) => {
+        {rows.map((r) => {
           const st = status?.providers[r.provider];
           return (
             <li key={r.provider} className="connect-row">
@@ -87,13 +98,9 @@ export function ConnectCard({ onImported }: { onImported: () => void }) {
                 )}
               </div>
               <div className="connect-actions">
-                {st?.configured ? (
-                  <a className="btn sm" href={`/api/connect/${r.provider}/start`}>
-                    {st.lastImportAt ? "Read again" : "Connect"}
-                  </a>
-                ) : (
-                  <span className="hint connect-soon">{status ? "Coming soon" : ""}</span>
-                )}
+                <a className="btn sm" href={`/api/connect/${r.provider}/start`}>
+                  {st?.lastImportAt ? "Read again" : "Connect"}
+                </a>
               </div>
             </li>
           );

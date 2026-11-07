@@ -8,6 +8,7 @@ import { readOnlyTrip } from "@/components/readOnlyTrip";
 import { TripView } from "@/components/TripView";
 import { useDaysPlan } from "@/components/useDaysPlan";
 import { api } from "@/lib/api";
+import { planHref } from "@/lib/links";
 
 type Plan = { status: "ready"; itinerary: Itinerary } | { status: "pending" | "generating" | "failed" | "unavailable" };
 
@@ -30,16 +31,20 @@ export default function DestinationTrip({ dkey }: { dkey: string }) {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const load = async (tries = 0) => {
       const r = await api<{ sample: Plan; trips: CommunityTrip[] }>(`/api/browse/${dkey}`).catch(() => null);
-      if (!alive || !r) return;
+      if (!alive) return;
+      if (!r) return setPlan({ status: "failed" });
       setTrips(r.trips);
       setPlan(r.sample);
       if (r.sample.status === "pending" && tries === 0) {
         const p = await api<{ sample: Plan }>(`/api/browse/${dkey}/sample`, { method: "POST" }).catch(() => null);
-        if (!alive || !p) return;
+        if (!alive) return;
+        if (!p) return setPlan({ status: "failed" });
         setPlan(p.sample);
         if (p.sample.status === "generating") timer = setTimeout(() => load(tries + 1), 4000);
-      } else if (r.sample.status === "generating" && tries < 30) {
-        timer = setTimeout(() => load(tries + 1), 4000);
+      } else if (r.sample.status === "generating") {
+        // Polling that runs out ends as failed, not as a spinner that never stops.
+        if (tries < 30) timer = setTimeout(() => load(tries + 1), 4000);
+        else setPlan({ status: "failed" });
       }
     };
     void load();
@@ -55,7 +60,7 @@ export default function DestinationTrip({ dkey }: { dkey: string }) {
     () => (fitted.itinerary ? readOnlyTrip({ destination: where, title: fitted.itinerary.title, itinerary: fitted.itinerary }) : null),
     [fitted.itinerary, where],
   );
-  const planHref = `/plan?dest=${encodeURIComponent(where)}&mode=${d.kind === "region" ? "multi" : "single"}&days=${days}`;
+  const planLink = planHref(where, { multi: d.kind === "region", days });
   const slider = (
     <section className="card days-card">
       <DaysSlider
@@ -74,8 +79,8 @@ export default function DestinationTrip({ dkey }: { dkey: string }) {
         <span className="hint">
           <Link href={`/?d=${d.key}`}>← Browse</Link> · <span aria-hidden="true">{flag(d.countryCode)}</span> {d.name} · best {monthsLabel(d.bestMonths)}
         </span>
-        <Link className="btn sm" href={planHref}>
-          Make it mine
+        <Link className="btn sm" href={planLink}>
+          Plan my own version
         </Link>
       </div>
       {trip ? (
@@ -84,14 +89,18 @@ export default function DestinationTrip({ dkey }: { dkey: string }) {
         <>
           {plan?.status === "ready" && slider}
           <section className="card">
-            <span className="thinking">
-              <span className="dot" />
-              {plan?.status === "failed" || plan?.status === "unavailable"
-                ? `This itinerary isn't ready yet. Plan your own instead.`
-                : fitted.failed
-                  ? `We couldn't plan ${days} days here just now. Try fewer days.`
-                  : `Planning ${days} days in ${d.name} with local picks…`}
-            </span>
+            {plan?.status === "failed" || plan?.status === "unavailable" || fitted.failed ? (
+              // A failure isn't shown with the "working" dot: it isn't going to finish on its own.
+              <p className="status">
+                {fitted.failed ? `We couldn't plan ${days} days here just now. Try fewer days, or ` : "This itinerary isn't ready yet. "}
+                <Link href={planLink}>plan your own version</Link>.
+              </p>
+            ) : (
+              <span className="thinking">
+                <span className="dot" />
+                Planning {days} days in {d.name} with local picks…
+              </span>
+            )}
           </section>
         </>
       )}
@@ -109,11 +118,8 @@ export default function DestinationTrip({ dkey }: { dkey: string }) {
         <h2>Want your own version?</h2>
         <p className="lede">Tell Pylos who&apos;s coming and what you&apos;re into. Free, and it takes about a minute.</p>
         <div className="row">
-          <Link className="btn" href={planHref}>
-            Plan my trip to {d.name}
-          </Link>
-          <Link className="btn ghost" href="/login?next=/profile">
-            Create a free account
+          <Link className="btn" href={planLink}>
+            Plan my own version
           </Link>
         </div>
       </aside>

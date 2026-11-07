@@ -143,7 +143,6 @@ img { max-width: 100%; }
   .nav { gap: 20px; }
   .topbar-end .me-label { display: none; }
 }
-@media (max-width: 900px) { .nav .nav-extra { display: none; } }
 .nav a:hover { color: var(--ink); }
 .nav a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--ink); }
 .account { font-size: 14px; color: var(--muted); display: flex; gap: 12px; align-items: center; min-height: 30px; }
@@ -386,7 +385,7 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-nu
 th { font-size: 13px; font-weight: 650; color: var(--muted); text-align: right; padding: 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 th:first-child, td:first-child { text-align: left; padding-left: 0; }
 td { padding: 10px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
-.up { color: var(--good); font-weight: 650; }
+.uprate { color: var(--good); font-weight: 650; }
 .sugg { font-weight: 650; }
 .sugg.raise { color: var(--good); }
 .sugg.lower { color: var(--bad); }
@@ -584,9 +583,6 @@ h3 { font-size: 20px; }
 .brand { display: inline-flex; align-items: center; gap: 12px; font-size: 24px; line-height: 1; text-transform: uppercase; }
 .brand .mark { flex: none; display: block; }
 .brand-word { letter-spacing: 0.16em; margin-right: -0.16em; padding-top: 2px; }
-.wordmark { display: inline-flex; align-items: center; gap: 10px; font: 400 20px/1 var(--font-display); text-transform: uppercase; color: var(--ink); }
-.wordmark .mark { flex: none; display: block; }
-.wordmark-word { letter-spacing: 0.16em; margin-right: -0.16em; padding-top: 2px; }
 /* Footer: the wordmark and the links every page needs (about, privacy, terms, contact). */
 .sitefoot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); }
 .sitefoot-word { font: 400 14px var(--font-display); letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink); }
@@ -725,9 +721,6 @@ details.more > .stack { gap: 20px; }
 /* Browse */
 .browse { display: flex; flex-direction: column; gap: 26px; }
 .browse-head { display: flex; flex-direction: column; gap: 8px; max-width: 720px; }
-.browse-cta { margin-top: 8px; gap: 14px; align-items: center; flex-wrap: wrap; }
-.browse-cta > .btn:not(.ghost) { flex: none; padding-inline: 26px; }
-.browse-cta .hint { max-width: 40ch; }
 @media (max-width: 600px) {
   /* On phones the filters scroll sideways in one row, so the globe stays near the top. */
   .browse > .chips { flex-wrap: nowrap; overflow-x: auto; margin-inline: -20px; padding: 2px 20px 6px; scrollbar-width: none; }
@@ -737,7 +730,6 @@ details.more > .stack { gap: 20px; }
 .browse-main { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 26px; align-items: start; }
 @media (max-width: 900px) { .browse-main { grid-template-columns: 1fr; } }
 .globe-col { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.globe-hint { text-align: center; }
 .globe { position: relative; width: 100%; max-width: 560px; aspect-ratio: 1; touch-action: pan-y; user-select: none; -webkit-user-select: none; cursor: grab; }
 .globe:active { cursor: grabbing; }
 .globe canvas { display: block; }
@@ -788,13 +780,6 @@ details.more > .stack { gap: 20px; }
 .badge { font-size: 13.5px; padding: 2px 10px; border-radius: 999px; background: var(--sunk); color: var(--ink); }
 .badge.season { background: var(--olive); color: var(--olive-ink); }
 .badge.trend { background: var(--ochre); }
-.hotlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.hotlist button { width: 100%; display: flex; align-items: center; gap: 14px; padding: 10px 4px; border: 0; border-bottom: 1px solid var(--line); background: none; text-align: left; cursor: pointer; color: var(--ink); font: inherit; }
-.hotlist li:last-child button { border-bottom: 0; }
-.hotlist button:hover b { color: var(--accent); }
-.hotlist span { display: flex; flex-direction: column; }
-.hotlist small { color: var(--muted); font-size: 15px; }
-.hot-rank { width: 30px; height: 30px; border-radius: 50%; background: var(--clay); display: grid !important; place-items: center; font-family: var(--font-display); flex: none; }
 
 .foryou-grid, .destgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
 .foryou-card, .destcard {
@@ -893,7 +878,6 @@ html, body { overflow-x: clip; }
 
   .browse { gap: 20px; }
   .browse-head .lede { font-size: 17.5px; }
-  .browse-cta .hint { display: none; }
   .dest-panel { scroll-margin-top: 12px; }
   .dest > .row { flex-direction: column; align-items: stretch; }
   .dest > .row > .btn { flex: none; width: 100%; }
@@ -1042,8 +1026,9 @@ dialog.gallery::backdrop { background: rgba(14, 10, 12, .82); }
 .people li { display: flex; align-items: center; gap: 12px; }
 .people-name { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .people-name small { color: var(--muted); font-size: 14px; }
-.sendbox { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 16px; background: var(--sunk); }
-.sendbox .btn { align-self: flex-start; }
+/* The share sheet's other ways to share: planning together and the calendar file. */
+.share-more { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
+.share-more .btn { width: auto; }
 .og-preview { width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); }
 
 /* What you did on a past trip */
@@ -1070,11 +1055,9 @@ dialog.gallery::backdrop { background: rgba(14, 10, 12, .82); }
 .connect-row:first-child { border-top: 0; padding-top: 4px; }
 .connect-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .connect-actions { display: flex; gap: 8px; flex: none; align-items: center; flex-wrap: wrap; justify-content: flex-end; max-width: 46%; }
-.connect-soon { font-size: 14px; text-align: right; }
 @media (max-width: 560px) {
   .connect-row { flex-direction: column; gap: 10px; }
   .connect-actions { max-width: none; justify-content: flex-start; }
-  .connect-soon { text-align: left; }
 }
 
 /* =====================================================================
@@ -1156,3 +1139,33 @@ dialog.gallery::backdrop { background: rgba(14, 10, 12, .82); }
   .leg-alts { grid-template-columns: 1fr 1fr; }
 }
 
+/* Messages after an action on a trip (a failed swap, a rate limit…): popped up where they're seen, cleared on their own. */
+.toast {
+  position: fixed; left: 50%; bottom: 24px; z-index: 60; transform: translate(-50%, 12px);
+  width: max-content; max-width: min(560px, calc(100vw - 32px)); margin: 0; padding: 12px 18px; border-radius: 14px;
+  background: var(--ink); color: var(--bg); font-size: 16px; line-height: 1.4; box-shadow: 0 12px 32px rgba(0, 0, 0, .22);
+  opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.toast.err { background: var(--bad); color: #fff; }
+@media (max-width: 720px) {
+  .toast { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast { transition: none; }
+}
+
+/* Phones: more room for a trip's stops (a narrower number rail, less padding), tools that wrap. */
+@media (max-width: 600px) {
+  .shell { padding-left: max(14px, env(safe-area-inset-left, 0px)); padding-right: max(14px, env(safe-area-inset-right, 0px)); }
+  .card { padding: 18px 16px; gap: 18px; }
+  .tl-item { grid-template-columns: 28px minmax(0, 1fr); gap: 0 10px; }
+  .tl-node { width: 28px; height: 28px; font-size: 13px; }
+  .tl-tools { flex-wrap: wrap; }
+}
+/* Touch screens: buttons at least 44px, with room between them. */
+@media (pointer: coarse) {
+  .iconbtn { width: 44px; height: 44px; }
+  .tl-tools { gap: 8px; }
+  .btn.small { min-height: 40px; }
+}

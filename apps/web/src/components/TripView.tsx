@@ -28,7 +28,6 @@ import {
   IconGlobe,
   IconLock,
   IconMap,
-  IconMessage,
   IconPeople,
   IconPhone,
   IconRefresh,
@@ -208,6 +207,12 @@ export function TripView({
     onChange?.(t);
   };
   const fail = (e: unknown) => setStatus({ text: (e as Error).message || "Something went wrong. Try again.", err: true });
+  // Messages pop up at the bottom of the screen (visible wherever you are on the page) and clear themselves.
+  useEffect(() => {
+    if (!status) return;
+    const id = setTimeout(() => setStatus(null), status.err ? 9000 : 5000);
+    return () => clearTimeout(id);
+  }, [status]);
 
   // ----- feedback (debounced) -----
   function update(patch: Partial<Pick<Trip, "saved" | "rating" | "votes">>) {
@@ -294,13 +299,19 @@ export function TripView({
   };
   const lock = (si: number, locked: boolean) => {
     if (busy) return;
-    // Optimistic: flip locally, then save.
+    // Optimistic: flip locally, then save (after any vote still waiting to save). Undone if it fails,
+    // so a stop never looks locked when it isn't.
+    const before = trip;
     const next = structuredClone(trip);
     next.itinerary.days[dIdx]!.stops[si]!.locked = locked;
     apply(next);
-    api<{ trip: Trip }>(`/api/trips/${trip.id}/edit`, { method: "POST", json: { action: "lock", day: dIdx, index: si, locked } })
+    void flushVotes()
+      .then(() => api<{ trip: Trip }>(`/api/trips/${trip.id}/edit`, { method: "POST", json: { action: "lock", day: dIdx, index: si, locked } }))
       .then((r) => apply(r.trip))
-      .catch(fail);
+      .catch((e) => {
+        apply(before);
+        fail(e);
+      });
   };
   // ----- multi-city: swap a stop on the route for another town -----
   const [cityPick, setCityPick] = useState<string | null>(null);
@@ -322,6 +333,7 @@ export function TripView({
     }
   };
   async function findHotels() {
+    if (busy) return;
     setBusy({ kind: "hotels" });
     setStatus(null);
     try {
@@ -336,13 +348,16 @@ export function TripView({
 
   // ----- sharing -----
   const shareUrl = trip.shareToken && typeof window !== "undefined" ? `${window.location.origin}/t/${trip.shareToken}` : null;
+  const [shareNote, setShareNote] = useState<string | null>(null);
   async function setShared(enabled: boolean) {
+    if (busy) return;
     setBusy({ kind: "share" });
+    setShareNote(null);
     try {
       const { trip: t } = await api<{ trip: Trip }>(`/api/trips/${trip.id}/share`, { method: "POST", json: { enabled } });
       apply(t);
     } catch (e) {
-      fail(e);
+      setShareNote((e as Error).message || "Couldn't change the link. Try again.");
     } finally {
       setBusy(null);
     }
@@ -358,30 +373,6 @@ export function TripView({
       setVisNote({ text: (e as Error).message, code: e instanceof ApiError ? e.code : undefined });
     } finally {
       setBusy(null);
-    }
-  }
-  /** Send the trip in Messages (or any app): turns the link on if needed, then opens the share sheet. */
-  async function sendTrip() {
-    let token = trip.shareToken;
-    if (!token) {
-      setBusy({ kind: "share" });
-      try {
-        const { trip: t } = await api<{ trip: Trip }>(`/api/trips/${trip.id}/share`, { method: "POST", json: { enabled: true } });
-        apply(t);
-        token = t.shareToken ?? null;
-      } catch (e) {
-        fail(e);
-      } finally {
-        setBusy(null);
-      }
-    }
-    if (!token) return;
-    const url = `${window.location.origin}/t/${token}`;
-    if (typeof navigator !== "undefined" && "share" in navigator) {
-      // Just the link: Messages turns it into the rich preview card.
-      await navigator.share({ url }).catch(() => {});
-    } else {
-      window.location.href = `sms:&body=${encodeURIComponent(url)}`;
     }
   }
   const [copied, setCopied] = useState(false);
@@ -543,6 +534,7 @@ export function TripView({
             <b>For you</b> {it.forYou}
           </p>
         ) : null}
+        {/* Owners get Save and Share (planning together and the calendar are in the share sheet). */}
         <div className="actions">
           {isOwner && (
             <button type="button" className="hbtn" aria-pressed={trip.saved} onClick={() => update({ saved: !trip.saved })}>
@@ -556,16 +548,18 @@ export function TripView({
               Share
             </button>
           )}
-          {!readOnly && (
+          {!readOnly && (togetherOn || isMember) && (
             <button type="button" className="hbtn" onClick={() => togDlg.current?.showModal()}>
               <IconPeople />
               {togetherOn ? `Planning with ${tog!.people.length - 1}` : "Plan together"}
             </button>
           )}
-          <button type="button" className="hbtn" onClick={() => calDlg.current?.showModal()}>
-            <IconCalendar />
-            Add to calendar
-          </button>
+          {!isOwner && (
+            <button type="button" className="hbtn" onClick={() => calDlg.current?.showModal()}>
+              <IconCalendar />
+              Add to calendar
+            </button>
+          )}
         </div>
       </header>
 
@@ -576,32 +570,8 @@ export function TripView({
           <IconPeople />
           <span>
             {isMember ? `You're planning this with ${tog!.people.find((p) => p.owner)?.name ?? "a friend"}` : `You're planning this with ${tog!.people.filter((p) => !p.me).map((p) => p.name).join(", ")}`}.
-            {" "}Thumbs show what each of you is in for; rebuilding a day keeps those stops and plans the rest around everyone&apos;s taste.
           </span>
         </p>
-      )}
-
-      {isOwner && (
-        <div className="ratebar">
-          <div className="stars" role="group" aria-label="Rate this trip">
-            {[1, 2, 3, 4, 5].map((n) => (
-              <button
-                key={n}
-                type="button"
-                className={n <= trip.rating ? "on" : ""}
-                aria-label={`Rate ${n} of 5`}
-                aria-pressed={n === trip.rating}
-                onClick={() => update({ rating: trip.rating === n ? 0 : n })}
-              >
-                ★
-              </button>
-            ))}
-          </div>
-          <span className="hint">Rate it, and thumb the stops: your next trips learn from it.</span>
-          <Link className="went" href={`/profile?log=${trip.id}&city=${encodeURIComponent(city.split(",")[0]!.trim())}`} title="Add it to the places you've been">
-            I went
-          </Link>
-        </div>
       )}
 
       {/* ---------- route (several stops) ---------- */}
@@ -965,10 +935,34 @@ export function TripView({
             ))}
           </div>
         </div>
-        <p className={`status${status?.err ? " err" : ""}`} role="status">
-          {status?.text ?? "Check opening hours before you go."}
-        </p>
+        {isOwner && (
+          <div className="ratebar">
+            <span className="label">Rate this plan</span>
+            <div className="stars" role="group" aria-label="Rate this trip">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  className={n <= trip.rating ? "on" : ""}
+                  aria-label={`Rate ${n} of 5`}
+                  aria-pressed={n === trip.rating}
+                  onClick={() => update({ rating: trip.rating === n ? 0 : n })}
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+            <Link className="went" href={`/profile?log=${trip.id}&city=${encodeURIComponent(city.split(",")[0]!.trim())}`} title="Add it to the places you've been">
+              I went
+            </Link>
+          </div>
+        )}
+        <p className="hint">Check opening hours before you go.</p>
       </section>
+
+      <p className={`toast${status ? " show" : ""}${status?.err ? " err" : ""}`} role="status" aria-live="polite">
+        {status?.text}
+      </p>
 
       {/* ---------- dialogs ---------- */}
       {!readOnly && (
@@ -978,26 +972,22 @@ export function TripView({
               <h2 id="share-title">Share this trip</h2>
               <p className="hint">Anyone with the link can see the plan. Your ratings and the personal details you entered stay private.</p>
             </div>
-            <div className="sendbox">
-              {trip.shareToken && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img className="og-preview" src={`/t/${trip.shareToken}/opengraph-image`} alt="How the link looks in Messages" width={600} height={315} loading="lazy" onError={(e) => (e.currentTarget.style.display = "none")} />
-              )}
-              <button type="button" className="btn" disabled={busy?.kind === "share"} onClick={sendTrip}>
-                <IconMessage />
-                Send in Messages
-              </button>
-              <span className="hint">Opens your share sheet with the link. In iMessage it shows as a card with the trip&apos;s name and route.</span>
-            </div>
             <label className="switch" htmlFor="share-on">
               <div>
                 <b>Public link</b>
                 <span>{trip.shareToken ? "On: the link works for anyone" : "Off: only you can see this trip"}</span>
               </div>
-              <input id="share-on" type="checkbox" checked={!!trip.shareToken} disabled={busy?.kind === "share"} onChange={(e) => setShared(e.target.checked)} />
+              <input id="share-on" type="checkbox" checked={!!trip.shareToken} disabled={!!busy} onChange={(e) => setShared(e.target.checked)} />
             </label>
+            {shareNote && (
+              <p className="status err" role="alert">
+                {shareNote}
+              </p>
+            )}
             {shareUrl && (
               <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img className="og-preview" src={`/t/${trip.shareToken}/opengraph-image`} alt="How the link looks when you send it" width={600} height={315} loading="lazy" onError={(e) => (e.currentTarget.style.display = "none")} />
                 <div className="copyrow">
                   <input type="text" readOnly value={shareUrl} aria-label="Share link" onFocus={(e) => e.currentTarget.select()} />
                   <button type="button" className="btn ghost" onClick={() => copy(shareUrl)}>
@@ -1005,13 +995,9 @@ export function TripView({
                   </button>
                 </div>
                 {typeof navigator !== "undefined" && "share" in navigator && (
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => navigator.share({ title: it.title, text: `My ${city} trip on Pylos`, url: shareUrl }).catch(() => {})}
-                  >
+                  <button type="button" className="btn" onClick={() => navigator.share({ title: it.title, url: shareUrl }).catch(() => {})}>
                     <IconShare />
-                    Share
+                    Send the link
                   </button>
                 )}
               </>
@@ -1041,6 +1027,30 @@ export function TripView({
                   {visNote.code === "needs_profile" && <Link href="/profile">Create your profile</Link>}
                 </p>
               )}
+            </div>
+            <div className="share-more">
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() => {
+                  shareDlg.current?.close();
+                  togDlg.current?.showModal();
+                }}
+              >
+                <IconPeople />
+                {togetherOn ? `Planning with ${tog!.people.length - 1}` : "Plan together"}
+              </button>
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() => {
+                  shareDlg.current?.close();
+                  calDlg.current?.showModal();
+                }}
+              >
+                <IconCalendar />
+                Add to calendar
+              </button>
             </div>
             <button type="button" className="linkbtn" style={{ alignSelf: "flex-start" }} onClick={() => shareDlg.current?.close()}>
               Done

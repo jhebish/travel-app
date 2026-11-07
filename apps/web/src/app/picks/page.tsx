@@ -1,7 +1,7 @@
 "use client";
 import { PICK_CATEGORIES, SOURCES, STAY_PRICES, STAY_STYLES, type LocalPickInput } from "@travel/core";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { SingleChips } from "@/components/Chips";
 import { canCurate, canSubmitPicks, useMe } from "@/components/useMe";
 import { api } from "@/lib/api";
@@ -36,14 +36,22 @@ export default function PicksPage() {
   const [city, setCity] = useState("");
   const [picks, setPicks] = useState<Pick[] | null>(null);
 
+  // Only the latest request's answer is shown, so a slow earlier one can't replace it.
+  const latest = useRef(0);
   const load = useCallback(() => {
     const q = new URLSearchParams();
     if (curator) q.set("status", status);
     if (city.trim()) q.set("city", city.trim());
-    api<{ picks: Pick[] }>(`/api/picks?${q}`).then((r) => setPicks(r.picks)).catch(() => setPicks([]));
+    const n = ++latest.current;
+    api<{ picks: Pick[] }>(`/api/picks?${q}`)
+      .then((r) => n === latest.current && setPicks(r.picks))
+      .catch(() => n === latest.current && setPicks([]));
   }, [curator, status, city]);
   useEffect(() => {
-    if (me?.user && canSubmitPicks(me.role)) load();
+    if (!me?.user || !canSubmitPicks(me.role)) return;
+    // Typing in the city filter waits for a pause instead of fetching on every key.
+    const t = setTimeout(load, 250);
+    return () => clearTimeout(t);
   }, [me, load]);
 
   if (me && !canSubmitPicks(me.role))

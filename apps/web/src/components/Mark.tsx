@@ -44,13 +44,3 @@ export function Mark({
     </svg>
   );
 }
-
-/** The mark beside "PYLOS" in Marcellus capitals: the site's signature. */
-export function Wordmark({ width = 50, className }: { width?: number; className?: string }) {
-  return (
-    <span className={className ? `wordmark ${className}` : "wordmark"}>
-      <Mark width={width} tight />
-      <span className="wordmark-word">Pylos</span>
-    </span>
-  );
-}

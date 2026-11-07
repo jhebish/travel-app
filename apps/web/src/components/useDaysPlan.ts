@@ -26,9 +26,12 @@ export function useDaysPlan(d: Destination | null, base: Itinerary | null, days:
     asked.current = d.key;
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    // Every way this can stall (a failed request, a failed start, polling that runs out) ends as
+    // "failed", so the page says so instead of planning forever.
     const load = async (tries = 0): Promise<void> => {
       const r = await api<{ sample: Plan }>(`/api/browse/${d.key}?long=1`).catch(() => null);
-      if (!alive || !r) return;
+      if (!alive) return;
+      if (!r) return setLong({ status: "failed" });
       setLong(r.sample);
       if (r.sample.status === "pending" || (r.sample.status === "failed" && tries === 0)) {
         setLong({ status: "generating" });
@@ -36,8 +39,9 @@ export function useDaysPlan(d: Destination | null, base: Itinerary | null, days:
         if (!alive) return;
         if (p?.sample.status === "generating") timer = setTimeout(() => load(tries + 1), 4000);
         else setLong(p?.sample ?? { status: "failed" });
-      } else if (r.sample.status === "generating" && tries < 40) {
-        timer = setTimeout(() => load(tries + 1), 4000);
+      } else if (r.sample.status === "generating") {
+        if (tries < 40) timer = setTimeout(() => load(tries + 1), 4000);
+        else setLong({ status: "failed" });
       }
     };
     void load();

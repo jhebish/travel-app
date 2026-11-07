@@ -86,12 +86,6 @@ export const IconGlobe = () => (
     <path d="M12 3a14.5 14.5 0 0 1 0 18a14.5 14.5 0 0 1 0-18" />
   </svg>
 );
-export const IconCompass = () => (
-  <svg {...base}>
-    <circle cx="12" cy="12" r="9" />
-    <path d="m15.5 8.5-2.2 4.8-4.8 2.2 2.2-4.8z" />
-  </svg>
-);
 export const IconSuitcase = () => (
   <svg {...base}>
     <rect x="3" y="7" width="18" height="13" rx="2.5" />
@@ -116,11 +110,6 @@ export const IconUser = () => (
 export const IconMessage = () => (
   <svg {...base}>
     <path d="M21 11.5a8.5 8.5 0 0 1-12.4 7.6L3 21l1.9-5.4A8.5 8.5 0 1 1 21 11.5z" />
-  </svg>
-);
-export const IconPlus = () => (
-  <svg {...base}>
-    <path d="M12 5v14M5 12h14" />
   </svg>
 );
 export const IconLink = () => (

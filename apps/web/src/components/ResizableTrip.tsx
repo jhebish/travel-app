@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { DaysSlider } from "./DaysSlider";
 import { TripView } from "./TripView";
+import { planHref } from "@/lib/links";
 
 /**
  * A shared trip the person who opened it can fit to their own days: slide down and it keeps
@@ -14,7 +15,7 @@ export function ResizableTrip({ trip }: { trip: Trip }) {
   const [days, setDays] = useState(total);
   const shown = useMemo(() => ({ ...trip, itinerary: fitItineraryToDays(trip.itinerary, days) }), [trip, days]);
   const multi = trip.itinerary.mode === "multi";
-  const more = `/plan?dest=${encodeURIComponent(trip.destination)}&mode=${multi ? "multi" : "single"}&days=${Math.min(multi ? 14 : 7, total + 2)}`;
+  const more = planHref(trip.destination, { multi, days: total + 2 });
   return (
     <TripView
       trip={shown}

@@ -129,7 +129,10 @@ function ProfileEditor() {
     }
   }
 
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   async function removePlace(id: string) {
+    if (confirmRemove !== id) return setConfirmRemove(id);
+    setConfirmRemove(null);
     try {
       await api(`/api/community/places/${id}`, { method: "DELETE" });
       setPlaces((ps) => ps.filter((p) => p.id !== id));
@@ -153,7 +156,6 @@ function ProfileEditor() {
     );
   }
   if (!loaded) return <div className="card"><p className="hint">Loading…</p></div>;
-  if (off) return <div className="card"><p className="status err">{off}</p></div>;
 
   const signedIn = !!me?.user && !me.user.isGuest;
   return (
@@ -162,6 +164,12 @@ function ProfileEditor() {
         <h1>You</h1>
         <p className="lede">Your past trips, your taste, and the accounts that help Pylos plan for you.</p>
       </div>
+      {/* On phones this is the only way in to signing in, so it sits at the top. */}
+      {me?.user?.isGuest && (
+        <p className="note">
+          You&apos;re using Pylos as a guest. <Link href="/login?next=/profile">Sign in with your email</Link> to keep your trips and places on every device.
+        </p>
+      )}
 
       <TasteCard data={taste.data} updating={taste.updating} />
 
@@ -171,6 +179,11 @@ function ProfileEditor() {
           <h2>Places you&apos;ve been</h2>
           <p className="hint">Type a city, tick what you loved, hit Next. Pylos learns your taste from it, and you climb the ranks among friends.</p>
         </div>
+        {off && (
+          <p className="status err" role="status">
+            {off}
+          </p>
+        )}
         <StatsRow stats={stats} showNext />
 
         <QuickLog
@@ -227,7 +240,7 @@ function ProfileEditor() {
                       Edit
                     </button>
                     <button type="button" className="linkbtn danger" onClick={() => removePlace(p.id)}>
-                      Remove
+                      {confirmRemove === p.id ? "Confirm remove" : "Remove"}
                     </button>
                   </div>
                 </li>
@@ -250,6 +263,7 @@ function ProfileEditor() {
       <ConnectCard onImported={taste.reload} />
 
       {/* ---------- community profile ---------- */}
+      {!off && (
       <section className="card stack">
         <div className="head">
           <h2>{profile ? "Your community profile" : "Join the community"}</h2>
@@ -336,6 +350,7 @@ function ProfileEditor() {
           </p>
         )}
       </section>
+      )}
 
       <section className="card stack" aria-label="Account">
         <div className="row between">
@@ -357,11 +372,7 @@ function ProfileEditor() {
               Sign out
             </button>
           </div>
-        ) : (
-          <p className="hint">
-            You&apos;re using Pylos as a guest. <Link href="/login?next=/profile">Sign in with your email</Link> to keep your trips on every device.
-          </p>
-        )}
+        ) : null}
         {signedIn && (
           <button
             type="button"

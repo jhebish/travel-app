@@ -7,6 +7,7 @@ import { readOnlyTrip } from "@/components/readOnlyTrip";
 import { ResizableTrip } from "@/components/ResizableTrip";
 import { useMe } from "@/components/useMe";
 import { api } from "@/lib/api";
+import { planHref } from "@/lib/links";
 
 const ago = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 
@@ -72,7 +73,7 @@ export default function CommunityTripPage({ params }: { params: { id: string } }
       <aside className="cta">
         <h2>Want your own take on {t.destination.split(",")[0]}?</h2>
         <p className="lede">Pylos builds it around who&apos;s coming and what you&apos;re into.</p>
-        <Link className="btn" href={`/plan?dest=${encodeURIComponent(t.destination)}&days=${t.days}`}>
+        <Link className="btn" href={planHref(t.destination, { multi: view?.itinerary.mode === "multi", days: t.days })}>
           Plan a trip like this
         </Link>
       </aside>

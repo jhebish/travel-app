@@ -21,6 +21,7 @@ import { useDaysPlan } from "@/components/useDaysPlan";
 import { ItineraryPreview, previewFromItinerary } from "@/components/ItineraryPreview";
 import { useMe } from "@/components/useMe";
 import { api } from "@/lib/api";
+import { planHref } from "@/lib/links";
 
 const Globe = dynamic(() => import("@/components/Globe"), {
   ssr: false,
@@ -41,8 +42,7 @@ interface ForYou {
   signedIn: boolean;
 }
 
-const planHref = (d: Destination, days = d.sampleDays) =>
-  `/plan?dest=${encodeURIComponent(d.kind === "region" ? d.name : `${d.name}, ${d.country}`)}&mode=${d.kind === "region" ? "multi" : "single"}&days=${days}`;
+const planDest = (d: Destination, days = d.sampleDays) => planHref(d.kind === "region" ? d.name : `${d.name}, ${d.country}`, { multi: d.kind === "region", days });
 
 function DestinationPanel({ d, detail, sampleBusy }: { d: BrowseDestination; detail: Detail | null; sampleBusy: boolean }) {
   const sample = detail?.sample;
@@ -103,11 +103,11 @@ function DestinationPanel({ d, detail, sampleBusy }: { d: BrowseDestination; det
       </div>
 
       <div className="row">
-        <Link className="btn" href={planHref(d, days)}>
+        <Link className="btn" href={planDest(d, days)}>
           Plan my own trip here
         </Link>
         {d.kind === "city" && (
-          <Link className="btn ghost" href={`/plan?dest=${encodeURIComponent(d.country)}&mode=multi&days=7`}>
+          <Link className="btn ghost" href={planHref(d.country, { multi: true, days: 7 })}>
             Several stops in {d.country}
           </Link>
         )}
@@ -186,11 +186,17 @@ export default function Browse() {
           if (sample.status === "ready") setDetail((x) => (x ? { ...x, sample } : x));
           else if (sample.status === "generating") poll = setTimeout(() => load(tries + 1), 4000);
           else setDetail((x) => (x ? { ...x, sample } : x));
-        } else if (st === "generating" && tries < 30) {
-          poll = setTimeout(() => load(tries + 1), 4000);
+        } else if (st === "generating") {
+          if (tries < 30) poll = setTimeout(() => load(tries + 1), 4000);
+          else setDetail((x) => (x ? { ...x, sample: { status: "failed" } } : x));
         }
-      } catch {
-        if (alive) setSampleBusy(false);
+      } catch (e) {
+        if (!alive) return;
+        // Failed (or timed out): say so, and let choosing the place again retry.
+        setSampleBusy(false);
+        requested.current.delete(selected);
+        setDetail((x) => (x && x.destination.key === selected ? { ...x, sample: { status: "failed" } } : x));
+        if (!tries) setErr((e as Error).message || "Couldn't load that place. Try again.");
       }
     };
     void load();
@@ -222,12 +228,6 @@ export default function Browse() {
         <span className="eyebrow">Trips planned the local way</span>
         <h1>Where to next?</h1>
         <p className="lede">Turn the globe and tap a pin for an itinerary you can fit to your days, and the best-rated trips there. Pins are this season&apos;s trending places.</p>
-        <div className="row browse-cta">
-          <Link className="btn" href="/plan">
-            Plan a trip
-          </Link>
-          <span className="hint">Know where you&apos;re going? Plan it around who&apos;s coming and what you love.</span>
-        </div>
       </header>
 
       <div className="chips" role="group" aria-label="Filter by what you're into">
@@ -243,48 +243,22 @@ export default function Browse() {
       <section className="browse-main">
         <div className="globe-col">
           <Globe markers={markers} selected={selected} onSelect={(k) => choose(k, window.innerWidth < 900)} />
-          <p className="hint globe-hint">Drag to turn · pinch or + to zoom · tap a pin</p>
         </div>
         <aside className="card dest-panel" ref={panelRef} aria-live="polite">
           {current ? (
             <DestinationPanel d={current} detail={detail?.destination.key === current.key ? detail : null} sampleBusy={sampleBusy} />
           ) : (
-            <div className="stack" style={{ gap: 14 }}>
-              <span className="eyebrow">Trending this month</span>
+            <div className="stack" style={{ gap: 10 }}>
               <h2>Pick a place to start</h2>
-              <ol className="hotlist">
-                {(dests ?? []).slice(0, 6).map((d, i) => (
-                  <li key={d.key}>
-                    <button type="button" onClick={() => choose(d.key)}>
-                      <span className="hot-rank">{i + 1}</span>
-                      <span>
-                        <b>{d.name}</b>
-                        <small>
-                          {d.country}
-                          {d.inSeason ? " · in season" : ""}
-                        </small>
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ol>
+              <p className="hint">Tap a pin on the globe, or choose one of the places trending now, below.</p>
             </div>
           )}
         </aside>
       </section>
 
-      {/* For you: predictions from logged places, or an invitation to log them. */}
-      {signedOut ? (
-        <section className="callout row between">
-          <span>
-            <b>Want destinations picked for you?</b>{" "}
-            <span className="hint">Create a free account and log a few places you&apos;ve been. Pylos learns your taste and predicts where you&apos;ll love next.</span>
-          </span>
-          <Link className="btn sm" href="/login?next=/profile">
-            Sign up free
-          </Link>
-        </section>
-      ) : member && forYou && forYou.picks.length > 0 ? (
+      {/* For you: predictions from logged places, or (with an account) an invitation to log them.
+          Visitors without an account get one invitation, at the bottom of the page. */}
+      {member && forYou && forYou.picks.length > 0 ? (
         <section className="card foryou">
           <div className="head">
             <span className="eyebrow">Picked for you</span>
@@ -307,7 +281,7 @@ export default function Browse() {
             })}
           </div>
         </section>
-      ) : forYou?.signedIn && forYou.needMore ? (
+      ) : forYou?.signedIn && forYou.needMore && !me?.user?.isGuest ? (
         <section className="callout row between">
           <span>
             <b>Get destinations picked for you.</b>{" "}
@@ -349,10 +323,7 @@ export default function Browse() {
           <p className="lede">Log the places you&apos;ve been and what you loved. Pylos learns your taste, predicts where you&apos;ll love next, and plans it in seconds, with the places locals actually go.</p>
           <div className="row">
             <Link className="btn" href="/login?next=/profile">
-              Sign up free
-            </Link>
-            <Link className="btn ghost" href="/plan">
-              Plan a trip without an account
+              Sign in
             </Link>
           </div>
         </aside>

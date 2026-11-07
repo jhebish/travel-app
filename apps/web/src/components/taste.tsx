@@ -1,6 +1,6 @@
 "use client";
 import { SIGNAL_KIND_LABELS, SIGNAL_SOURCE_LABELS, type SignalKind, type SignalSource, type TasteProfile } from "@travel/core";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { IconDown, IconUp } from "./icons";
 
@@ -140,7 +140,9 @@ export function useTaste(enabled: boolean) {
       alive = false;
     };
   }, [enabled, version]);
-  return { data, updating, off, reload: () => setVersion((v) => v + 1) };
+  // Stable, so components can depend on it in effects without looping.
+  const reload = useCallback(() => setVersion((v) => v + 1), []);
+  return { data, updating, off, reload };
 }
 
 /** A rough guess of what kind of place a plan's stop is, for "did you go?" suggestions. */
