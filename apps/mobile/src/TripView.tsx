@@ -14,10 +14,11 @@ import {
 } from "@travel/core";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useEffect, useRef, useState } from "react";
-import { Linking, Pressable, Share, Text, TextInput, View } from "react-native";
+import { Linking, Pressable, ScrollView, Share, TextInput, View } from "react-native";
 import { api } from "./api";
-import { useTheme } from "./theme";
-import { Button, Card, ChipRow, Loading, P, Status, styles } from "./ui";
+import { PhotoGallery, PlacePhoto, type GalleryTarget } from "./PhotoGallery";
+import { FONT, useTheme } from "./theme";
+import { Button, Card, ChipRow, Loading, P, Status, styles, Text } from "./ui";
 
 const WEB = (process.env.EXPO_PUBLIC_API_URL ?? "").replace(/\/$/, "");
 const open = (url?: string) => url && Linking.openURL(url).catch(() => {});
@@ -59,6 +60,19 @@ function ContactLinks({ place }: { place?: PlaceVerification }) {
   );
 }
 
+/** Shown when a pick matches what they've loved before (from their taste profile). */
+function ForYou({ text }: { text?: string }) {
+  const t = useTheme();
+  if (!text) return null;
+  return (
+    <View style={{ alignSelf: "flex-start", backgroundColor: t.ochre, borderRadius: 999, paddingVertical: 4, paddingHorizontal: 12 }}>
+      <Text style={{ color: t.ink, fontSize: 15.5 }}>
+        <Text style={{ fontFamily: FONT.display, fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase" }}>For you </Text> {text}
+      </Text>
+    </View>
+  );
+}
+
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 function IconBtn({ label, icon, on, onColor, onPress, disabled }: { label: string; icon: IconName; on?: boolean; onColor?: string; onPress: () => void; disabled?: boolean }) {
   const t = useTheme();
@@ -92,6 +106,7 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
     initial.request.stay?.styles?.length ? { ...initial.request.stay, on: true } : { on: true, styles: ["Boutique"], price: "$150–300" },
   );
   const [showStay, setShowStay] = useState(false);
+  const [gallery, setGallery] = useState<GalleryTarget | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => setTrip(initial), [initial]);
 
@@ -178,33 +193,23 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
 
   return (
     <View style={{ gap: 18 }}>
-      {/* hero */}
-      <View style={{ backgroundColor: t.hero, borderRadius: 26, padding: 24, gap: 12 }}>
-        <Text style={{ color: t.heroSoft, fontWeight: "600" }}>
-          {trip.destination}, {it.days.length} {it.days.length === 1 ? "day" : "days"}
+      {/* header: plain, as on the site */}
+      <View style={{ gap: 10, paddingTop: 4 }}>
+        <Text style={{ color: t.muted, fontFamily: FONT.display, fontSize: 12.5, letterSpacing: 2, textTransform: "uppercase" }}>
+          {trip.destination} · {it.days.length} {it.days.length === 1 ? "day" : "days"}
         </Text>
-        <Text style={{ color: t.heroInk, fontSize: 32, fontWeight: "800", letterSpacing: -1, lineHeight: 34 }}>{it.title}</Text>
+        <Text style={{ color: t.ink, fontSize: 32, fontWeight: "800", lineHeight: 38 }}>{it.title}</Text>
         {/* Only when their own trips and ratings give a reason; never a general description. */}
         {it.forYou ? (
-          <Text style={{ color: t.heroSoft, fontSize: 16, lineHeight: 23 }}>
-            <Text style={{ fontWeight: "700" }}>For you · </Text>
-            {it.forYou}
-          </Text>
+          <View style={{ alignSelf: "flex-start", backgroundColor: t.ochre, borderRadius: 14, paddingVertical: 7, paddingHorizontal: 13 }}>
+            <Text style={{ color: t.ink, fontSize: 16.5, lineHeight: 23 }}>
+              <Text style={{ fontFamily: FONT.display, fontSize: 11.5, letterSpacing: 1.6, textTransform: "uppercase" }}>For you </Text> {it.forYou}
+            </Text>
+          </View>
         ) : null}
         <View style={[styles.row, { marginTop: 4 }]}>
-          {[
-            { label: trip.saved ? "Saved" : "Save", on: trip.saved, onPress: () => update({ saved: !trip.saved }) },
-            { label: "Share", on: false, onPress: share },
-          ].map((b) => (
-            <Pressable
-              key={b.label}
-              onPress={b.onPress}
-              accessibilityRole="button"
-              style={{ backgroundColor: b.on ? "#fff" : "rgba(255,255,255,0.16)", borderRadius: 999, paddingVertical: 9, paddingHorizontal: 16 }}
-            >
-              <Text style={{ color: b.on ? t.hero : t.heroInk, fontWeight: "700" }}>{b.label}</Text>
-            </Pressable>
-          ))}
+          <Button ghost title={trip.saved ? "Saved" : "Save"} onPress={() => update({ saved: !trip.saved })} />
+          <Button ghost title="Share" onPress={share} />
         </View>
       </View>
 
@@ -280,12 +285,20 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
                   {si < d.stops.length - 1 && <View style={{ width: 2, flex: 1, backgroundColor: t.line, marginVertical: 4 }} />}
                 </View>
                 <View style={{ flex: 1, gap: 6, paddingBottom: 6 }}>
+                  <PlacePhoto
+                    photo={s.place?.photos?.[0]}
+                    alt={s.name}
+                    count={s.place?.photos?.length}
+                    onOpen={() => setGallery({ title: s.name, place: s.place })}
+                    style={{ width: "100%", aspectRatio: 16 / 10, marginBottom: 4 }}
+                  />
                   <Text style={{ color: t.muted, fontWeight: "700", fontSize: 14, paddingTop: 6 }}>{s.time}</Text>
                   <Text style={{ color: t.ink, fontWeight: "800", fontSize: 18, letterSpacing: -0.3 }}>
                     {s.name}
                     {!!s.neighborhood && <Text style={{ color: t.muted, fontWeight: "500", fontSize: 14 }}> in {s.neighborhood}</Text>}
                   </Text>
                   <P>{s.why}</P>
+                  <ForYou text={s.forYou} />
                   {!!s.localTip && (
                     <P muted style={{ fontSize: 15 }}>
                       <Text style={{ color: t.saffron, fontWeight: "700" }}>Local tip </Text>
@@ -346,6 +359,20 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
           <>
             {it.hotels.map((h, i) => (
               <View key={h.name + i} style={{ gap: 6, paddingTop: i ? 16 : 0, borderTopWidth: i ? 1 : 0, borderColor: t.line }}>
+                {!!h.place?.photos?.length && (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }} style={{ marginBottom: 4 }}>
+                    {h.place.photos.slice(0, 3).map((ph, n) => (
+                      <PlacePhoto
+                        key={ph.name}
+                        photo={ph}
+                        alt={h.name}
+                        count={n === 0 ? h.place?.photos?.length : undefined}
+                        onOpen={() => setGallery({ title: h.name, place: h.place, start: n })}
+                        style={{ width: 250, aspectRatio: 3 / 2 }}
+                      />
+                    ))}
+                  </ScrollView>
+                )}
                 <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
                   <Text style={{ color: t.ink, fontWeight: "800", fontSize: 18, flexShrink: 1 }}>
                     {h.name}
@@ -361,6 +388,7 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
                   <SourceTag p={h} />
                 </View>
                 <P>{h.why}</P>
+                <ForYou text={h.forYou} />
                 <View style={styles.row}>
                   <Pressable onPress={() => open(ratesUrl(h, trip.destination))}>
                     <Text style={{ color: t.accent, fontWeight: "600", fontSize: 14 }}>Check rates</Text>
@@ -399,6 +427,7 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
         </Card>
       )}
       <Status text={msg?.text ?? "Check opening hours before you go."} err={msg?.err} />
+      <PhotoGallery target={gallery} onClose={() => setGallery(null)} />
     </View>
   );
 }

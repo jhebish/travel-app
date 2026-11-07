@@ -1,12 +1,12 @@
 import type { TripSummary } from "@travel/core";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { api } from "../../src/api";
 import { useAuth } from "../../src/auth";
 import { supabase } from "../../src/supabase";
 import { useTheme } from "../../src/theme";
-import { Button, Card, Chip, H1, Loading, P, Screen, Status, styles } from "../../src/ui";
+import { Button, Card, Chip, H1, Loading, P, Screen, Status, styles, Text } from "../../src/ui";
 
 type Filter = "all" | "saved" | "rated";
 const fmt = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });

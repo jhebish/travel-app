@@ -1,7 +1,33 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, type TextStyle, type ViewStyle } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text as RNText, View, type TextProps, type TextStyle, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useTheme } from "./theme";
+import { FONT, useTheme } from "./theme";
+
+/**
+ * Text in the Pylos type. Screens use this instead of React Native's Text. Custom fonts don't
+ * take fontWeight reliably (iOS falls back to the system font), so the weight picks the file:
+ * 800 is a heading or a big number and gets Marcellus, as on the site; 600–700 EB Garamond
+ * SemiBold, 500 Medium, italic Italic, everything else Regular. An explicit fontFamily wins.
+ */
+export function Text({ style, ...rest }: TextProps) {
+  const flat = StyleSheet.flatten(style) ?? {};
+  if (flat.fontFamily) return <RNText style={style} {...rest} />;
+  const { fontWeight, fontStyle, letterSpacing, ...others } = flat;
+  const w = String(fontWeight ?? "400");
+  const display = w === "800" || w === "900";
+  const fontFamily = display
+    ? FONT.display
+    : fontStyle === "italic"
+      ? FONT.italic
+      : w === "700" || w === "600" || w === "bold"
+        ? FONT.semibold
+        : w === "500"
+          ? FONT.medium
+          : FONT.body;
+  // Tight negative tracking suited the old heavy sans; Marcellus wants a touch of air.
+  const spacing = display ? Math.max(letterSpacing ?? 0, 0.2) : letterSpacing;
+  return <RNText style={[others, { fontFamily, letterSpacing: spacing }]} {...rest} />;
+}
 
 export function Screen({ children }: { children: ReactNode }) {
   const t = useTheme();
@@ -24,19 +50,20 @@ export function Card({ children, style }: { children: ReactNode; style?: ViewSty
 
 export function H1({ children }: { children: ReactNode }) {
   const t = useTheme();
-  return <Text style={{ color: t.ink, fontSize: 34, fontWeight: "800", letterSpacing: -1, lineHeight: 36 }}>{children}</Text>;
+  return <Text style={{ color: t.ink, fontSize: 32, fontWeight: "800", lineHeight: 38 }}>{children}</Text>;
 }
 export function H2({ children }: { children: ReactNode }) {
   const t = useTheme();
-  return <Text style={{ color: t.ink, fontSize: 24, fontWeight: "800", letterSpacing: -0.6, lineHeight: 28 }}>{children}</Text>;
+  return <Text style={{ color: t.ink, fontSize: 23, fontWeight: "800", lineHeight: 29 }}>{children}</Text>;
 }
 export function P({ children, muted, style }: { children: ReactNode; muted?: boolean; style?: TextStyle }) {
   const t = useTheme();
-  return <Text style={[{ color: muted ? t.muted : t.ink, fontSize: 16, lineHeight: 23 }, style]}>{children}</Text>;
+  return <Text style={[{ color: muted ? t.muted : t.ink, fontSize: 17.5, lineHeight: 25 }, style]}>{children}</Text>;
 }
+/** Small tracked capitals, like the site's field labels. */
 export function Label({ children }: { children: ReactNode }) {
   const t = useTheme();
-  return <Text style={{ color: t.ink, fontSize: 15, fontWeight: "700" }}>{children}</Text>;
+  return <Text style={{ color: t.ink, fontFamily: FONT.display, fontSize: 13, letterSpacing: 1.6, textTransform: "uppercase" }}>{children}</Text>;
 }
 
 export function Button({ title, onPress, disabled, ghost, danger }: { title: string; onPress: () => void; disabled?: boolean; ghost?: boolean; danger?: boolean }) {
@@ -47,18 +74,23 @@ export function Button({ title, onPress, disabled, ghost, danger }: { title: str
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => ({
-        backgroundColor: ghost ? t.surface : t.accent,
+        backgroundColor: ghost ? t.surface : t.btn,
         borderColor: danger ? t.bad : t.line,
         borderWidth: ghost ? 1 : 0,
-        paddingVertical: ghost ? 9 : 16,
-        paddingHorizontal: 16,
-        borderRadius: ghost ? 999 : 14,
+        minHeight: ghost ? 40 : 54,
+        justifyContent: "center",
+        paddingHorizontal: ghost ? 16 : 22,
+        borderRadius: 999,
         alignItems: "center",
         alignSelf: ghost ? "flex-start" : "stretch",
         opacity: disabled ? 0.5 : pressed ? 0.8 : 1,
       })}
     >
-      <Text style={{ color: ghost ? (danger ? t.bad : t.ink) : t.accentInk, fontWeight: "700", fontSize: ghost ? 14 : 17 }}>{title}</Text>
+      {ghost ? (
+        <Text style={{ color: danger ? t.bad : t.ink, fontWeight: "500", fontSize: 16 }}>{title}</Text>
+      ) : (
+        <Text style={{ color: t.btnInk, fontFamily: FONT.display, fontSize: 15, letterSpacing: 2, textTransform: "uppercase" }}>{title}</Text>
+      )}
     </Pressable>
   );
 }
@@ -72,7 +104,7 @@ export function Chip({ label, on, onPress }: { label: string; on: boolean; onPre
       onPress={onPress}
       style={{ borderWidth: 1, borderColor: on ? t.ink : t.line, backgroundColor: on ? t.ink : t.surface, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 15 }}
     >
-      <Text style={{ color: on ? t.bg : t.ink, fontSize: 15, fontWeight: "600" }}>{label}</Text>
+      <Text style={{ color: on ? t.bg : t.ink, fontSize: 16, fontWeight: "500" }}>{label}</Text>
     </Pressable>
   );
 }
@@ -110,7 +142,7 @@ export function ChipRow<T extends string>({
 export function Status({ text, err }: { text?: string | null; err?: boolean }) {
   const t = useTheme();
   if (!text) return null;
-  return <Text style={{ color: err ? t.bad : t.muted, fontSize: 14 }}>{text}</Text>;
+  return <Text style={{ color: err ? t.bad : t.muted, fontSize: 15.5, lineHeight: 22 }}>{text}</Text>;
 }
 
 export function Loading({ text }: { text: string }) {
@@ -118,7 +150,7 @@ export function Loading({ text }: { text: string }) {
   return (
     <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
       <ActivityIndicator color={t.accent} />
-      <Text style={{ color: t.muted, fontSize: 14, flexShrink: 1 }}>{text}</Text>
+      <Text style={{ color: t.muted, fontSize: 15.5, fontStyle: "italic", flexShrink: 1 }}>{text}</Text>
     </View>
   );
 }
@@ -145,13 +177,13 @@ export function BuildBar({ days }: { days: number }) {
   return (
     <View style={{ gap: 10 }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" }}>
-        <Text style={{ color: t.ink, fontSize: 15, fontWeight: "700", flexShrink: 1 }}>{label}</Text>
-        <Text style={{ color: t.accent, fontSize: 30, fontWeight: "800", letterSpacing: -1, fontVariant: ["tabular-nums"] }}>{pct}%</Text>
+        <Text style={{ color: t.ink, fontSize: 17, fontStyle: "italic", flexShrink: 1 }}>{label}</Text>
+        <Text style={{ color: t.accent, fontSize: 30, fontWeight: "800", fontVariant: ["tabular-nums"] }}>{pct}%</Text>
       </View>
       <View style={{ height: 12, borderRadius: 999, backgroundColor: t.sunk, overflow: "hidden" }} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: pct }}>
         <View style={{ width: `${pct}%`, height: "100%", borderRadius: 999, backgroundColor: t.accent }} />
       </View>
-      <Text style={{ color: t.muted, fontSize: 13, fontVariant: ["tabular-nums"] }}>
+      <Text style={{ color: t.muted, fontSize: 14, fontVariant: ["tabular-nums"] }}>
         {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")} elapsed
       </Text>
     </View>

@@ -13,11 +13,11 @@ import {
 } from "@travel/core";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
-import { Pressable, Switch, Text, TextInput, View } from "react-native";
+import { Pressable, Switch, TextInput, View } from "react-native";
 import { api } from "../../src/api";
 import { useTheme } from "../../src/theme";
 import { TripView } from "../../src/TripView";
-import { Button, Card, ChipRow, H1, Label, BuildBar, Loading, P, Screen, Status, styles } from "../../src/ui";
+import { BuildBar, Button, Card, ChipRow, H1, Label, Loading, P, Screen, Status, styles, Text } from "../../src/ui";
 
 const ABOUT_LABELS = {
   "LGBTQ+ traveler": "LGBTQ+",

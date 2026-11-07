@@ -1,10 +1,10 @@
 import Slider from "@react-native-community/slider";
 import { SOURCES, defaultWeights, type AppConfigDTO, type PrefsDTO } from "@travel/core";
 import { useEffect, useState } from "react";
-import { Pressable, Switch, Text, View } from "react-native";
+import { Pressable, Switch, View } from "react-native";
 import { api } from "../../src/api";
 import { useTheme } from "../../src/theme";
-import { Button, Card, H1, Loading, P, Screen, Status, styles } from "../../src/ui";
+import { Button, Card, H1, Loading, P, Screen, Status, styles, Text } from "../../src/ui";
 
 export default function Sources() {
   const t = useTheme();
