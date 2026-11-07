@@ -10,6 +10,8 @@ import { Button, Card, H1, Label, P, Screen, Status } from "../src/ui";
 const CODE_MIN = 6;
 const CODE_MAX = 10;
 const RESEND_AFTER = 60;
+/** The branded emails carry a code; Supabase's built-in email only has a link (see apps/web login). */
+const CODES = process.env.EXPO_PUBLIC_SIGNIN_CODES === "1";
 
 /** A guest attaching an email confirms an email change; everyone else signs in. */
 type CodeKind = "email" | "email_change";
@@ -22,6 +24,7 @@ export default function Login() {
   const [sentTo, setSentTo] = useState<{ email: string; kind: CodeKind } | null>(null);
   const [busy, setBusy] = useState(false);
   const [wait, setWait] = useState(0);
+  const [showCode, setShowCode] = useState(CODES);
   const [msg, setMsg] = useState<{ text: string; err?: boolean } | null>(null);
   const input = { backgroundColor: t.bg, borderColor: t.line, borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 16, color: t.ink };
 
@@ -52,7 +55,7 @@ export default function Login() {
     setBusy(false);
     if (error) {
       const tooSoon = /security purposes|rate limit|after \d+ seconds/i.test(error.message);
-      return setMsg({ text: tooSoon ? "We just sent you a code. Wait a minute before asking for another." : error.message, err: true });
+      return setMsg({ text: tooSoon ? "We just sent you an email. Wait a minute before asking for another." : error.message, err: true });
     }
     setSentTo({ email: addr, kind });
     setCode("");
@@ -74,33 +77,44 @@ export default function Login() {
     <Screen>
       <Card>
         <H1>{sentTo ? "Check your email" : "Sign in"}</H1>
-        <P muted>{sentTo ? `We sent a code to ${sentTo.email}. Enter it here.` : "Optional. Signing in keeps your trips and source mix across devices."}</P>
+        <P muted>
+          {sentTo
+            ? CODES
+              ? `We sent a code to ${sentTo.email}. Enter it here.`
+              : `We sent a sign-in link to ${sentTo.email}. Open it on this phone to finish signing in.`
+            : "Optional. Signing in keeps your trips and source mix across devices."}
+        </P>
         {!sentTo ? (
           <>
             <Label>Email</Label>
             <TextInput style={input} value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" placeholderTextColor={t.muted} placeholder="you@example.com" />
-            <Button title={busy ? "Sending…" : "Email me a code"} disabled={busy || !email.includes("@")} onPress={() => void send(email.trim())} />
+            <Button title={busy ? "Sending…" : CODES ? "Email me a code" : "Email me a sign-in link"} disabled={busy || !email.includes("@")} onPress={() => void send(email.trim())} />
           </>
         ) : (
           <>
-            <Label>Code</Label>
-            <TextInput
-              style={[input, { fontSize: 26, letterSpacing: 8, textAlign: "center" }]}
-              value={code}
-              onChangeText={(v) => {
-                const digits = v.replace(/\D/g, "").slice(0, CODE_MAX);
-                setCode(digits);
-                // The code the keyboard offers from Mail fills in all at once: sign straight in.
-                if (digits.length >= CODE_MIN && digits.length - code.length > 1) void verify(digits);
-              }}
-              keyboardType="number-pad"
-              maxLength={CODE_MAX}
-              textContentType="oneTimeCode"
-              autoComplete="one-time-code"
-              autoFocus
-            />
-            <Button title={busy ? "Checking…" : "Sign in"} disabled={busy || code.length < CODE_MIN} onPress={() => void verify(code)} />
-            <Button ghost title={wait > 0 ? `Send a new code in ${wait}s` : "Send a new code"} disabled={busy || wait > 0} onPress={() => void send(sentTo.email)} />
+            {!showCode && <Button ghost title="Got a code instead?" onPress={() => setShowCode(true)} />}
+            {showCode && (
+              <>
+                <Label>Code</Label>
+                <TextInput
+                  style={[input, { fontSize: 26, letterSpacing: 8, textAlign: "center" }]}
+                  value={code}
+                  onChangeText={(v) => {
+                    const digits = v.replace(/\D/g, "").slice(0, CODE_MAX);
+                    setCode(digits);
+                    // The code the keyboard offers from Mail fills in all at once: sign straight in.
+                    if (digits.length >= CODE_MIN && digits.length - code.length > 1) void verify(digits);
+                  }}
+                  keyboardType="number-pad"
+                  maxLength={CODE_MAX}
+                  textContentType="oneTimeCode"
+                  autoComplete="one-time-code"
+                  autoFocus
+                />
+                <Button title={busy ? "Checking…" : "Sign in"} disabled={busy || code.length < CODE_MIN} onPress={() => void verify(code)} />
+              </>
+            )}
+            <Button ghost title={wait > 0 ? `Send another in ${wait}s` : CODES ? "Send a new code" : "Send another link"} disabled={busy || wait > 0} onPress={() => void send(sentTo.email)} />
             <Button ghost title="Use a different email" onPress={() => { setSentTo(null); setCode(""); setMsg(null); }} />
           </>
         )}

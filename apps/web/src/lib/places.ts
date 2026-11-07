@@ -1,4 +1,4 @@
-import type { Candidate, CandidateCategory, PlaceVerification } from "@travel/core";
+import { MAX_PLACE_PHOTOS, type Candidate, type CandidateCategory, type PlacePhoto, type PlaceVerification } from "@travel/core";
 import { env } from "./env";
 import { supabaseAdmin } from "./supabase/server";
 
@@ -17,8 +17,12 @@ const FIELDS = [
   "places.priceLevel",
   "places.types",
   "places.shortFormattedAddress",
-  // Same price tier as the fields above: photos cost nothing extra to list.
+  // Same price tier as the fields above (rating and hours are already the top tier):
+  // photos, website and phone cost nothing extra to list.
   "places.photos",
+  "places.websiteUri",
+  "places.internationalPhoneNumber",
+  "places.nationalPhoneNumber",
 ].join(",");
 
 const CACHE_DAYS = 14;
@@ -37,6 +41,9 @@ interface GPlace {
   priceLevel?: string;
   types?: string[];
   photos?: { name: string; widthPx?: number; heightPx?: number; authorAttributions?: { displayName?: string; uri?: string }[] }[];
+  websiteUri?: string;
+  internationalPhoneNumber?: string;
+  nationalPhoneNumber?: string;
 }
 
 const PRICE_LEVELS: Record<string, number> = {
@@ -83,7 +90,7 @@ async function failed(res: Response, what: string): Promise<never> {
 /** Text search. Throws PlacesError when the request fails. */
 async function searchText(textQuery: string, maxResultCount: number): Promise<GPlace[]> {
   if (!placesEnabled()) return [];
-  const key = `search2:${maxResultCount}:${textQuery.toLowerCase()}`;
+  const key = `search3:${maxResultCount}:${textQuery.toLowerCase()}`;
   return cached(key, async () => {
     const res = await fetch(SEARCH_URL, {
       method: "POST",
@@ -127,23 +134,30 @@ export async function placesCandidates(query: string, category: CandidateCategor
 }
 
 const https = (u?: string) => (u ? (u.startsWith("//") ? `https:${u}` : u.startsWith("https://") ? u : undefined) : undefined);
+/** A business's own site: plenty are still plain http. */
+const website = (u?: string) => (u && /^https?:\/\/[^\s]+$/i.test(u) && u.length <= 500 ? u : undefined);
 
-function toVerification(p: GPlace): PlaceVerification {
-  return {
-  placeId: p.id,
-  photos: p.photos?.slice(0, 3).map((ph) => ({
+const toPhotos = (photos: GPlace["photos"]): PlacePhoto[] | undefined =>
+  photos?.slice(0, MAX_PLACE_PHOTOS).map((ph) => ({
     name: ph.name,
     w: ph.widthPx || undefined,
     h: ph.heightPx || undefined,
     by: ph.authorAttributions?.[0]?.displayName?.slice(0, 120),
     byUrl: https(ph.authorAttributions?.[0]?.uri),
-  })),
-  mapsUrl: https(p.googleMapsUri),
-  address: p.formattedAddress,
-  lat: p.location?.latitude,
-  lng: p.location?.longitude,
-  hours: p.regularOpeningHours?.weekdayDescriptions,
-  status: p.businessStatus,
+  }));
+
+function toVerification(p: GPlace): PlaceVerification {
+  return {
+    placeId: p.id,
+    photos: toPhotos(p.photos),
+    mapsUrl: https(p.googleMapsUri),
+    address: p.formattedAddress,
+    lat: p.location?.latitude,
+    lng: p.location?.longitude,
+    hours: p.regularOpeningHours?.weekdayDescriptions,
+    status: p.businessStatus,
+    website: website(p.websiteUri),
+    phone: (p.internationalPhoneNumber || p.nationalPhoneNumber)?.slice(0, 40),
   };
 }
 
@@ -179,7 +193,7 @@ export async function verifyPlace(name: string, neighborhood: string, city: stri
 /** Details for a known place id (cached). */
 export async function placeById(placeId: string): Promise<PlaceVerification | null> {
   if (!placesEnabled()) return null;
-  return cached(`place2:${placeId}`, async () => {
+  return cached(`place3:${placeId}`, async () => {
     const res = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`, {
       headers: {
         "X-Goog-Api-Key": env.placesKey(),
@@ -191,6 +205,23 @@ export async function placeById(placeId: string): Promise<PlaceVerification | nu
     return toVerification((await res.json()) as GPlace);
   }).catch((e) => {
     if (e instanceof PlacesError) return null;
+    throw e;
+  });
+}
+
+/** All of a place's photos (up to ten), for its gallery when a trip stored only a few (cached). */
+export async function placePhotos(placeId: string): Promise<PlacePhoto[]> {
+  if (!placesEnabled() || !/^[A-Za-z0-9_-]{10,300}$/.test(placeId)) return [];
+  return cached(`photos1:${placeId}`, async () => {
+    const res = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
+      headers: { "X-Goog-Api-Key": env.placesKey(), "X-Goog-FieldMask": "photos" },
+      cache: "no-store",
+    });
+    if (res.status === 404) return [];
+    if (!res.ok) return failed(res, "photos");
+    return toPhotos(((await res.json()) as GPlace).photos) ?? [];
+  }).catch((e) => {
+    if (e instanceof PlacesError) return [];
     throw e;
   });
 }

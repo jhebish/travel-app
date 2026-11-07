@@ -101,15 +101,22 @@ export const PlacePhotoSchema = z.object({
 });
 export type PlacePhoto = z.infer<typeof PlacePhotoSchema>;
 
+/** Up to Google's ten photos of a place: the first on the card, the rest in its gallery. */
+export const MAX_PLACE_PHOTOS = 10;
+
 export const PlaceVerificationSchema = z.object({
   placeId: z.string(),
-  photos: z.array(PlacePhotoSchema).max(4).optional().catch(undefined),
+  photos: z.array(PlacePhotoSchema).max(MAX_PLACE_PHOTOS).optional().catch(undefined),
   mapsUrl: z.string().url().optional(),
   address: z.string().optional(),
   lat: z.number().optional(),
   lng: z.number().optional(),
   hours: z.array(z.string()).optional(),
   status: z.string().optional(),
+  /** The place's own website and phone, from Google: for travelers now, and for booking later. */
+  website: z.string().url().max(500).optional().catch(undefined),
+  /** International format, e.g. "+351 22 208 8188": dials from anywhere. */
+  phone: z.string().max(40).optional().catch(undefined),
 });
 export type PlaceVerification = z.infer<typeof PlaceVerificationSchema>;
 

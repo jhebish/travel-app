@@ -9,6 +9,7 @@ import {
   legBetween,
   legLabel,
   type Hotel,
+  type PlaceVerification,
   type StayPrefs,
   type Stop,
   type Together,
@@ -24,10 +25,12 @@ import {
   IconCalendar,
   IconCar,
   IconDown,
+  IconGlobe,
   IconLock,
   IconMap,
   IconMessage,
   IconPeople,
+  IconPhone,
   IconRefresh,
   IconShare,
   IconSun,
@@ -36,6 +39,7 @@ import {
   IconUp,
   IconWalk,
 } from "./icons";
+import { PhotoGallery, type GalleryTarget } from "./PhotoGallery";
 import { PlacePhoto } from "./PlacePhoto";
 import { TogetherSheet, WhoIsIn } from "./Together";
 
@@ -58,25 +62,55 @@ function Source({ p }: { p: Stop | Hotel }) {
   );
 }
 
+const siteLabel = (url: string) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "Website";
+  }
+};
+
+/** The place's own website and phone number, when Google Maps lists them. */
+function Contact({ place }: { place?: PlaceVerification }) {
+  return (
+    <>
+      {place?.website && (
+        <a className="contact" href={place.website} target="_blank" rel="noopener noreferrer" title={place.website}>
+          <IconGlobe />
+          <span>{siteLabel(place.website)}</span>
+        </a>
+      )}
+      {place?.phone && (
+        <a className="contact phone" href={`tel:${place.phone.replace(/[^\d+]/g, "")}`}>
+          <IconPhone />
+          <span>{place.phone}</span>
+        </a>
+      )}
+    </>
+  );
+}
+
 function PlaceLinks({ p }: { p: Stop | Hotel }) {
-  if (!p.place?.mapsUrl && !p.place?.hours?.length) return null;
+  const pl = p.place;
+  if (!pl || (!pl.mapsUrl && !pl.hours?.length && !pl.website && !pl.phone)) return null;
   return (
     <span className="links">
-      {p.place?.mapsUrl && (
-        <a href={p.place.mapsUrl} target="_blank" rel="noopener noreferrer">
+      {pl.mapsUrl && (
+        <a href={pl.mapsUrl} target="_blank" rel="noopener noreferrer">
           Map
         </a>
       )}
-      {!!p.place?.hours?.length && (
+      {!!pl.hours?.length && (
         <details>
           <summary>Hours</summary>
           <ul className="notes">
-            {p.place.hours.map((h) => (
+            {pl.hours.map((h) => (
               <li key={h}>{h}</li>
             ))}
           </ul>
         </details>
       )}
+      <Contact place={pl} />
     </span>
   );
 }
@@ -144,6 +178,10 @@ export function TripView({
     initial.request.stay?.styles?.length ? { ...initial.request.stay, on: true } : { on: true, styles: ["Boutique"], price: "$150–300" },
   );
   const [calDate, setCalDate] = useState(initial.request.startDate ?? "");
+  const [gallery, setGallery] = useState<GalleryTarget | null>(null);
+  const openGallery = (title: string, place: PlaceVerification | undefined, start = 0) => {
+    if (place?.photos?.length) setGallery({ title, placeId: place.placeId, photos: place.photos, start });
+  };
   const shareDlg = useRef<HTMLDialogElement>(null);
   const calDlg = useRef<HTMLDialogElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -714,7 +752,7 @@ export function TripView({
                 </div>
                 <div>
                   <div className="tl-body">
-                    <PlacePhoto photo={s.place?.photos?.[0]} alt={s.name} />
+                    <PlacePhoto photo={s.place?.photos?.[0]} alt={s.name} onOpen={() => openGallery(s.name, s.place)} count={s.place?.photos?.length} />
                     <span className="tl-time">{s.time}</span>
                     <div className="tl-name">
                       {s.name} {s.neighborhood && <span className="hood">in {s.neighborhood}</span>}
@@ -820,8 +858,16 @@ export function TripView({
                   <div className="hotel">
                     {!!h.place?.photos?.length && (
                       <div className="hphotos">
-                        {h.place.photos.slice(0, 3).map((ph) => (
-                          <PlacePhoto key={ph.name} photo={ph} alt={h.name} className="pphoto hphoto" sizes="(max-width: 720px) 80vw, 260px" />
+                        {h.place.photos.slice(0, 3).map((ph, n) => (
+                          <PlacePhoto
+                            key={ph.name}
+                            photo={ph}
+                            alt={h.name}
+                            className="pphoto hphoto"
+                            sizes="(max-width: 720px) 80vw, 260px"
+                            onOpen={() => openGallery(h.name, h.place, n)}
+                            count={n === 0 ? h.place?.photos?.length : undefined}
+                          />
                         ))}
                       </div>
                     )}
@@ -855,6 +901,7 @@ export function TripView({
                             Map
                           </a>
                         )}
+                        <Contact place={h.place} />
                       </span>
                       {!readOnly && (
                         <div className="tl-tools">
@@ -1040,6 +1087,8 @@ export function TripView({
           </button>
         </form>
       </dialog>
+
+      {gallery && <PhotoGallery target={gallery} onClose={() => setGallery(null)} />}
     </article>
   );
 }

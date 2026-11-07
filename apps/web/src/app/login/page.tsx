@@ -8,8 +8,13 @@ import { supabaseBrowser } from "@/lib/supabase/browser";
 /** Supabase sends 6-digit codes by default; projects can set up to 10. */
 const CODE_MIN = 6;
 const CODE_MAX = 10;
-/** Supabase won't send another code to the same address within a minute. */
+/** Supabase won't send another email to the same address within a minute. */
 const RESEND_AFTER = 60;
+/**
+ * The branded emails (supabase/templates) carry a code; Supabase's built-in email only has a link.
+ * Set NEXT_PUBLIC_SIGNIN_CODES=1 once custom SMTP and those templates are in place.
+ */
+const CODES = process.env.NEXT_PUBLIC_SIGNIN_CODES === "1";
 
 /**
  * How the code is checked depends on how it was sent: a guest attaching an email to their
@@ -26,8 +31,10 @@ function Login() {
   const [sentTo, setSentTo] = useState<{ email: string; kind: CodeKind } | null>(null);
   const [busy, setBusy] = useState(false);
   const [wait, setWait] = useState(0);
+  // Without code emails the code box stays tucked away behind "Got a code instead?".
+  const [showCode, setShowCode] = useState(CODES);
   const [msg, setMsg] = useState<{ text: string; err?: boolean } | null>(
-    params.get("error") ? { text: "That sign-in link didn't work or has expired. Send a new code below.", err: true } : null,
+    params.get("error") ? { text: "That sign-in link didn't work or has expired. Send yourself a new one below.", err: true } : null,
   );
   const codeRef = useRef<HTMLInputElement>(null);
   const sb = supabaseBrowser();
@@ -59,12 +66,12 @@ function Login() {
     setBusy(false);
     if (error) {
       const tooSoon = /security purposes|rate limit|after \d+ seconds/i.test(error.message);
-      return setMsg({ text: tooSoon ? "We just sent you a code. Wait a minute before asking for another." : error.message, err: true });
+      return setMsg({ text: tooSoon ? "We just sent you an email. Wait a minute before asking for another." : error.message, err: true });
     }
     setSentTo({ email: addr, kind });
     setCode("");
     setWait(RESEND_AFTER);
-    setTimeout(() => codeRef.current?.focus(), 50);
+    if (CODES) setTimeout(() => codeRef.current?.focus(), 50);
   }
 
   async function verify(token: string) {
@@ -93,9 +100,13 @@ function Login() {
         <Mark width={76} tight className="card-mark" />
         <h1>{sentTo ? "Check your email" : "Sign in"}</h1>
         <p className="lede">
-          {sentTo ? (
+          {sentTo && CODES ? (
             <>
               We sent a code to <b>{sentTo.email}</b>. Enter it here, or tap the button in the email to sign in on that device.
+            </>
+          ) : sentTo ? (
+            <>
+              We sent a sign-in link to <b>{sentTo.email}</b>. Open it in this browser to finish signing in.
             </>
           ) : (
             "Optional. Signing in keeps your trips and source mix across devices and browsers."
@@ -117,7 +128,7 @@ function Login() {
             <input id="email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <button className="btn" disabled={busy || !email.includes("@")}>
-            {busy ? "Sending…" : "Email me a code"}
+            {busy ? "Sending…" : CODES ? "Email me a code" : "Email me a sign-in link"}
           </button>
         </form>
       ) : (
@@ -128,35 +139,51 @@ function Login() {
             void verify(code);
           }}
         >
-          <div className="field">
-            <label className="label" htmlFor="code">
-              Code
-            </label>
-            <input
-              id="code"
-              ref={codeRef}
-              className="code-input"
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={CODE_MAX}
-              placeholder="••••••"
-              required
-              value={code}
-              onChange={(e) => {
-                const v = e.target.value.replace(/\D/g, "").slice(0, CODE_MAX);
-                setCode(v);
-                // A pasted or autofilled code signs straight in.
-                if (v.length >= CODE_MIN && v.length - code.length > 1) void verify(v);
-              }}
-            />
-          </div>
-          <button className="btn" disabled={busy || code.length < CODE_MIN}>
-            {busy ? "Checking…" : "Sign in"}
-          </button>
+          {showCode && (
+            <>
+            <div className="field">
+              <label className="label" htmlFor="code">
+                Code
+              </label>
+              <input
+                id="code"
+                ref={codeRef}
+                className="code-input"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={CODE_MAX}
+                placeholder="••••••"
+                required
+                value={code}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/\D/g, "").slice(0, CODE_MAX);
+                  setCode(v);
+                  // A pasted or autofilled code signs straight in.
+                  if (v.length >= CODE_MIN && v.length - code.length > 1) void verify(v);
+                }}
+              />
+            </div>
+            <button className="btn" disabled={busy || code.length < CODE_MIN}>
+              {busy ? "Checking…" : "Sign in"}
+            </button>
+            </>
+          )}
           <div className="login-links">
+            {!showCode && (
+              <button
+                type="button"
+                className="linkbtn"
+                onClick={() => {
+                  setShowCode(true);
+                  setTimeout(() => codeRef.current?.focus(), 50);
+                }}
+              >
+                Got a code instead?
+              </button>
+            )}
             <button type="button" className="linkbtn" disabled={busy || wait > 0} onClick={() => void send(sentTo.email)}>
-              {wait > 0 ? `Send a new code in ${wait}s` : "Send a new code"}
+              {wait > 0 ? `Send another in ${wait}s` : CODES ? "Send a new code" : "Send another link"}
             </button>
             <button
               type="button"

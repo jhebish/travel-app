@@ -7,6 +7,7 @@ import {
   legBetween,
   legLabel,
   type Hotel,
+  type PlaceVerification,
   type StayPrefs,
   type Stop,
   type Trip,
@@ -31,6 +32,30 @@ function SourceTag({ p }: { p: Stop | Hotel }) {
       <Text style={{ color: t.muted, fontSize: 13, fontWeight: "600" }}>{SOURCE_BY_ID[id].name}</Text>
       {p.origin === "ai" && <Text style={{ color: t.faint, fontSize: 12 }}>AI pick</Text>}
     </View>
+  );
+}
+
+/** The place's own website and phone number, when Google Maps lists them. */
+function ContactLinks({ place }: { place?: PlaceVerification }) {
+  const t = useTheme();
+  const site = place?.website;
+  const phone = place?.phone;
+  const link = { color: t.accent, fontSize: 14, fontWeight: "600" } as const;
+  return (
+    <>
+      {!!site && (
+        <Pressable accessibilityRole="link" accessibilityLabel="Website" onPress={() => open(site)} hitSlop={6} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <Ionicons name="globe-outline" size={14} color={t.accent} />
+          <Text style={link}>Website</Text>
+        </Pressable>
+      )}
+      {!!phone && (
+        <Pressable accessibilityRole="link" accessibilityLabel={`Call ${phone}`} onPress={() => open(`tel:${phone.replace(/[^\d+]/g, "")}`)} hitSlop={6} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <Ionicons name="call-outline" size={14} color={t.accent} />
+          <Text style={link}>{phone}</Text>
+        </Pressable>
+      )}
+    </>
   );
 }
 
@@ -274,6 +299,7 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
                         <Text style={{ color: t.accent, fontSize: 14, fontWeight: "600" }}>Map</Text>
                       </Pressable>
                     )}
+                    <ContactLinks place={s.place} />
                   </View>
                   <View style={{ flexDirection: "row", gap: 6 }}>
                     <IconBtn label={s.locked ? `Unlock ${s.name}` : `Lock ${s.name}`} icon={s.locked ? "lock-closed" : "lock-open-outline"} on={!!s.locked} onPress={() => edit({ action: "lock", day: dIdx, index: si, locked: !s.locked }, `lock-${k}`)} />
@@ -335,10 +361,18 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
                   <SourceTag p={h} />
                 </View>
                 <P>{h.why}</P>
-                <View style={[styles.row, { justifyContent: "space-between" }]}>
+                <View style={styles.row}>
                   <Pressable onPress={() => open(ratesUrl(h, trip.destination))}>
                     <Text style={{ color: t.accent, fontWeight: "600", fontSize: 14 }}>Check rates</Text>
                   </Pressable>
+                  {h.place?.mapsUrl && (
+                    <Pressable onPress={() => open(h.place?.mapsUrl)}>
+                      <Text style={{ color: t.accent, fontSize: 14, fontWeight: "600" }}>Map</Text>
+                    </Pressable>
+                  )}
+                  <ContactLinks place={h.place} />
+                </View>
+                <View style={[styles.row, { justifyContent: "flex-end" }]}>
                   <View style={{ flexDirection: "row", gap: 6 }}>
                     <IconBtn label={`Good pick: ${h.name}`} icon="thumbs-up-outline" on={trip.votes[`h-${i}`] === 1} onColor={t.good} onPress={() => vote(`h-${i}`, 1)} />
                     <IconBtn label={`Not for me: ${h.name}`} icon="thumbs-down-outline" on={trip.votes[`h-${i}`] === -1} onColor={t.bad} onPress={() => vote(`h-${i}`, -1)} />
