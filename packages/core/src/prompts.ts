@@ -1,4 +1,5 @@
 import { nightContext, nightPlan, nightRules, wantsClubs, type NightPlan } from "./nightlife";
+import { JERUSALEM_RULES, regionPolicy } from "./region";
 import type { Candidate } from "./ranking";
 import type { Itinerary, RouteLeg, StayPrefs, TripRequest } from "./schemas";
 import { STOP_KINDS } from "./quality";
@@ -50,7 +51,7 @@ export function travelerBlock(req: TripRequest): string {
     wantsClubs(req) && !req.interests.includes("Nightlife") ? "\n- Nights: they want clubs and dancing" : ""
   }
 - Pace: ${req.pace} (${per} stops per day)
-- Notes from the traveler: ${req.extra || "none"}`;
+- Notes from the traveler: ${req.extra || "none"}${regionPolicy(req.destination) === "jerusalem" ? `\n\n${JERUSALEM_RULES}` : ""}`;
 }
 
 /**
@@ -597,10 +598,14 @@ Design a ${req.days}-day multi-stop route through ${req.destination}. Do not pla
 - The stops' "days" must add up to exactly ${req.days}. Give one day theme and area per day at each stop.
 - For every stop, 2–3 "alternatives" the traveler could swap in: similar place on the route, also good then, each saying how it differs. Never a stop already on the route.
 - Notes: 2–3 practical tips for the whole route.
-${FOR_YOU_RULE}
+${NEAR_ISRAEL.test(req.destination) || regionPolicy(req.destination) !== "ok" ? `${ROUTE_REGION_RULE}\n` : ""}${FOR_YOU_RULE}
 
 Call submit_route.`;
 }
+
+/** Routes in the region: no stops in Israel (the pipeline also drops any it gets; see region.ts). */
+const NEAR_ISRAEL = /palestin|west bank|holy land|levant|middle east|jerusalem|jordan|egypt|sinai|lebanon|syria/i;
+const ROUTE_REGION_RULE = "- No stops or alternatives in Israel. Jerusalem and towns in the West Bank are fine.";
 
 // ---------------------------------------------------------------------------
 // Multi-city: swap one stop for another town

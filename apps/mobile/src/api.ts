@@ -1,3 +1,4 @@
+import { Linking } from "react-native";
 import { supabase } from "./supabase";
 
 const BASE = (process.env.EXPO_PUBLIC_API_URL ?? "").replace(/\/$/, "");
@@ -35,6 +36,10 @@ export async function api<T>(path: string, init: { method?: string; json?: unkno
   } catch {
     /* empty */
   }
-  if (!res.ok) throw new ApiError(body.error || "Something went wrong. Try again.", res.status, body.code);
+  if (!res.ok) {
+    // The server can send the person elsewhere instead (a trip we don't plan): its own fixed link.
+    if (typeof body.redirect === "string" && body.redirect.startsWith("https://")) Linking.openURL(body.redirect).catch(() => {});
+    throw new ApiError(body.error || "Something went wrong. Try again.", res.status, body.code);
+  }
   return body as T;
 }

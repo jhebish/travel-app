@@ -22,11 +22,13 @@ export function ndjsonResponse(run: (send: (e: BuildEvent) => void) => Promise<E
         if (trip) send({ type: "done", trip });
       } catch (e) {
         if (!(e instanceof HttpError)) console.error(e);
-        send({
-          type: "error",
-          message: e instanceof HttpError ? e.message : "Something went wrong. Try again.",
-          code: e instanceof HttpError ? e.code : "server_error",
-        });
+        if (e instanceof HttpError && e.redirect) send({ type: "redirect", to: e.redirect });
+        else
+          send({
+            type: "error",
+            message: e instanceof HttpError ? e.message : "Something went wrong. Try again.",
+            code: e instanceof HttpError ? e.code : "server_error",
+          });
       } finally {
         controller.close();
       }

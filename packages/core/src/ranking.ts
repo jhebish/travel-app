@@ -4,6 +4,7 @@ import { STAY_PRICE_RANGE, type SourceId, type StayPrice } from "./sources";
 import type { EffectiveSources } from "./weights";
 import { guessKind, kindFromHints } from "./imports/kind";
 import { wantsClubs, wantsNightlife } from "./nightlife";
+import { regionPolicy } from "./region";
 
 export type CandidateCategory = "food" | "drink" | "culture" | "outdoors" | "shopping" | "nightlife" | "stay" | "other";
 
@@ -145,6 +146,7 @@ export function candidateRole(c: Pick<Candidate, "name" | "category" | "tags">):
 
 /** Search queries for Places, derived from the request. */
 export function placesQueries(req: TripRequest): { query: string; category: CandidateCategory }[] {
+  if (regionPolicy(req.destination) === "jerusalem") return jerusalemQueries(req);
   const city = req.destination;
   const q: { query: string; category: CandidateCategory }[] = [];
   const add = (query: string, category: CandidateCategory) => q.push({ query: `${query} in ${city}`, category });
@@ -185,4 +187,18 @@ export function placesQueries(req: TripRequest): { query: string; category: Cand
     if (req.stay.styles.length > 1) stays.push({ query: `${req.stay.styles[1]!.toLowerCase()} hotels in ${city}`, category: "stay" });
   }
   return [...q.slice(0, 8 - stays.length), ...stays];
+}
+
+/** Jerusalem trips: Palestinian businesses and experiences, in East Jerusalem and the Old City (see region.ts). */
+function jerusalemQueries(req: TripRequest): { query: string; category: CandidateCategory }[] {
+  const q: { query: string; category: CandidateCategory }[] = [
+    { query: "Palestinian restaurants in East Jerusalem", category: "food" },
+    { query: "historic sites in the Old City of Jerusalem", category: "culture" },
+    { query: "Palestinian cafés and bakeries in East Jerusalem", category: "food" },
+    { query: "Palestinian guided tours and cultural centers in East Jerusalem", category: "other" },
+    { query: "souks and Palestinian craft shops in the Old City of Jerusalem", category: "shopping" },
+  ];
+  if (req.interests.includes("History") || req.interests.includes("Art & design")) q.push({ query: "Palestinian museums and galleries in East Jerusalem", category: "culture" });
+  if (req.stay.on) q.push({ query: "Palestinian-owned hotels in East Jerusalem", category: "stay" });
+  return q.slice(0, 8);
 }

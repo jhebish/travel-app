@@ -192,7 +192,10 @@ function Planner() {
         }
       });
       if (redirect) {
-        router.push(redirect);
+        // Our own pages in the app; anything else (a trip we don't plan) is a full page load.
+        const to: string = redirect;
+        if (to.startsWith("/")) router.push(to);
+        else if (to.startsWith("https://")) window.location.assign(to);
         return;
       }
       if (finished) {

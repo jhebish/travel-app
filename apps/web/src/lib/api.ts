@@ -76,6 +76,10 @@ export async function api<T>(path: string, init?: RequestInit & { json?: unknown
   } catch {
     /* empty body */
   }
-  if (!res.ok) throw new ApiError(body.error || "Something went wrong. Try again.", res.status, body.code);
+  if (!res.ok) {
+    // The server can send the person elsewhere instead (a trip we don't plan): its own fixed link.
+    if (typeof body.redirect === "string" && body.redirect.startsWith("https://")) window.location.assign(body.redirect);
+    throw new ApiError(body.error || "Something went wrong. Try again.", res.status, body.code);
+  }
   return body as T;
 }

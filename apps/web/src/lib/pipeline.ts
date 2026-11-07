@@ -52,7 +52,10 @@ import {
   nightPlan,
   nightRules,
   stopRole,
+  BLOCKED_REDIRECT,
+  inEastJerusalem,
   pulseCandidates,
+  regionPolicy,
   scoreCandidate,
   wantsClubs,
   wantsNightlife,
@@ -139,8 +142,13 @@ async function gatherCandidates(req: TripRequest, staysOnly = false): Promise<Ca
     ...queries.map((q) => placesCandidates(q.query, q.category, 8)),
   ]);
   const ok = <T,>(r: PromiseSettledResult<T[]> | undefined) => (r?.status === "fulfilled" ? r.value : []);
-  return [...ok(picks), ...places.flatMap((p) => ok(p))];
+  const all = [...ok(picks), ...places.flatMap((p) => ok(p))];
+  // Jerusalem: Palestinian businesses only, so nothing Google finds in West Jerusalem (region.ts).
+  return regionPolicy(req.destination) === "jerusalem" ? all.filter(inEastJerusalem) : all;
 }
+
+/** Asking for a trip in Israel: the client sends the traveler to the owner's chosen page instead (region.ts). */
+const blockedDestination = () => new HttpError(403, "Pylos doesn't plan trips there.", "blocked_destination", BLOCKED_REDIRECT);
 
 // ---------------------------------------------------------------------------
 // Grounding: correct each pick's source to its real origin and verify it exists
@@ -347,7 +355,8 @@ async function balanceDay(
  * researched now (30–60 s) and keeps going after the trip is ready, so the next trip has it.
  */
 function startPulse(req: TripRequest, city: string, deadline: number): Promise<NightPulse | null> | null {
-  if (!wantsNightlife(req)) return null;
+  // Not for Jerusalem: its trips use only Palestinian businesses, which the pulse doesn't check.
+  if (!wantsNightlife(req) || regionPolicy(city) !== "ok") return null;
   const job = nightPulse(city, deadline);
   waitUntil(job);
   return job;
@@ -508,6 +517,7 @@ export function requestForCity(req: TripRequest, city: string | undefined): Trip
  * Every finished day is emitted straight away so the client can show it.
  */
 export async function planItinerary(req: TripRequest, inputs: PlanInputs, emit: Emit = () => {}): Promise<{ itin: Itinerary; model: string }> {
+  if (regionPolicy(req.destination) === "blocked") throw blockedDestination();
   // The build route allows 120 s. A day is rebuilt only if its first draft is back within 50 s, and
   // the rebuild's calls must be over by 110 s (callTool's deadline), leaving time to check and save.
   const start = Date.now();
@@ -643,7 +653,12 @@ async function planMulti(req: TripRequest, { eff, lists, history, rebuildUntil, 
     (attempt) => callTool(withHistory(history, buildRoutePrompt(req, eff, lists)), ROUTE_TOOL, attempt ? 5000 : 3500),
     RouteSchema,
   );
-  const legs = fitRoute(route.legs, req.days);
+  // No stops (or swaps) in Israel, whatever the route came back with (region.ts).
+  const allowed = route.legs
+    .filter((l) => regionPolicy(l.city) !== "blocked")
+    .map((l) => ({ ...l, alternatives: l.alternatives?.filter((a) => regionPolicy(a.city) !== "blocked") }));
+  if (route.legs.length && !allowed.length) throw blockedDestination();
+  const legs = fitRoute(allowed, req.days);
   if (!legs.length) throw new HttpError(502, "We couldn't plan a route for that. Try a different country or more days.", "bad_output");
 
   // Flatten the route into days, remembering each day's stop.
@@ -810,6 +825,8 @@ export async function generateTrip(ctx: Ctx, reqIn: TripRequest, opts: { ip: str
   // No date and no month given (Typeform, the app): plan for the weeks ahead, so stops suit the season.
   // An explicit null means "not sure yet": an evergreen route.
   const req: TripRequest = reqIn.month === undefined && !reqIn.startDate ? { ...reqIn, month: soonMonth() } : reqIn;
+  // Before anything is counted or looked up.
+  if (regionPolicy(req.destination) === "blocked") throw blockedDestination();
   emit({ type: "progress", pct: 3, label: "Reading your request" });
   // Planning with friends: blend their taste in from the start.
   const companions = await companionsFromHandles(ctx, req.with ?? []);
@@ -1059,6 +1076,7 @@ export async function swapCity(ctx: Ctx, row: TripRow, legIndex: number, cityIn:
   const old = route[legIndex];
   if (!old || route.length < 2) throw new HttpError(404, "That stop isn't on this trip anymore. Reload and try again.");
   const asked = cityIn.trim();
+  if (regionPolicy(asked) === "blocked") throw blockedDestination();
   if (sameCity(asked, old.city)) return row;
   if (route.some((l, i) => i !== legIndex && sameCity(l.city, asked))) throw new HttpError(400, `${asked} is already on this trip.`, "duplicate");
   const dayIdx = it.days.map((d, i) => (d.city === old.city ? i : -1)).filter((i) => i >= 0);
@@ -1081,6 +1099,8 @@ export async function swapCity(ctx: Ctx, row: TripRow, legIndex: number, cityIn:
   );
   if (!leg.found) throw new HttpError(400, `We couldn't find "${asked}". Check the spelling, or pick one of the suggestions.`, "not_found");
   const city = leg.city;
+  // What they typed may resolve to a place in Israel ("Tel-Aviv" → "Tel Aviv").
+  if (regionPolicy(city) === "blocked") throw blockedDestination();
   if (route.some((l, i) => i !== legIndex && sameCity(l.city, city))) throw new HttpError(400, `${city} is already on this trip.`, "duplicate");
   const prev = route[legIndex - 1];
   const next = route[legIndex + 1];

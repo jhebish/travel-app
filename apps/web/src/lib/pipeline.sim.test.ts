@@ -3,7 +3,7 @@
  * planItinerary as on the site. Claude, Google Places and the database are replaced at the module
  * boundary; everything else (prompts, schemas, checks, the rebuild) is the real code.
  */
-import { DAY_TOOL, NightSpotsSchema, OUTLINE_TOOL, ROUTE_TOOL, TripRequestSchema, blendWeights, buildPulse, defaultWeights, type Candidate } from "@travel/core";
+import { BLOCKED_REDIRECT, DAY_TOOL, NightSpotsSchema, OUTLINE_TOOL, ROUTE_TOOL, TripRequestSchema, blendWeights, buildPulse, defaultWeights, type Candidate } from "@travel/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
@@ -92,11 +92,18 @@ const PLACES = [
   place("flores", "Taberna da Rua das Flores", "food", ["restaurant", "food"], 4000, near(LISBON, -0.01, -0.005), "Lisbon"),
   place("tasca", "Tasca do Chico", "food", ["restaurant", "food"], 6000, near(LISBON, -0.009, -0.006), "Lisbon"),
   place("maat", "MAAT", "culture", ["museum", "tourist_attraction"], 30_000, near(LISBON, -0.025, -0.06), "Lisbon"),
+
+  // Jerusalem: two places in the Old City and East Jerusalem, two in West Jerusalem.
+  place("shukri", "Abu Shukri", "food", ["restaurant", "food"], 9000, { lat: 31.7787, lng: 35.2316 }, "Jerusalem"),
+  place("sepulchre", "Church of the Holy Sepulchre", "culture", ["church", "tourist_attraction"], 60_000, { lat: 31.7784, lng: 35.2296 }, "Jerusalem"),
+  place("bookshop", "Educational Bookshop", "shopping", ["book_store"], 900, { lat: 31.7905, lng: 35.2312 }, "Jerusalem"),
+  place("mamilla", "Mamilla Café", "food", ["cafe", "food"], 3000, { lat: 31.7779, lng: 35.2245 }, "Jerusalem"),
+  place("yehuda", "Mahane Yehuda Market", "shopping", ["market"], 40_000, { lat: 31.7849, lng: 35.2121 }, "Jerusalem"),
 ];
 
 /** A Places search: the places in the city the query names (Egypt alone means all of Egypt), in the query's category. */
 h.placesCandidates.mockImplementation(async (query: string, category: string) => {
-  const city = ["Algiers", "Luxor", "Cairo", "Lisbon"].find((c) => query.includes(c));
+  const city = ["Algiers", "Luxor", "Cairo", "Lisbon", "Jerusalem"].find((c) => query.includes(c));
   return PLACES.filter((p) => (city ? p.city === city : ["Luxor", "Cairo"].includes(p.city)) && (p.category === category || category === "culture" && p.category === "outdoors")).map(({ city: _c, ...c }) => c);
 });
 
@@ -341,5 +348,56 @@ describe("a build with a night out", () => {
     expect(day).toMatch(/Tonight: a drink at a good bar near dinner\. No club\./);
     expect(day).not.toMatch(/Club nights/);
     expect(dayPrompts()).toHaveLength(1); // no club demanded, nothing rebuilt
+  });
+});
+
+describe("where trips aren't planned", () => {
+  it("sends a trip to Tel Aviv to the owner's link, before any planning", async () => {
+    await expect(planItinerary(request({ destination: "Tel Aviv", days: 2 }), { eff, lists, history: "" })).rejects.toMatchObject({
+      code: "blocked_destination",
+      redirect: BLOCKED_REDIRECT,
+    });
+    expect(h.callTool).not.toHaveBeenCalled();
+  });
+
+  it("drops a route's stops and swaps in Israel, and refuses a route with nothing else", async () => {
+    const route = (legs: unknown[]) =>
+      h.callTool.mockImplementation(async (prompt: string, tool: unknown) => {
+        if (tool === ROUTE_TOOL) return reply({ title: "The Holy Land", legs });
+        if (tool === DAY_TOOL) return reply({ stops: [stop("10:00", "sepulchre", "sight"), stop("13:00", "shukri", "meal"), stop("16:00", "bookshop", "shop")] });
+        throw new Error("unexpected tool");
+      });
+    const telAviv = { city: "Tel Aviv", days: 2, dayThemes: [{ theme: "Beaches", area: "Tel Aviv" }, { theme: "Jaffa", area: "Jaffa" }] };
+    const jerusalem = {
+      city: "Jerusalem",
+      days: 2,
+      transfer: { mode: "bus", duration: "1h", note: "" },
+      alternatives: [{ city: "Haifa", why: "" }, { city: "Bethlehem", why: "" }],
+      dayThemes: [{ theme: "Old City", area: "Old City" }, { theme: "East Jerusalem", area: "Sheikh Jarrah" }],
+    };
+    route([telAviv, jerusalem]);
+    const { itin } = await planItinerary(request({ destination: "Holy Land", mode: "multi", days: 4 }), { eff, lists, history: "" });
+    expect(itin.days.every((d) => d.city === "Jerusalem")).toBe(true);
+    expect(itin.route!.map((l) => l.city)).toEqual(["Jerusalem"]);
+    expect(itin.route![0]!.alternatives!.map((a) => a.city)).toEqual(["Bethlehem"]);
+
+    h.callTool.mockReset();
+    route([telAviv, { ...telAviv, city: "Haifa" }]);
+    await expect(planItinerary(request({ destination: "Holy Land", mode: "multi", days: 4 }), { eff, lists, history: "" })).rejects.toMatchObject({ redirect: BLOCKED_REDIRECT });
+  });
+
+  it("plans Jerusalem with Palestinian businesses in East Jerusalem and the Old City only", async () => {
+    h.callTool.mockImplementation(async (_prompt: string, tool: unknown) => {
+      if (tool === OUTLINE_TOOL) return reply({ title: "Jerusalem", days: [{ label: "Day 1", theme: "Old City", area: "Old City", candidateIds: ids("sepulchre", "shukri", "bookshop"), mustSee: [] }] });
+      if (tool === DAY_TOOL) return reply({ stops: [stop("10:00", "sepulchre", "sight"), stop("13:00", "shukri", "meal"), stop("16:00", "bookshop", "shop")] });
+      throw new Error("unexpected tool");
+    });
+    await planItinerary(request({ destination: "Jerusalem", days: 1 }), { eff, lists, history: "" });
+    const outline = h.callTool.mock.calls.find((c) => c[1] === OUTLINE_TOOL)![0] as string;
+    expect(outline).toMatch(/JERUSALEM\n- Only Palestinian-owned and Palestinian-run businesses/);
+    expect(outline).toMatch(/Abu Shukri/);
+    expect(outline).toMatch(/Educational Bookshop/);
+    expect(outline).not.toMatch(/Mamilla Café|Mahane Yehuda/);
+    expect(h.placesCandidates.mock.calls.map((c) => c[0])).toContain("Palestinian restaurants in East Jerusalem");
   });
 });

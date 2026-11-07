@@ -6,6 +6,8 @@ export class HttpError extends Error {
     public status: number,
     message: string,
     public code?: string,
+    /** Where the client should send the person instead (a fixed URL of ours, never from input). */
+    public redirect?: string,
   ) {
     super(message);
   }
@@ -37,7 +39,7 @@ export function handler<A extends unknown[]>(fn: (...args: A) => Promise<Respons
     try {
       return await fn(...args);
     } catch (e) {
-      if (e instanceof HttpError) return json({ error: e.message, code: e.code }, e.status);
+      if (e instanceof HttpError) return json({ error: e.message, code: e.code, ...(e.redirect ? { redirect: e.redirect } : {}) }, e.status);
       if (e instanceof ZodError) return json({ error: "Some fields are invalid.", code: "invalid_request" }, 400);
       console.error(e);
       return json({ error: "Something went wrong. Try again.", code: "server_error" }, 500);

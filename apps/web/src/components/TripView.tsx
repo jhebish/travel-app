@@ -132,8 +132,8 @@ const monthYear = (d: string) => {
 };
 
 /** A bar or club that recent sources call one of the places to go now, with those sources. */
-function HotNow({ p }: { p: Stop }) {
-  const sources = p.hot?.sources ?? [];
+function HotNow({ hot }: { hot?: Stop["hot"] | null }) {
+  const sources = hot?.sources ?? [];
   if (!sources.length) return null;
   return (
     <p className="hot-now">
@@ -142,8 +142,7 @@ function HotNow({ p }: { p: Stop }) {
         {sources.map((s, i) => {
           const when = s.date ? monthYear(s.date) : "";
           return (
-            <Fragment key={`${s.name}-${i}`}>
-              {i > 0 && " · "}
+            <span className="src" key={`${s.name}-${i}`}>
               {s.url ? (
                 <a href={s.url} target="_blank" rel="noopener noreferrer">
                   {s.name}
@@ -152,11 +151,90 @@ function HotNow({ p }: { p: Stop }) {
                 s.name
               )}
               {when && <span className="when"> {when}</span>}
-            </Fragment>
+            </span>
           );
         })}
       </span>
     </p>
+  );
+}
+
+/** A city's night pulse as the API shows it (app/api/nightlife). */
+interface PulseView {
+  city: string;
+  updated: string;
+  /** Earlier lists exist, so "new" means new this month (the first list would make everything new). */
+  hasHistory: boolean;
+  spots: {
+    name: string;
+    neighborhood: string;
+    type: "bar" | "club";
+    style: string;
+    when: string;
+    door: string;
+    why: string;
+    hot: Stop["hot"] | null;
+    mapsUrl?: string;
+    since: string;
+  }[];
+}
+
+/**
+ * Going out: the city's bars and clubs of the moment (the night pulse), beyond the one or two in
+ * the plan. Only for trips that asked for nightlife, and only once the city's list exists.
+ */
+function GoingOut({ city, clubsFirst }: { city: string; clubsFirst: boolean }) {
+  const [pulse, setPulse] = useState<PulseView | null>(null);
+  const [tab, setTab] = useState<"bar" | "club">(clubsFirst ? "club" : "bar");
+  useEffect(() => {
+    let alive = true;
+    api<{ pulse: PulseView | null }>(`/api/nightlife?city=${encodeURIComponent(city)}`)
+      .then((r) => alive && setPulse(r.pulse))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [city]);
+  if (!pulse?.spots.length) return null;
+  const bars = pulse.spots.filter((s) => s.type === "bar");
+  const clubs = pulse.spots.filter((s) => s.type === "club");
+  const list = (tab === "club" && clubs.length) || !bars.length ? clubs : bars;
+  const recent = (since: string) => pulse.hasHistory && Date.now() - Date.parse(since) <= 40 * 864e5;
+  return (
+    <section className="card going-out">
+      <div className="head">
+        <h2>Going out in {pulse.city}</h2>
+        <span className="hint">Where people go now, from recent coverage. Updated {monthYear(pulse.updated) || "this month"}.</span>
+      </div>
+      {bars.length > 0 && clubs.length > 0 && (
+        <div className="seg" role="tablist" aria-label="Kind of night out">
+          <button type="button" role="tab" aria-selected={list === bars} onClick={() => setTab("bar")}>
+            Drinks
+          </button>
+          <button type="button" role="tab" aria-selected={list === clubs} onClick={() => setTab("club")}>
+            Dancing
+          </button>
+        </div>
+      )}
+      <ul className="spots">
+        {list.slice(0, 8).map((s) => (
+          <li key={s.name}>
+            <div className="spot-name">
+              {s.name} {s.neighborhood && <span className="hood">in {s.neighborhood}</span>}
+              {recent(s.since) && <span className="pill new">New</span>}
+            </div>
+            <HotNow hot={s.hot} />
+            {s.why && <p className="tl-why">{s.why}</p>}
+            {(s.style || s.when || s.door) && <p className="meta">{[s.style, s.when, s.door].filter(Boolean).join(" · ")}</p>}
+            {s.mapsUrl && (
+              <a className="map-link" href={s.mapsUrl} target="_blank" rel="noopener noreferrer">
+                Map
+              </a>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -773,7 +851,7 @@ export function TripView({
                     <div className="tl-name">
                       {s.name} {s.neighborhood && <span className="hood">in {s.neighborhood}</span>}
                     </div>
-                    <HotNow p={s} />
+                    <HotNow hot={s.hot} />
                     <p className="tl-why">{s.why}</p>
                     <Cost p={s} />
                     <ForYou p={s} />
@@ -859,6 +937,11 @@ export function TripView({
           })}
         </ol>
       </section>
+
+      {/* ---------- going out (trips that asked for nightlife) ---------- */}
+      {!readOnly && it.mode !== "multi" && (trip.request.interests?.includes("Nightlife") || trip.request.clubs) && (
+        <GoingOut city={trip.request.destination || trip.destination} clubsFirst={!!trip.request.clubs} />
+      )}
 
       {/* ---------- stays ---------- */}
       {(it.hotels?.length || !readOnly) && (
