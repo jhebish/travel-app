@@ -492,14 +492,19 @@ export function TripView({
 
   return (
     <article className="trip">
-      {/* ---------- hero ---------- */}
+      {/* ---------- header ---------- */}
       <header className="hero">
         <span className="where-line">
           {city}
           {it.route && it.route.length > 1 ? ` · ${it.route.length} stops` : ""} · {it.days.length} {it.days.length === 1 ? "day" : "days"}
         </span>
         <h1>{it.title}</h1>
-        <p>{it.summary}</p>
+        {/* Only when their own trips and ratings give a reason; never a general description. */}
+        {isOwner && it.forYou ? (
+          <p className="foryou-note trip-foryou">
+            <b>For you</b> {it.forYou}
+          </p>
+        ) : null}
         <div className="actions">
           {isOwner && (
             <button type="button" className="hbtn" aria-pressed={trip.saved} onClick={() => update({ saved: !trip.saved })}>
@@ -523,11 +528,6 @@ export function TripView({
             <IconCalendar />
             Add to calendar
           </button>
-          {isOwner && (
-            <Link className="hbtn" href={`/profile?log=${trip.id}&city=${encodeURIComponent(city.split(",")[0]!.trim())}`} title="Add it to the places you've been">
-              I went
-            </Link>
-          )}
         </div>
       </header>
 
@@ -559,7 +559,10 @@ export function TripView({
               </button>
             ))}
           </div>
-          <span className="hint">Rate the trip, and give thumbs to stops, so your next trips get better.</span>
+          <span className="hint">Rate it, and thumb the stops: your next trips learn from it.</span>
+          <Link className="went" href={`/profile?log=${trip.id}&city=${encodeURIComponent(city.split(",")[0]!.trim())}`} title="Add it to the places you've been">
+            I went
+          </Link>
         </div>
       )}
 
@@ -601,7 +604,8 @@ export function TripView({
       )}
       {legCard}
 
-      {/* ---------- day ---------- */}
+      {/* ---------- day ---------- (tabs only when there's more than one) */}
+      {it.days.length > 1 && (
       <div
         className="daytabs"
         role="tablist"
@@ -632,8 +636,15 @@ export function TripView({
           </button>
         ))}
       </div>
+      )}
 
-      <section className="card" id="day-panel" role="tabpanel" aria-labelledby={`daytab-${dIdx}`}>
+      <section
+        className="card"
+        id="day-panel"
+        role={it.days.length > 1 ? "tabpanel" : undefined}
+        aria-labelledby={it.days.length > 1 ? `daytab-${dIdx}` : undefined}
+        aria-label={it.days.length > 1 ? undefined : d.label}
+      >
         {d.arrival && (
           <p className="arrival">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h15M13 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>

@@ -272,216 +272,203 @@ function Planner() {
       )}
 
       {!useTypeform && tfForm !== undefined && (
-      <form className="stack" style={{ gap: 28 }} onSubmit={submit} autoComplete="off">
-        <div className="where">
-          <div className="seg triptype" role="radiogroup" aria-label="Kind of trip">
-            <button type="button" role="radio" aria-checked={req.mode === "single"} onClick={() => setTripMode("single")}>
-              One place
-            </button>
-            <button type="button" role="radio" aria-checked={req.mode === "multi"} onClick={() => setTripMode("multi")}>
-              Several stops
-            </button>
-            <button type="button" role="radio" aria-checked={false} onClick={() => router.push("/")}>
-              Not sure yet
-            </button>
-          </div>
-          <label htmlFor="dest">
-            <h1>{req.mode === "multi" ? "Which country or region?" : "Where to?"}</h1>
-          </label>
-          <input
-            id="dest"
-            type="text"
-            placeholder={req.mode === "multi" ? "Egypt, Japan, the Amalfi Coast…" : "Lisbon, Oaxaca, Kyoto…"}
-            value={req.destination}
-            onChange={(e) => set("destination", e.target.value)}
-          />
-          <p className="lede">
-            {req.mode === "multi"
-              ? "We'll choose the stops, the order and how long to spend in each, then plan every day the way locals would."
-              : "Tell us who's coming and what you're into. Your plan is built from the places locals actually go."}
-          </p>
-          {trending.length > 0 && (
-            <div className="trending" aria-label="Trending destinations">
-              <span className="label">Trending now</span>
-              <div className="chips">
-                {trending.map((d) => (
+        <form className="stack planner" onSubmit={submit} autoComplete="off">
+          <div className="where">
+            <div className="seg triptype" role="radiogroup" aria-label="Kind of trip">
+              <button type="button" role="radio" aria-checked={req.mode === "single"} onClick={() => setTripMode("single")}>
+                One place
+              </button>
+              <button type="button" role="radio" aria-checked={req.mode === "multi"} onClick={() => setTripMode("multi")}>
+                Several stops
+              </button>
+            </div>
+            <label htmlFor="dest">
+              <h1>{req.mode === "multi" ? "Which country or region?" : "Where to?"}</h1>
+            </label>
+            <input
+              id="dest"
+              type="text"
+              placeholder={req.mode === "multi" ? "Egypt, Japan, the Amalfi Coast…" : "Lisbon, Oaxaca, Kyoto…"}
+              value={req.destination}
+              onChange={(e) => set("destination", e.target.value)}
+            />
+            {/* Ideas only while the box is empty: picking one fills it. */}
+            {trending.length > 0 && !req.destination.trim() && (
+              <div className="trending" aria-label="Trending destinations">
+                <span className="label">Trending</span>
+                {trending.slice(0, 5).map((d) => (
                   <button key={d.key} type="button" className="chip" onClick={() => pickTrending(d)}>
                     {d.name}
                     {d.kind === "region" && <small>several stops</small>}
                   </button>
                 ))}
-                <Link className="chip chip-link" href="/">
-                  See the globe →
-                </Link>
               </div>
-            </div>
-          )}
-        </div>
-        <div className="card">
-        <div className="three">
-          <div className="field">
-            <span className="label">Days</span>
-            <div className="stepper">
-              <button type="button" aria-label="Fewer days" onClick={() => set("days", Math.max(1, req.days - 1))}>
-                −
-              </button>
-              <output>
-                {req.days} {req.days === 1 ? "day" : "days"}
-              </output>
-              <button type="button" aria-label="More days" onClick={() => set("days", Math.min(MAX_DAYS[req.mode], req.days + 1))}>
-                +
-              </button>
-            </div>
+            )}
           </div>
-          <div className="field">
-            <label className="label" htmlFor="month">
-              When
-            </label>
-            <select
-              id="month"
-              value={travelMonth(req) ?? ""}
-              disabled={!!req.startDate}
-              onChange={(e) => set("month", e.target.value ? Number(e.target.value) : null)}
-            >
-              <option value="">Not sure yet</option>
-              {months.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label className="label" htmlFor="start">
-              Start date <small>(optional)</small>
-            </label>
-            <input
-              id="start"
-              type="date"
-              value={req.startDate ?? ""}
-              onChange={(e) => {
-                const v = e.target.value || null;
-                setReq((r) => ({ ...r, startDate: v, month: v ? Number(v.slice(5, 7)) : r.month }));
-              }}
-            />
-          </div>
-        </div>
-        {req.mode === "multi" && (
-          <p className="hint when-hint">
-            {travelMonth(req)
-              ? `Stops are picked for ${MONTH_NAMES[travelMonth(req)! - 1]}: beach towns only when it's beach weather. You can swap any stop after.`
-              : "Not sure when? We'll pick stops that are good most of the year, and note each one's best season."}
-          </p>
-        )}
-        <div className="field">
-          <span className="label">Who&apos;s going</span>
-          <SingleChips label="Who's going" options={PARTIES.map((v) => ({ value: v, label: PARTY_LABELS[v] }))} value={req.party} onChange={(v) => set("party", v)} />
-          {friends.length > 0 && (
-            <div className="field">
-              <span className="label">
-                Plan with friends <small>(they can edit it with you, and Pylos plans around everyone&apos;s taste)</small>
-              </span>
-              <div className="chips">
-                {friends.slice(0, 20).map((f) => {
-                  const on = (req.with ?? []).includes(f.handle);
-                  return (
-                    <button
-                      key={f.handle}
-                      type="button"
-                      className="chip"
-                      aria-pressed={on}
-                      onClick={() => set("with", on ? (req.with ?? []).filter((h) => h !== f.handle) : [...(req.with ?? []), f.handle].slice(0, 7))}
-                    >
-                      {f.displayName}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-        <div className="two">
-          <div className="field">
-            <span className="label">Age</span>
-            <SingleChips label="Age" options={AGE_BANDS} value={req.age} onChange={(v) => set("age", v)} />
-          </div>
-          <div className="field">
-            <span className="label">Budget</span>
-            <SingleChips label="Budget" options={BUDGETS.map((v) => ({ value: v, label: BUDGET_LABELS[v] }))} value={req.budget} onChange={(v) => set("budget", v)} />
-          </div>
-        </div>
-        <div className="field">
-          <span className="label">
-            About you <small>(optional, private to you)</small>
-          </span>
-          <Chips label="About you" options={ABOUT_OPTIONS.map((v) => ({ value: v, label: ABOUT_LABELS[v] }))} value={req.about} onChange={(v) => set("about", v)} />
-        </div>
 
-        <div className="field">
-          <label className="switch" htmlFor="stay-on">
-            <div>
-              <b>Suggest places to stay</b>
-              <span>{req.mode === "multi" ? "Two options at each stop." : "Three hotel options that fit the trip."}</span>
-            </div>
-            <input id="stay-on" type="checkbox" checked={req.stay.on} onChange={(e) => set("stay", { ...req.stay, on: e.target.checked })} />
-          </label>
-          {req.stay.on && (
-            <div className="stack" style={{ gap: 14 }}>
+          <div className="card plan-card">
+            <div className="plan-when">
               <div className="field">
-                <span className="label">Style</span>
-                <Chips label="Hotel style" options={STAY_STYLES} value={req.stay.styles} onChange={(styles) => set("stay", { ...req.stay, styles })} />
+                <span className="label">Days</span>
+                <div className="stepper">
+                  <button type="button" aria-label="Fewer days" onClick={() => set("days", Math.max(1, req.days - 1))}>
+                    −
+                  </button>
+                  <output>
+                    {req.days} {req.days === 1 ? "day" : "days"}
+                  </output>
+                  <button type="button" aria-label="More days" onClick={() => set("days", Math.min(MAX_DAYS[req.mode], req.days + 1))}>
+                    +
+                  </button>
+                </div>
               </div>
               <div className="field">
-                <span className="label">Per night</span>
-                <SingleChips label="Price per night" options={STAY_PRICES} value={req.stay.price} onChange={(price) => set("stay", { ...req.stay, price })} />
+                <label className="label" htmlFor="month">
+                  When
+                </label>
+                <select
+                  id="month"
+                  value={travelMonth(req) ?? ""}
+                  disabled={!!req.startDate}
+                  onChange={(e) => set("month", e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="">Not sure yet</option>
+                  {months.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
-          )}
-        </div>
 
-        <details className="more">
-          <summary>More preferences</summary>
-          <div className="stack">
-            <div className="field">
-              <span className="label">Into</span>
-              <Chips label="Interests" options={INTERESTS} value={req.interests} onChange={(v) => set("interests", v)} />
+            <div className="two plan-who">
+              <div className="field">
+                <span className="label">Who&apos;s going</span>
+                <SingleChips label="Who's going" options={PARTIES.map((v) => ({ value: v, label: PARTY_LABELS[v] }))} value={req.party} onChange={(v) => set("party", v)} />
+              </div>
+              <div className="field">
+                <span className="label">Budget</span>
+                <SingleChips label="Budget" options={BUDGETS.map((v) => ({ value: v, label: BUDGET_LABELS[v] }))} value={req.budget} onChange={(v) => set("budget", v)} />
+              </div>
             </div>
-            <div className="field">
-              <span className="label">Pace</span>
-              <SingleChips label="Pace" options={PACES} value={req.pace} onChange={(v) => set("pace", v)} />
-            </div>
-            <div className="field">
-              <label className="label" htmlFor="extra">
-                Anything else
-              </label>
-              <textarea id="extra" maxLength={500} placeholder="Anniversary trip, hate crowds, staying near the old town…" value={req.extra} onChange={(e) => set("extra", e.target.value)} />
-            </div>
+
+            {/* Everything else has a sensible default, and your past trips already steer the picks. */}
+            <details className="more">
+              <summary>
+                More options <small>interests, pace, hotels, exact dates</small>
+              </summary>
+              <div className="stack">
+                <div className="field">
+                  <span className="label">Into</span>
+                  <Chips label="Interests" options={INTERESTS} value={req.interests} onChange={(v) => set("interests", v)} />
+                </div>
+                <div className="two">
+                  <div className="field">
+                    <span className="label">Pace</span>
+                    <SingleChips label="Pace" options={PACES} value={req.pace} onChange={(v) => set("pace", v)} />
+                  </div>
+                  <div className="field">
+                    <label className="label" htmlFor="start">
+                      Start date
+                    </label>
+                    <input
+                      id="start"
+                      type="date"
+                      value={req.startDate ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value || null;
+                        setReq((r) => ({ ...r, startDate: v, month: v ? Number(v.slice(5, 7)) : r.month }));
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="field">
+                  <span className="label">Age</span>
+                  <SingleChips label="Age" options={AGE_BANDS} value={req.age} onChange={(v) => set("age", v)} />
+                </div>
+                <div className="field">
+                  <span className="label">
+                    About you <small>(private to you)</small>
+                  </span>
+                  <Chips label="About you" options={ABOUT_OPTIONS.map((v) => ({ value: v, label: ABOUT_LABELS[v] }))} value={req.about} onChange={(v) => set("about", v)} />
+                </div>
+                <div className="field">
+                  <label className="switch" htmlFor="stay-on">
+                    <div>
+                      <b>Suggest places to stay</b>
+                      <span>{req.mode === "multi" ? "Two options at each stop." : "Three hotel options that fit the trip."}</span>
+                    </div>
+                    <input id="stay-on" type="checkbox" checked={req.stay.on} onChange={(e) => set("stay", { ...req.stay, on: e.target.checked })} />
+                  </label>
+                  {req.stay.on && (
+                    <div className="two">
+                      <div className="field">
+                        <span className="label">Style</span>
+                        <Chips label="Hotel style" options={STAY_STYLES} value={req.stay.styles} onChange={(styles) => set("stay", { ...req.stay, styles })} />
+                      </div>
+                      <div className="field">
+                        <span className="label">Per night</span>
+                        <SingleChips label="Price per night" options={STAY_PRICES} value={req.stay.price} onChange={(price) => set("stay", { ...req.stay, price })} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {friends.length > 0 && (
+                  <div className="field">
+                    <span className="label">
+                      Plan with friends <small>(they can edit it with you)</small>
+                    </span>
+                    <div className="chips">
+                      {friends.slice(0, 20).map((f) => {
+                        const on = (req.with ?? []).includes(f.handle);
+                        return (
+                          <button
+                            key={f.handle}
+                            type="button"
+                            className="chip"
+                            aria-pressed={on}
+                            onClick={() => set("with", on ? (req.with ?? []).filter((h) => h !== f.handle) : [...(req.with ?? []), f.handle].slice(0, 7))}
+                          >
+                            {f.displayName}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                <div className="field">
+                  <label className="label" htmlFor="extra">
+                    Anything else
+                  </label>
+                  <textarea id="extra" maxLength={500} placeholder="Anniversary trip, hate crowds, staying near the old town…" value={req.extra} onChange={(e) => set("extra", e.target.value)} />
+                </div>
+                {me?.user && (
+                  <p className="hint">
+                    Using {customMix ? "your own source mix" : "the app's default sources"}. <Link href="/sources">Adjust my mix</Link>
+                  </p>
+                )}
+              </div>
+            </details>
+
+            {signedOut ? (
+              <Link className="btn" href="/login?next=/plan">
+                Sign in to build your trip
+              </Link>
+            ) : (
+              <button className="btn" type="submit" disabled={busy || !me}>
+                {busy ? "Building your trip" : "Build my trip"}
+              </button>
+            )}
+            <p className={`status${status?.err ? " err" : ""}`} role="status" aria-live="polite">
+              {busy ? "" : status?.text}
+            </p>
           </div>
-        </details>
-
-        {me?.user && (
-          <p className="hint">
-            Using {customMix ? "your own source mix" : "the app's default sources"}. <Link href="/sources">Adjust my mix</Link>
-          </p>
-        )}
-        {signedOut ? (
-          <Link className="btn" href="/login?next=/plan">
-            Sign in to build your trip
-          </Link>
-        ) : (
-          <button className="btn" type="submit" disabled={busy || !me}>
-            {busy ? "Building your trip" : "Build my trip"}
-          </button>
-        )}
-        <p className={`status${status?.err ? " err" : ""}`} role="status" aria-live="polite">
-          {busy ? "" : status?.text}
-        </p>
-        </div>
-        {modeSwitch}
-      </form>
+          {modeSwitch}
+        </form>
       )}
 
-      <div ref={progressRef}>{build && <BuildProgress state={build} destination={building.destination || "your destination"} daysRequested={building.days} />}</div>
+      <div ref={progressRef}>{build && <BuildProgress state={build} destination={building.destination || "your destination"} />}</div>
       <div ref={tripRef}>{trip && <TripView trip={trip} />}</div>
       {trip && (
         <p className="hint" style={{ textAlign: "center" }}>

@@ -128,7 +128,8 @@ export interface TripPreview {
   /** City or country for the eyebrow: "Egypt", "Lisbon". */
   place: string;
   title: string;
-  summary: string;
+  /** Facts for link text: the route, or the first days' themes. Never a written description. */
+  detail: string;
   days: number;
   /** Multi-city route (two or more stops), else empty. */
   legs: { city: string; days: number }[];
@@ -142,16 +143,17 @@ export function tripPreview(destination: string, title: string, it: Itinerary): 
   const dest = text(destination);
   const days = Array.isArray(it.days) ? it.days : [];
   const legs = (Array.isArray(it.route) ? it.route : []).filter((l) => text(l?.city)).map((l) => ({ city: text(l.city), days: Number(l.days) || 1 }));
+  const themes = days
+    .slice(0, 3)
+    .map((d) => text(d?.theme))
+    .filter(Boolean);
   return {
     place: text(dest.split(",")[0]) || dest,
     title: text(it.title) || text(title) || "A trip on Pylos",
-    summary: text(it.summary),
+    detail: legs.length > 1 ? legs.map((l) => l.city).join(" → ") : themes.join(" · "),
     days: days.length,
     legs: legs.length > 1 ? legs : [],
-    themes: days
-      .slice(0, 3)
-      .map((d) => text(d?.theme))
-      .filter(Boolean),
+    themes,
   };
 }
 
@@ -207,10 +209,10 @@ export async function publicCommunityTrip(id: string): Promise<CommunityTrip | n
   }
 }
 
-/** Preview text: "7 days in Egypt: Cairo's bazaars and pyramids, then…", at most `max` characters. */
-export function linkDescription(days: number, destination: string, summary: string, max = 160): string {
+/** Preview text: "7 days in Egypt: Cairo → Luxor → Aswan", at most `max` characters. */
+export function linkDescription(days: number, destination: string, detail: string, max = 160): string {
   const lead = days > 0 ? `${days} ${days === 1 ? "day" : "days"} in ${destination.trim()}` : destination.trim();
-  const body = squash(summary);
+  const body = squash(detail);
   return clip(body ? `${lead}: ${body}` : lead, max);
 }
 
@@ -466,16 +468,14 @@ function Summary({ lines }: { lines: string[] }) {
 function TripCard({ t }: { t: TripPreview }) {
   const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
   const eyebrow = eyebrowText([t.place, t.legs.length > 1 ? plural(t.legs.length, "stop") : "", t.days ? plural(t.days, "day") : ""]);
-  const summary = t.summary ? summaryLines(t.summary) : [];
   const route = t.legs.length > 1 ? fitRoute(t.legs) : null;
   const themes = route ? [] : t.themes;
   const extra = route ? ROUTE_GAP + route.tier.h : themes.length ? THEMES_GAP + themes.length * THEME_ROW : 0;
-  const title = fitTitle(t.title, COL.h - EYEBROW.h - TITLE.gap - summaryHeight(summary) - extra);
+  const title = fitTitle(t.title, COL.h - EYEBROW.h - TITLE.gap - extra);
   return (
     <Frame art={arch({ center: "star" })}>
       <Eyebrow>{eyebrow}</Eyebrow>
       <Title t={title} />
-      <Summary lines={summary} />
       {route ? <Route fit={route} /> : themes.length ? <Themes themes={themes} /> : null}
     </Frame>
   );

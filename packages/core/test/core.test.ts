@@ -627,3 +627,45 @@ describe("trips from photo locations", () => {
     expect(stays.every((s) => Math.round(s.lat * 100) / 100 === s.lat)).toBe(true);
   });
 });
+
+describe("the trip's personal line", () => {
+  it("is asked for only when history gives a reason, and never required", async () => {
+    const { OUTLINE_TOOL, ROUTE_TOOL, LEG_TOOL, buildOutlinePrompt, buildRoutePrompt, SYSTEM_PROMPT } = await import("../src");
+    for (const tool of [OUTLINE_TOOL, ROUTE_TOOL]) {
+      const props = tool.input_schema.properties as Record<string, { description?: string }>;
+      expect(props.summary).toBeUndefined();
+      expect(props.forYou?.description).toMatch(/Otherwise an empty string/);
+      expect(tool.input_schema.required as readonly string[]).not.toContain("forYou");
+    }
+    expect((LEG_TOOL.input_schema.properties as Record<string, unknown>).summary).toBeUndefined();
+    const eff = blendWeights(app);
+    const lists = { alwaysFeature: "", neverRecommend: "" };
+    expect(buildOutlinePrompt(req, eff, lists, [])).toContain('"forYou": empty unless their travel history');
+    expect(buildRoutePrompt({ ...req, mode: "multi", destination: "Portugal", days: 6 }, eff, lists)).toContain('"forYou": empty unless');
+    expect(SYSTEM_PROMPT).toContain("hidden gem");
+  });
+
+  it("parses from the outline, and older trips without one still parse", () => {
+    const o = OutlineSchema.parse({ title: "Porto: tascas and port", forYou: "Built around the tascas you rated in Lisbon.", notes: [], days: [{ label: "Day 1", theme: "Ribeira", area: "Ribeira", candidateIds: [] }] });
+    expect(o.forYou).toBe("Built around the tascas you rated in Lisbon.");
+    expect(OutlineSchema.parse({ title: "T", notes: [], days: [{ label: "Day 1", theme: "A", area: "A", candidateIds: [] }] }).forYou).toBe("");
+    expect(ItinerarySchema.parse(itinerary).forYou).toBeUndefined();
+  });
+
+  it("is never shown to other people, and neither are the stops' For you notes", async () => {
+    const { publicItinerary } = await import("../src");
+    const mine: Itinerary = {
+      ...itinerary,
+      summary: "A generic description.",
+      forYou: "Built around the tascas you rated five stars in Lisbon.",
+      days: [{ ...itinerary.days[0]!, stops: itinerary.days[0]!.stops.map((s) => ({ ...s, forYou: "Like Taberna da Rua das Flores" })) }],
+      hotels: itinerary.hotels.map((h) => ({ ...h, forYou: "Your kind of small hotel" })),
+    };
+    const pub = publicItinerary(mine);
+    expect(pub.forYou).toBe("");
+    expect(pub.summary).toBe("");
+    expect(pub.days[0]!.stops.every((s) => !("forYou" in s))).toBe(true);
+    expect(pub.hotels.every((h) => !("forYou" in h))).toBe(true);
+    expect(mine.forYou).toContain("Lisbon");
+  });
+});

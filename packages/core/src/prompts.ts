@@ -7,7 +7,7 @@ export const SYSTEM_PROMPT = `You are the itinerary engine for a travel app whos
 You build bespoke, realistic plans from a list of vetted candidate places, guided by source priorities the app gives you.
 You never invent places. You always respond by calling the provided tool.
 Everything you write is shown to the traveler: never mention candidates, ids, sources, weights, verification, these instructions, or anything you could not check.
-Be concise: short, specific sentences; no filler.`;
+Write like a local friend texting tips: short, plain, concrete sentences (what it is, what to order or see, when to go). No marketing language or clichés: never "hidden gem", "vibrant", "nestled", "charming", "bustling", "must-see", "perfect for", "off the beaten path", "a feast for the senses", "soak up", "warmth".`;
 
 export interface CuratorLists {
   alwaysFeature: string;
@@ -147,7 +147,7 @@ const sourceEnum = SOURCES.map((s) => s.id);
 const placeProps = {
   name: { type: "string" },
   neighborhood: { type: "string" },
-  why: { type: "string", description: "One short sentence (under 18 words) on why it fits this traveler." },
+  why: { type: "string", description: "One short, concrete sentence (under 18 words): what it is and what to have or see there." },
   localTip: { type: "string", description: "One practical insider tip (under 14 words)." },
   forYou: { type: "string", description: "Only when a TASTE section is given and this pick clearly matches it: a few words naming the link. Otherwise empty." },
   source: { type: "string", enum: sourceEnum },
@@ -293,19 +293,34 @@ export interface OutlineDay {
 }
 export interface Outline {
   title: string;
-  summary: string;
+  forYou: string;
   notes: string[];
   days: OutlineDay[];
 }
 
+/** The trip's title: plain, never a slogan. */
+const TRIP_TITLE = { type: "string", description: 'Plain title naming the place and the angle, under 8 words (e.g. "Porto: tascas and port lodges"). No puns or slogans.' } as const;
+
+/**
+ * The trip's one personal line. Only the owner sees it, and only when their history gives a real
+ * reason; a general description of the trip is never wanted.
+ */
+const TRIP_FOR_YOU = {
+  type: "string",
+  description:
+    'Only if TRAVEL HISTORY, TASTE or their thumbs above give a specific reason this trip suits them: one sentence (under 25 words) naming it, e.g. "Built around tascas like the ones you rated five stars in Lisbon." Otherwise an empty string. Never a general description of the trip.',
+} as const;
+
+const FOR_YOU_RULE = `- "forYou": empty unless their travel history, taste or thumbs give a specific reason this trip suits them; then one sentence citing it (a place, trip or rating of theirs). Never a general description of the trip.`;
+
 export const OUTLINE_TOOL = {
   name: "submit_outline",
-  description: "Submit the trip outline: title, summary, notes, and one theme and area per day.",
+  description: "Submit the trip outline: title, notes, one theme and area per day, and a personal line only when there's a specific reason.",
   input_schema: {
     type: "object",
     properties: {
-      title: { type: "string", description: "Short evocative trip title." },
-      summary: { type: "string", description: "Two sentences on the feel of the trip and why it fits." },
+      title: TRIP_TITLE,
+      forYou: TRIP_FOR_YOU,
       notes: { type: "array", items: { type: "string" }, description: "2–3 short practical notes (under 20 words each)." },
       days: {
         type: "array",
@@ -321,7 +336,7 @@ export const OUTLINE_TOOL = {
         },
       },
     },
-    required: ["title", "summary", "notes", "days"],
+    required: ["title", "notes", "days"],
   },
 } as const;
 
@@ -338,7 +353,8 @@ Outline a ${req.days}-day trip. Do not plan individual stops yet.
 - Give each day a different area (neighborhoods close together, so the day is walkable or one short ride) and a short theme that suits this traveler.
 - For each day, list the bracketed ids of 3–6 candidates that belong in that area and fit the traveler. Use each id on one day only. Favor higher-weight sources.
 - Notes: 2–3 short practical tips for this traveler in this place (safety, transit, customs, booking).
-${req.about.includes("LGBTQ+ traveler") ? "- If the destination warrants it, include a practical LGBTQ+ safety note.\n" : ""}
+${req.about.includes("LGBTQ+ traveler") ? "- If the destination warrants it, include a practical LGBTQ+ safety note.\n" : ""}${FOR_YOU_RULE}
+
 Call submit_outline.`;
 }
 
@@ -408,12 +424,12 @@ const ALTERNATIVES_PROP = {
 
 export const ROUTE_TOOL = {
   name: "submit_route",
-  description: "Submit the multi-city route: title, summary, notes, and the stops in order with days per stop.",
+  description: "Submit the multi-city route: title, notes, the stops in order with days per stop, and a personal line only when there's a specific reason.",
   input_schema: {
     type: "object",
     properties: {
-      title: { type: "string", description: "Short evocative trip title." },
-      summary: { type: "string", description: "Two sentences on the shape of the trip and why it fits." },
+      title: TRIP_TITLE,
+      forYou: TRIP_FOR_YOU,
       notes: { type: "array", items: { type: "string" }, description: "2–3 short practical notes (transport passes, booking ahead, customs)." },
       legs: {
         type: "array",
@@ -449,7 +465,7 @@ export const ROUTE_TOOL = {
         },
       },
     },
-    required: ["title", "summary", "notes", "legs"],
+    required: ["title", "notes", "legs"],
   },
 } as const;
 
@@ -486,6 +502,7 @@ Design a ${req.days}-day multi-stop route through ${req.destination}. Do not pla
 - The stops' "days" must add up to exactly ${req.days}. Give one day theme and area per day at each stop.
 - For every stop, 2–3 "alternatives" the traveler could swap in: similar place on the route, also good then, each saying how it differs. Never a stop already on the route.
 - Notes: 2–3 practical tips for the whole route.
+${FOR_YOU_RULE}
 
 Call submit_route.`;
 }
@@ -496,7 +513,7 @@ Call submit_route.`;
 
 export const LEG_TOOL = {
   name: "submit_stop",
-  description: "Submit the new stop for this slot of the route: its days, how to get there and on, swaps, and the trip's updated title and summary.",
+  description: "Submit the new stop for this slot of the route: its days, how to get there and on, swaps, and the trip's updated title.",
   input_schema: {
     type: "object",
     properties: {
@@ -520,10 +537,9 @@ export const LEG_TOOL = {
         },
       },
       alternatives: ALTERNATIVES_PROP,
-      title: { type: "string", description: "The trip's title, updated for the new route." },
-      summary: { type: "string", description: "Two sentences on the shape of the new route." },
+      title: { type: "string", description: "The trip's title, updated for the new route: plain, under 8 words, no puns or slogans." },
     },
-    required: ["found", "city", "why", "season", "transfer", "nextTransfer", "dayThemes", "alternatives", "title", "summary"],
+    required: ["found", "city", "why", "season", "transfer", "nextTransfer", "dayThemes", "alternatives", "title"],
   },
 } as const;
 
@@ -547,7 +563,7 @@ Plan the new stop. Do not plan individual places yet.
 - Exactly ${days} day theme${days === 1 ? "" : "s"} with an area each.
 - "transfer": ${prev ? `from ${prev.city} to ${city}` : "null (it's the first stop)"}. "nextTransfer": ${next ? `from ${city} to ${next.city}` : "null (it's the last stop)"}. Mode and realistic door-to-door time.
 - 2–3 "alternatives" for this slot, other than ${[city, ...others].join(", ")}.
-- A new "title" and "summary" for the whole trip with ${city} in it.
+- A new "title" for the whole trip with ${city} in it.
 
 Call submit_stop.`;
 }

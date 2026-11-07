@@ -213,11 +213,14 @@ export function topTripScore(t: { likes: number; ownerRating: number; createdAt:
 /** Strip anything the planner used that shouldn't leave the owner's account. */
 export function publicItinerary(it: Itinerary): Itinerary {
   const { replaced: _replaced, ...rest } = it;
+  // "For you" lines are about the owner's own trips and favorites: never shown to anyone else.
   return {
     ...rest,
+    summary: "",
+    forYou: "",
     replaced: [],
-    days: rest.days.map((d) => ({ ...d, stops: d.stops.map(({ locked: _l, candidateId: _c, ...s }) => s) })),
-    hotels: (rest.hotels ?? []).map(({ candidateId: _c, expediaPropertyId: _e, liveRate: _r, ...h }) => h),
+    days: rest.days.map((d) => ({ ...d, stops: d.stops.map(({ locked: _l, candidateId: _c, forYou: _f, ...s }) => s) })),
+    hotels: (rest.hotels ?? []).map(({ candidateId: _c, expediaPropertyId: _e, liveRate: _r, forYou: _f, ...h }) => h),
   };
 }
 
@@ -235,7 +238,7 @@ export function historyForPrompt(places: PastTrip[], destination: string, countr
   });
   const stats = travelStats(places);
   return `TRAVEL HISTORY (${stats.countries} countries, ${stats.cities} cities)
-Use it to read their taste: lean toward what they rated highly and what they say they loved; don't explain the history back to them.
+Use it to read their taste: lean toward what they rated highly and what they say they loved. Don't explain the history back to them, except in the trip's one "forYou" line.
 ${lines.join("\n")}${
     been.length
       ? `\nThey have been to ${been[0]!.city} before: skip the obvious first-timer sights unless asked, and favor neighborhoods and places a returning visitor wouldn't know.`

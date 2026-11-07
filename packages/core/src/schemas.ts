@@ -224,7 +224,13 @@ export type RouteLeg = z.infer<typeof RouteLegSchema>;
 
 export const ItinerarySchema = z.object({
   title: clipReq(140),
+  /** Older trips: a general description. No longer written or shown. */
   summary: clip(600).default(""),
+  /**
+   * Why this trip suits its owner, from their past trips, ratings and thumbs. Empty unless there's
+   * something specific to say. Only the owner sees it.
+   */
+  forYou: clip(300).optional(),
   mode: z.enum(TRIP_MODES).optional().catch(undefined),
   /** Multi-city trips: the stops in order. */
   route: salvage(RouteLegSchema, 0, 8).optional(),
@@ -309,7 +315,7 @@ export const LocalPickReviewSchema = z.object({
 /** Step 1 of the fast planner: the trip outline (no stops yet). */
 export const OutlineSchema = z.object({
   title: clipReq(140),
-  summary: clip(600).default(""),
+  forYou: clip(300).default(""),
   notes: salvage(clip(300), 0, 6).default([]),
   days: salvage(
     z.object({

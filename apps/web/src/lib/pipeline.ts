@@ -301,6 +301,9 @@ async function defaultVisibility(ctx: Ctx): Promise<Visibility> {
 
 const withHistory = (history: string, prompt: string) => (history ? `${history}\n\n${prompt}` : prompt);
 
+/** The trip's personal line, only when there was history to draw on: never a general description. */
+const personalLine = (history: string, line: string) => (history ? line.trim() : "");
+
 /** Postgres/PostgREST "column doesn't exist" — the community migration hasn't been run yet. */
 const missingColumn = (e: { code?: string } | null) => !!e && (e.code === "42703" || e.code === "PGRST204");
 
@@ -355,8 +358,8 @@ async function planSingle(req: TripRequest, { eff, lists, history }: PlanInputs,
     OutlineSchema,
     3,
   );
-  const o: Outline = { ...outline, days: outline.days.slice(0, req.days) };
-  emit({ type: "outline", title: o.title, summary: o.summary, days: o.days.map((d) => ({ label: d.label, theme: d.theme })), hotels: req.stay.on });
+  const o: Outline = { ...outline, forYou: personalLine(history, outline.forYou), days: outline.days.slice(0, req.days) };
+  emit({ type: "outline", title: o.title, forYou: o.forYou, days: o.days.map((d) => ({ label: d.label, theme: d.theme })), hotels: req.stay.on });
 
   const jobs = o.days.length + (req.stay.on ? 1 : 0);
   let finished = 0;
@@ -383,7 +386,7 @@ async function planSingle(req: TripRequest, { eff, lists, history }: PlanInputs,
     : Promise.resolve([] as Hotel[]);
 
   const [days, hotels] = await Promise.all([Promise.all(dayJobs), hotelJob]);
-  const itin: Itinerary = ItinerarySchema.parse({ title: o.title, summary: o.summary, notes: o.notes, days, hotels, replaced: [], mode: "single" });
+  const itin: Itinerary = ItinerarySchema.parse({ title: o.title, forYou: o.forYou, notes: o.notes, days, hotels, replaced: [], mode: "single" });
   if (itin.hotels.length) itin.stayLabel = stayLabel(req.stay);
   return { itin, model, candsByCity: new Map([["", cands]]) };
 }
@@ -420,7 +423,7 @@ async function planHotels(
 
 const RouteSchema = z.object({
   title: z.string().trim().min(1).transform((v) => v.slice(0, 140)),
-  summary: z.string().default("").transform((v) => v.slice(0, 600)),
+  forYou: z.string().catch("").default("").transform((v) => v.trim().slice(0, 300)),
   notes: salvage(z.string().transform((v) => v.slice(0, 300)), 0, 6).default([]),
   legs: salvage(RouteLegSchema, 1, 8),
 });
@@ -441,10 +444,11 @@ async function planMulti(req: TripRequest, { eff, lists, history }: PlanInputs, 
   legs.forEach((l, li) =>
     l.dayThemes.forEach((t, k) => plan.push({ leg: li, within: k, label: `Day ${plan.length + 1}`, theme: t.theme, area: t.area || l.city, city: l.city })),
   );
+  const forYou = personalLine(history, route.forYou);
   emit({
     type: "outline",
     title: route.title,
-    summary: route.summary,
+    forYou,
     days: plan.map((p) => ({ label: p.label, theme: p.theme, city: p.city })),
     hotels: req.stay.on,
     route: legs.map((l) => ({ city: l.city, days: l.days })),
@@ -459,7 +463,7 @@ async function planMulti(req: TripRequest, { eff, lists, history }: PlanInputs, 
     const ids = legCands[li]!.filter((c) => c.category !== "stay").map((c) => c.id);
     return {
       title: route.title,
-      summary: route.summary,
+      forYou: "",
       notes: [],
       days: l.dayThemes.map((t, k) => ({
         label: plan.find((p) => p.leg === li && p.within === k)!.label,
@@ -531,7 +535,7 @@ async function planMulti(req: TripRequest, { eff, lists, history }: PlanInputs, 
   const [days, hotelLists] = await Promise.all([Promise.all(dayJobs), Promise.all(hotelJobs)]);
   const itin: Itinerary = ItinerarySchema.parse({
     title: route.title,
-    summary: route.summary,
+    forYou,
     notes: route.notes,
     days,
     hotels: hotelLists.flat(),
@@ -771,7 +775,6 @@ const LegResultSchema = RouteLegSchema.pick({ region: true, why: true, season: t
   city: z.string().trim().min(1).transform((v) => v.slice(0, 80)),
   nextTransfer: RouteLegSchema.shape.transfer,
   title: z.string().catch("").default("").transform((v) => v.trim().slice(0, 140)),
-  summary: z.string().catch("").default("").transform((v) => v.trim().slice(0, 600)),
 });
 
 const sameCity = (a: string, b: string) => cityKey(a) === cityKey(b);
@@ -825,7 +828,7 @@ export async function swapCity(ctx: Ctx, row: TripRow, legIndex: number, cityIn:
   const ids = cands.filter((c) => c.category !== "stay").map((c) => c.id);
   const outline: Outline = {
     title: leg.title || it.title,
-    summary: leg.summary || it.summary,
+    forYou: "",
     notes: [],
     days: themes.map((t, k) => ({ label: it.days[dayIdx[k]!]!.label, theme: t.theme, area: t.area || city, candidateIds: ids.filter((_, j) => j % n === k).slice(0, 6) })),
   };
@@ -898,7 +901,8 @@ export async function swapCity(ctx: Ctx, row: TripRow, legIndex: number, cityIn:
     return l;
   });
   if (leg.title) itinerary.title = leg.title;
-  if (leg.summary) itinerary.summary = leg.summary;
+  // The personal line may have been about the town that's gone.
+  if (itinerary.forYou && itinerary.forYou.toLowerCase().includes(old.city.toLowerCase())) itinerary.forYou = "";
 
   const saved = await updateTrip(row, { itinerary, votes, title: itinerary.title });
   await syncFeedback(saved);

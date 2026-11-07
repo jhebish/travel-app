@@ -14,8 +14,8 @@ type P = { params: { token: string } };
 export async function generateMetadata({ params }: P): Promise<Metadata> {
   const t = await getSharedTrip(params.token);
   if (!t) return { title: "Trip not found · Pylos" };
-  const { title, days, summary } = tripPreview(t.destination, t.title, t.itinerary);
-  const description = linkDescription(days, t.destination, summary);
+  const { title, days, detail } = tripPreview(t.destination, t.title, t.itinerary);
+  const description = linkDescription(days, t.destination, detail);
   return {
     title: `${title} · Pylos`,
     description,

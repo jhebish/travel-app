@@ -12,8 +12,8 @@ type P = { params: { id: string } };
 export async function generateMetadata({ params }: P): Promise<Metadata> {
   const t = await publicCommunityTrip(params.id);
   if (!t?.itinerary) return {};
-  const { title, days, summary } = tripPreview(t.destination, t.title, t.itinerary);
-  const description = linkDescription(days, t.destination, summary);
+  const { title, days, detail } = tripPreview(t.destination, t.title, t.itinerary);
+  const description = linkDescription(days, t.destination, detail);
   return {
     title: `${title} · Pylos`,
     description,

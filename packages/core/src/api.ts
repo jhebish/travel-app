@@ -81,7 +81,8 @@ export type BuildEvent =
   | {
       type: "outline";
       title: string;
-      summary?: string;
+      /** Why it suits them, from their history; only when there's something specific. */
+      forYou?: string;
       days: { label: string; theme: string; city?: string }[];
       hotels: boolean;
       /** Multi-city trips: the stops in order. */
