@@ -1,6 +1,8 @@
 import { calendarSignals, dedupeSignals, photoStays, tripsFromSignals, type CalendarEventLike, type PhotoPoint } from "@travel/core";
-import * as Calendar from "expo-calendar";
-import * as MediaLibrary from "expo-media-library";
+// The /legacy entry points keep the function-style APIs. From SDK 58 the main entry points are
+// the new object APIs, and the old function names there throw at runtime.
+import * as Calendar from "expo-calendar/legacy";
+import * as MediaLibrary from "expo-media-library/legacy";
 import { api } from "./api";
 
 /**

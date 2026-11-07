@@ -8,7 +8,7 @@ const TYPES = new Set<EmailOtpType>(["email", "magiclink", "signup", "email_chan
 
 /**
  * Target of the button in the sign-in email. pylos.ai/auth/confirm hands it on as
- * tripplanner://auth-callback?token_hash=…&type=…; older links carry ?code=… instead.
+ * pylos://auth-callback?token_hash=…&type=…; older links carry ?code=… instead.
  */
 export default function AuthCallback() {
   const { code, token_hash, type, error_description } = useLocalSearchParams<{ code?: string; token_hash?: string; type?: string; error_description?: string }>();

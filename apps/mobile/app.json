@@ -2,30 +2,44 @@
   "expo": {
     "name": "Pylos",
     "slug": "pylos",
-    "scheme": "tripplanner",
-    "version": "0.1.0",
+    "scheme": ["pylos", "tripplanner"],
+    "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "icon": "./assets/icon.png",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#f6f0e8"
-    },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.example.tripplanner"
+      "bundleIdentifier": "ai.pylos.app",
+      "buildNumber": "1",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
-      "package": "com.example.tripplanner",
+      "package": "ai.pylos.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#3f7472"
-      }
+      },
+      "blockedPermissions": ["android.permission.WRITE_CALENDAR", "android.permission.WRITE_EXTERNAL_STORAGE"]
     },
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "resizeMode": "contain",
+          "backgroundColor": "#f6f0e8",
+          "dark": {
+            "image": "./assets/splash-icon-dark.png",
+            "backgroundColor": "#1d171c"
+          }
+        }
+      ],
       [
         "expo-calendar",
         {
@@ -38,9 +52,11 @@
         {
           "photosPermission": "Pylos looks at where and when your photos were taken to find the trips you've been on. Your photos never leave your phone.",
           "savePhotosPermission": false,
-          "isAccessMediaLocationEnabled": true
+          "isAccessMediaLocationEnabled": true,
+          "granularPermissions": ["photo"]
         }
-      ]
+      ],
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": false

@@ -6,7 +6,7 @@ import { supabaseFromCookies } from "@/lib/supabase/server";
 /** The kinds of emailed sign-in links we send (see docs/email-templates). */
 const TYPES = new Set<EmailOtpType>(["email", "magiclink", "signup", "email_change"]);
 /** The phone app's own links: it finishes signing in itself. */
-const APP_SCHEMES = new Set(["tripplanner:", "exp:", "exps:"]);
+const APP_SCHEMES = new Set(["pylos:", "tripplanner:", "exp:", "exps:"]);
 
 const parse = (raw: string | null) => {
   try {
