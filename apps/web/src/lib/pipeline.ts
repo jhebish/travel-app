@@ -58,7 +58,7 @@ import { HttpError } from "./http";
 import { PlacesError, placeById, placesCandidates, placesEnabled, verifyPlace } from "./places";
 import { supabaseAdmin } from "./supabase/server";
 import { tasteBlock } from "./taste";
-import { addFriendsOnCreate, companionsFromHandles } from "./together";
+import { addFriendsOnCreate, companionsFromHandles, editPeople } from "./together";
 import { rateLimit, updateTrip } from "./tripAccess";
 import { toTrip, type TripRow } from "./trips";
 
@@ -186,15 +186,23 @@ async function groundItinerary(itin: Itinerary, cands: Candidate[], city: string
 // ---------------------------------------------------------------------------
 // Rate limit
 // ---------------------------------------------------------------------------
-async function checkRateLimit(ctx: Ctx, limit: number) {
-  await rateLimit(ctx, "build", limit, "You've built a lot of trips this hour. Try again a little later.");
+const TOO_MANY_BUILDS = "You've built a lot of trips this hour. Try again a little later.";
+
+/**
+ * Count one trip build against the hourly limit, before any work. Routes that do slow work of their
+ * own before generateTrip (reading a Typeform response) call this first and pass `counted: true`.
+ */
+export const countBuild = (ctx: Ctx, limit: number) => rateLimit(ctx, "build", limit, TOO_MANY_BUILDS);
+
+async function checkRateLimit(ctx: Ctx, limit: number, counted = false) {
+  if (!counted) await countBuild(ctx, limit);
   const since = new Date(Date.now() - 3600_000).toISOString();
   const { count } = await ctx.db
     .from("trips")
     .select("id", { count: "exact", head: true })
     .eq("user_id", ctx.user!.id)
     .gte("created_at", since);
-  if ((count ?? 0) >= limit) throw new HttpError(429, "You've built a lot of trips this hour. Try again a little later.", "rate_limited");
+  if ((count ?? 0) >= limit) throw new HttpError(429, TOO_MANY_BUILDS, "rate_limited");
 }
 
 // ---------------------------------------------------------------------------
@@ -248,13 +256,17 @@ function rolesFor(stops: Stop[], cands: Candidate[]): { name: string; time: stri
 const draftText = (stops: { name: string; time: string; role: StopRole }[]) =>
   stops.map((s, i) => `${i + 1}. ${s.time} ${s.name} (${s.role})`).join("\n");
 
-type Rebuild = (fix: { draft: string; problems: string }, attempt: number) => Promise<{ input: unknown; model: string }>;
+/** `deadline` (ms since the epoch) must be passed on to callTool: the rebuild has to be over by then. */
+type Rebuild = (fix: { draft: string; problems: string }, attempt: number, deadline: number) => Promise<{ input: unknown; model: string }>;
 
 /**
  * The day check (packages/core/src/quality.ts). A planned day that breaks the rules (four cafés,
  * nothing to see, a missing essential) is rebuilt once with its problems spelled out, if there's
  * time left. The rebuild is kept unless it's worse, and if it fails the first draft stands, so
  * the check can only make a day better.
+ *
+ * `until`: a rebuild starts only before this time. `deadline`: every call the rebuild makes must
+ * be over by then (callTool shortens its timeout and drops its retry), so it can't outlive the route.
  */
 async function balanceDay(
   label: string,
@@ -263,6 +275,7 @@ async function balanceDay(
   opts: DayCheckOptions,
   rebuild: Rebuild,
   until = Number.POSITIVE_INFINITY,
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<{ stops: Stop[]; theme?: string }> {
   const first = rolesFor(stops, cands);
   const issues = checkDay(first, opts);
@@ -274,7 +287,7 @@ async function balanceDay(
   }
   console.warn(`${label} failed the day check (${codes}); rebuilding`);
   try {
-    const { data } = await step(`${label} rebuild`, (attempt) => rebuild({ draft: draftText(first), problems: dayFixText(issues) }, attempt), DayResultSchema, 2);
+    const { data } = await step(`${label} rebuild`, (attempt) => rebuild({ draft: draftText(first), problems: dayFixText(issues) }, attempt, deadline), DayResultSchema, 2);
     const after = checkDay(rolesFor(data.stops, cands), opts);
     if (after.length > issues.length) return { stops };
     if (after.length) console.warn(`${label} rebuild still has: ${after.map((i) => i.code).join(", ")}`);
@@ -286,7 +299,10 @@ async function balanceDay(
 }
 
 /** A rebuild asks the fast model first, the main model only if the answer comes back malformed. */
-const fastThenMainOnce = (attempt: number) => ({ fast: attempt === 0 });
+const fastThenMainOnce = (attempt: number, deadline?: number) => ({
+  fast: attempt === 0,
+  deadline: deadline !== undefined && Number.isFinite(deadline) ? deadline : undefined,
+});
 
 /** Remove a place that appears on more than one day (days are planned in parallel). */
 function dedupeAcrossDays(itin: Itinerary) {
@@ -373,6 +389,8 @@ export interface PlanInputs {
   history: string;
   /** Days that fail the day check are rebuilt only before this time (ms), so a build stays inside its time limit. */
   rebuildUntil?: number;
+  /** Every model call a rebuild makes must be over by this time (ms): the hard stop under the route's limit. */
+  rebuildDeadline?: number;
 }
 
 type CuratorLists = { alwaysFeature: string; neverRecommend: string };
@@ -393,8 +411,14 @@ export function requestForCity(req: TripRequest, city: string | undefined): Trip
  * Every finished day is emitted straight away so the client can show it.
  */
 export async function planItinerary(req: TripRequest, inputs: PlanInputs, emit: Emit = () => {}): Promise<{ itin: Itinerary; model: string }> {
-  // The build route allows 120 s: a rebuild starting after ~65 s could run it out.
-  const withLimit = { ...inputs, rebuildUntil: inputs.rebuildUntil ?? Date.now() + 65_000 };
+  // The build route allows 120 s. A day is rebuilt only if its first draft is back within 50 s, and
+  // the rebuild's calls must be over by 110 s (callTool's deadline), leaving time to check and save.
+  const start = Date.now();
+  const withLimit = {
+    ...inputs,
+    rebuildUntil: inputs.rebuildUntil ?? start + 50_000,
+    rebuildDeadline: inputs.rebuildDeadline ?? start + 110_000,
+  };
   const out = req.mode === "multi" ? await planMulti(req, withLimit, emit) : await planSingle(req, withLimit, emit);
   dedupeAcrossDays(out.itin);
   emit({ type: "progress", pct: 88, label: placesEnabled() ? "Checking every place on the map" : "Finishing touches" });
@@ -409,7 +433,7 @@ interface Planned {
   candsByCity: Map<string, Candidate[]>;
 }
 
-async function planSingle(req: TripRequest, { eff, lists, history, rebuildUntil }: PlanInputs, emit: Emit): Promise<Planned> {
+async function planSingle(req: TripRequest, { eff, lists, history, rebuildUntil, rebuildDeadline }: PlanInputs, emit: Emit): Promise<Planned> {
   const progress = (pct: number, label: string) => emit({ type: "progress", pct, label });
   progress(8, "Gathering local picks");
   const cands = selectCandidates(await gatherCandidates(req), eff, req);
@@ -444,8 +468,10 @@ async function planSingle(req: TripRequest, { eff, lists, history, rebuildUntil 
       data.stops,
       cands,
       dayCheckOptions([req.extra, ...req.interests], d.mustSee ?? []),
-      (fix, attempt) => callTool(withHistory(history, buildPlanDayPrompt(req, eff, lists, o, i, cands, "", fix)), DAY_TOOL, 4000, fastThenMainOnce(attempt)),
+      (fix, attempt, deadline) =>
+        callTool(withHistory(history, buildPlanDayPrompt(req, eff, lists, o, i, cands, "", fix)), DAY_TOOL, 4000, fastThenMainOnce(attempt, deadline)),
       rebuildUntil,
+      rebuildDeadline,
     );
     const day: DayOut = { label: d.label || `Day ${i + 1}`, theme: balanced.theme || data.theme || d.theme, stops: balanced.stops };
     emit({ type: "day", index: i, day });
@@ -499,7 +525,7 @@ const RouteSchema = z.object({
   legs: salvage(RouteLegSchema, 1, 8),
 });
 
-async function planMulti(req: TripRequest, { eff, lists, history, rebuildUntil }: PlanInputs, emit: Emit): Promise<Planned> {
+async function planMulti(req: TripRequest, { eff, lists, history, rebuildUntil, rebuildDeadline }: PlanInputs, emit: Emit): Promise<Planned> {
   const progress = (pct: number, label: string) => emit({ type: "progress", pct, label });
   progress(8, `Mapping a route through ${req.destination}`);
   const { data: route, model } = await step(
@@ -578,14 +604,15 @@ async function planMulti(req: TripRequest, { eff, lists, history, rebuildUntil }
       data.stops,
       legCands[p.leg]!,
       dayCheckOptions([req.extra, ...req.interests]),
-      (fix, attempt) =>
+      (fix, attempt, deadline) =>
         callTool(
           withHistory(history, buildPlanDayPrompt(legReqs[p.leg]!, eff, lists, legOutlines[p.leg]!, p.within, legCands[p.leg]!, context, fix)),
           DAY_TOOL,
           4000,
-          fastThenMainOnce(attempt),
+          fastThenMainOnce(attempt, deadline),
         ),
       rebuildUntil,
+      rebuildDeadline,
     );
     const t = leg.transfer;
     const day: DayOut = {
@@ -652,7 +679,8 @@ async function groundByCity(itin: Itinerary, candsByCity: Map<string, Candidate[
   if (!itin.days.length) throw new HttpError(502, "We couldn't verify enough places for this trip. Try again or adjust the request.", "unverified");
 }
 
-export async function generateTrip(ctx: Ctx, reqIn: TripRequest, opts: { ip: string; tripsPerHour: number }, emit: Emit = () => {}) {
+/** `opts.counted`: the caller already counted this build (countBuild), so it isn't counted twice. */
+export async function generateTrip(ctx: Ctx, reqIn: TripRequest, opts: { ip: string; tripsPerHour: number; counted?: boolean }, emit: Emit = () => {}) {
   const t0 = Date.now();
   // No date and no month given (Typeform, the app): plan for the weeks ahead, so stops suit the season.
   // An explicit null means "not sure yet": an evergreen route.
@@ -661,7 +689,7 @@ export async function generateTrip(ctx: Ctx, reqIn: TripRequest, opts: { ip: str
   // Planning with friends: blend their taste in from the start.
   const companions = await companionsFromHandles(ctx, req.with ?? []);
   const [, { eff, lists }, history, visibility] = await Promise.all([
-    checkRateLimit(ctx, opts.tripsPerHour),
+    checkRateLimit(ctx, opts.tripsPerHour, opts.counted),
     loadSources(ctx),
     loadHistory(ctx, req.destination, { companions }),
     defaultVisibility(ctx),
@@ -691,7 +719,7 @@ export async function generateTrip(ctx: Ctx, reqIn: TripRequest, opts: { ip: str
     .single();
   if (missingColumn(error)) ({ data, error } = await admin.from("trips").insert(row).select("*").single());
   if (error || !data) throw new HttpError(500, "Your trip was built but couldn't be saved. Try again.");
-  if (companions.length) await addFriendsOnCreate(ctx, (data as TripRow).id, req.with ?? []);
+  if (companions.length) await addFriendsOnCreate(ctx, (data as TripRow).id, companions);
   console.log(`[build] total ${Date.now() - t0}ms`);
   emit({ type: "progress", pct: 100, label: "Done" });
   return toTrip(data as TripRow);
@@ -699,7 +727,13 @@ export async function generateTrip(ctx: Ctx, reqIn: TripRequest, opts: { ip: str
 
 export async function generateHotels(ctx: Ctx, row: TripRow, stay: StayPrefs, opts: { ip: string }) {
   const req: TripRequest = { ...row.request, stay: { ...stay, on: true } };
-  const [{ lists }, history] = await Promise.all([loadSources(ctx), loadHistory(ctx, req.destination)]);
+  // Whoever asks (the owner or a friend planning with them), the hotels are for everyone on the
+  // trip: the owner's taste plus their friends', as for edits.
+  const { companions } = await editPeople(row);
+  const [{ lists }, history] = await Promise.all([
+    loadSources(ctx),
+    loadHistory(ctx, req.destination, { ownerId: row.user_id, companions }),
+  ]);
   const eff: EffectiveSources = { weights: row.weights, blocked: (row.blocked ?? []).filter(isSourceId), custom: row.custom_mix };
   const route = row.itinerary.mode === "multi" ? row.itinerary.route ?? [] : [];
   // One place: three hotels. Several stops: two per stop, each checked against its own city.
@@ -811,6 +845,8 @@ export async function swapStop(ctx: Ctx, row: TripRow, day: number, index: numbe
 }
 
 export async function regenerateDay(ctx: Ctx, row: TripRow, day: number, hint: string, people: EditPeople = noPeople) {
+  // The edit route allows 60 s; the rebuild below must be over by 55 s after this point.
+  const began = Date.now();
   const current = row.itinerary.days[day];
   if (!current) throw new HttpError(404, "That day isn't in this trip anymore. Reload and try again.");
   await rateLimit(ctx, "edit", 60, "That's a lot of changes this hour. Try again a little later.");
@@ -836,14 +872,16 @@ export async function regenerateDay(ctx: Ctx, row: TripRow, day: number, hint: s
   const locked = current.stops.filter((_, i) => keep[i]);
   const lockedNames = new Set(locked.map((s) => s.name.toLowerCase()));
   // The same day check as new trips, judged on the whole day (kept stops included). The edit route
-  // allows 60 s, so a second pass only if the first came back quickly.
+  // allows 60 s, so a second pass only if the first came back quickly, and it must end by 55 s
+  // (counted from the start of this function, which is earlier than `started`).
   const balanced = await balanceDay(
     "rebuilt day",
     sortByTime([...locked, ...firstDraft.stops.filter((s) => !lockedNames.has(s.name.toLowerCase()))]),
     cands,
     dayCheckOptions([req.extra, ...req.interests, hint]),
-    (fix, attempt) => callTool(withHistory(history, prompt(fix)), DAY_TOOL, 4000, fastThenMainOnce(attempt)),
+    (fix, attempt, deadline) => callTool(withHistory(history, prompt(fix)), DAY_TOOL, 4000, fastThenMainOnce(attempt, deadline)),
     started + 25_000,
+    began + 55_000,
   );
   const parsed = { data: { theme: balanced.theme ?? firstDraft.theme, stops: balanced.stops } };
   const fresh = parsed.data.stops

@@ -25,7 +25,8 @@ export async function getSharedTrip(token: string): Promise<SharedTrip | null> {
     destination: row.destination,
     days: row.itinerary.days.length,
     party: row.request?.party ?? "",
-    itinerary: publicItinerary(row.itinerary),
+    // The request goes along so "About you"-driven notes are left out too.
+    itinerary: publicItinerary(row.itinerary, row.request),
     createdAt: row.created_at,
   };
 }

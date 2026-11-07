@@ -18,7 +18,7 @@ import {
   type Visibility,
 } from "@travel/core";
 import type { Ctx } from "./auth";
-import { HttpError } from "./http";
+import { HttpError, isUuid } from "./http";
 import { supabaseAdmin } from "./supabase/server";
 
 /**
@@ -144,10 +144,14 @@ export async function searchPeople(ctx: Ctx, q: string): Promise<(PersonDTO & { 
   const admin = supabaseAdmin();
   let rows: Pick<ProfileRow, "user_id" | "handle" | "display_name" | "home_city">[] = [];
   if (term) {
+    // Handles are a-z0-9_ only. A name in another script ("محمد", "李") leaves nothing to match a
+    // handle on, and an empty "handle.ilike.%%" would match everyone: search names alone then.
+    const handleTerm = term.toLowerCase().replace(/[^a-z0-9_]/g, "");
+    const filters = [handleTerm ? `handle.ilike.%${handleTerm}%` : "", `display_name.ilike.%${term}%`].filter(Boolean).join(",");
     const { data, error } = await admin
       .from("community_profiles")
       .select("user_id, handle, display_name, home_city")
-      .or(`handle.ilike.%${term.toLowerCase().replace(/[^a-z0-9_]/g, "")}%,display_name.ilike.%${term}%`)
+      .or(filters)
       .limit(20);
     check(error, "search");
     rows = data ?? [];
@@ -357,7 +361,7 @@ function toCommunityTrip(r: CTripRow, owner: PersonDTO, iLiked: boolean, withIti
     visibility: r.visibility,
     createdAt: r.created_at,
     owner,
-    ...(withItinerary ? { itinerary: publicItinerary(r.itinerary) } : {}),
+    ...(withItinerary ? { itinerary: publicItinerary(r.itinerary, r.request) } : {}),
   };
 }
 
@@ -378,7 +382,7 @@ async function canView(ctx: Ctx, r: Pick<CTripRow, "user_id" | "visibility">): P
 }
 
 export async function getCommunityTrip(ctx: Ctx, id: string): Promise<CommunityTrip | null> {
-  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  if (!isUuid(id)) return null;
   const { data, error } = await supabaseAdmin().from("trips").select(CTRIP_COLS).eq("id", id).maybeSingle();
   check(error, "trip");
   const r = data as CTripRow | null;
@@ -437,6 +441,7 @@ export async function setLike(ctx: Ctx, tripId: string, on: boolean): Promise<nu
 
 export async function setVisibility(ctx: Ctx, tripId: string, visibility: Visibility) {
   if (!ctx.user) throw new HttpError(401, "Sign in to continue.", "unauthenticated");
+  if (!isUuid(tripId)) throw new HttpError(404, "We couldn't find that trip.");
   if (visibility !== "private") {
     requireMember(ctx);
     if (!(await getMyProfile(ctx))) throw new HttpError(400, "Create your community profile first, then you can share trips.", "needs_profile");

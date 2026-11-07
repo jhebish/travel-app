@@ -27,16 +27,23 @@ export function extractJson(text: string): unknown | null {
   return null;
 }
 
+/** With a deadline, a call isn't started when less than this is left: it couldn't finish. */
+const MIN_CALL_MS = 5_000;
+
 /**
  * Ask Claude for structured output. The model is offered one tool and told to call it.
  * Some models don't accept a forced tool_choice, so we use "auto" and fall back to
  * parsing JSON from the text if the model answers without calling the tool.
+ *
+ * `deadline` (ms since the epoch): the call must be over by then, retry included. It gets a
+ * shorter timeout when less time is left, no retry when two attempts wouldn't fit, and isn't
+ * made at all (HttpError "deadline") when there's under five seconds to go.
  */
 export async function callTool(
   prompt: string,
   tool: ToolDef,
   maxTokens = 16000,
-  opts: { fast?: boolean } = {},
+  opts: { fast?: boolean; deadline?: number } = {},
 ): Promise<{ input: unknown; model: string }> {
   const main = env.claudeModel();
   const model = opts.fast ? env.fastModel() : main;
@@ -45,8 +52,14 @@ export async function callTool(
   // The tool call is forced: with "auto" the model wrote ~3x more text (thinking out loud before
   // calling the tool), which was most of each day's 10–14 s. "auto" stays as a fallback.
   let forced = true;
-  const create = (m: string) =>
-    anthropic().messages.create(
+  const create = (m: string) => {
+    const normal = m === main ? 90_000 : 45_000;
+    const left = opts.deadline ? opts.deadline - Date.now() : Number.POSITIVE_INFINITY;
+    if (left < MIN_CALL_MS) throw new HttpError(504, "There wasn't enough time left to finish that. Try again.", "deadline");
+    const timeout = Math.min(normal, left);
+    // The SDK retries timeouts too: only allow it when a second full attempt still fits.
+    const maxRetries = left < 2 * timeout + 2_000 ? 0 : 1;
+    return anthropic().messages.create(
       {
         model: m,
         max_tokens: maxTokens,
@@ -55,8 +68,9 @@ export async function callTool(
         tool_choice: forced ? { type: "tool", name: tool.name } : { type: "auto" },
         messages: [{ role: "user", content: prompt }],
       },
-      { timeout: m === main ? 90_000 : 45_000, maxRetries: 1 },
+      { timeout, maxRetries },
     );
+  };
   const t0 = Date.now();
   let res: Anthropic.Message;
   try {

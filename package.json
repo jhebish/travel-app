@@ -7,7 +7,7 @@
     "dev": "pnpm --filter @travel/web dev",
     "dev:mobile": "pnpm --filter @travel/mobile start",
     "build": "pnpm --filter @travel/web build",
-    "test": "pnpm --filter @travel/core test",
+    "test": "pnpm --filter @travel/core --filter @travel/web test",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm --filter @travel/web lint"
   },

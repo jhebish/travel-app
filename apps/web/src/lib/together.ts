@@ -9,7 +9,8 @@ import { toSummary, type TripRow } from "./trips";
 /**
  * Planning together: a trip's owner plus friends they added (or who joined with an invite link).
  * Everyone can see the plan, say which stops they're in for, swap stops and rebuild days; the
- * planner blends everyone's taste. Only the owner can share it publicly or delete it.
+ * planner blends everyone's taste. Only the owner can share it publicly, invite people (by adding
+ * them or with a link), remove them, or delete it.
  */
 
 const INVITE_DAYS = 14;
@@ -132,25 +133,49 @@ export async function addFriend(ctx: Ctx, row: TripRow, handle: string) {
   await addMemberRow(row.id, uid, ctx.user!.id);
 }
 
-/** Add friends when a trip is first built (handles from the planner), mutual follows only. */
-export async function addFriendsOnCreate(ctx: Ctx, tripId: string, handles: string[]) {
-  for (const h of handles.slice(0, MAX_PEOPLE - 1)) await addFriend(ctx, { id: tripId, user_id: ctx.user!.id } as TripRow, h).catch(() => {});
+/**
+ * Add the friends a new trip was planned with (from companionsFromHandles, so already checked as
+ * mutual follows) to it, in one insert. The trip was just built and saved, so a failure here is
+ * logged rather than failing the build.
+ */
+export async function addFriendsOnCreate(ctx: Ctx, tripId: string, companions: Companion[]) {
+  const me = ctx.user!.id;
+  const ids = [...new Set(companions.map((c) => c.userId))].filter((id) => id !== me).slice(0, MAX_PEOPLE - 1);
+  if (!ids.length) return;
+  const { error } = await supabaseAdmin()
+    .from("trip_members")
+    .insert(ids.map((user_id) => ({ trip_id: tripId, user_id, added_by: me })));
+  if (error && error.code !== "23505") console.error("adding friends to a new trip failed", error.code ?? "", (error.message ?? "").slice(0, 120));
 }
 
 /** Their tastes, to plan a new trip around everyone (mutual follows only). */
 export async function companionsFromHandles(ctx: Ctx, handles: string[]): Promise<Companion[]> {
   if (!ctx.user || !handles.length) return [];
+  const me = ctx.user.id;
   const { data } = await supabaseAdmin().from("community_profiles").select("user_id, display_name, handle").in("handle", handles.slice(0, MAX_PEOPLE - 1).map((h) => h.toLowerCase()));
-  const out: Companion[] = [];
-  for (const r of data ?? []) if (await isMutual(ctx.user.id, r.user_id as string)) out.push({ userId: r.user_id as string, label: r.display_name as string });
-  return out;
+  const rows = data ?? [];
+  const mutual = await Promise.all(rows.map((r) => isMutual(me, r.user_id as string)));
+  return rows.filter((_, i) => mutual[i]).map((r) => ({ userId: r.user_id as string, label: r.display_name as string }));
 }
 
+/**
+ * The owner removes someone, or someone leaves. Their invite links go first, so a failure leaves
+ * them on the trip (and the owner can try again) rather than able to walk straight back in. When
+ * the owner removes someone, every link to the trip goes, because the person removed may hold one
+ * of the owner's own; the owner makes a new link for anyone still to join. Someone leaving takes
+ * only the links they made.
+ */
 export async function removePerson(ctx: Ctx, row: TripRow, userId: string) {
-  if (ctx.user!.id !== row.user_id && ctx.user!.id !== userId) throw new HttpError(403, "Only the trip's owner can remove other people.");
-  const { error } = await supabaseAdmin().from("trip_members").delete().eq("trip_id", row.id).eq("user_id", userId);
+  const me = ctx.user!.id;
+  if (me !== row.user_id && me !== userId) throw new HttpError(403, "Only the trip's owner can remove other people.");
+  if (userId === row.user_id) throw new HttpError(400, "The trip's organizer can't be removed from it.");
+  const db = supabaseAdmin();
+  const links = db.from("trip_invites").delete().eq("trip_id", row.id);
+  const { error: linkErr } = me === row.user_id ? await links : await links.eq("created_by", userId);
+  if (linkErr) throw linkErr;
+  const { error } = await db.from("trip_members").delete().eq("trip_id", row.id).eq("user_id", userId);
   if (error) throw error;
-  await supabaseAdmin().from("trip_reactions").delete().eq("trip_id", row.id).eq("user_id", userId);
+  await db.from("trip_reactions").delete().eq("trip_id", row.id).eq("user_id", userId);
 }
 
 /** A link anyone can open to join the planning (valid for two weeks). */

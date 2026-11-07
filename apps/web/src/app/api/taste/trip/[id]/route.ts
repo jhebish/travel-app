@@ -1,7 +1,7 @@
 import { SIGNAL_KINDS, TasteSignalSchema } from "@travel/core";
 import { z } from "zod";
 import { requireUser, type Ctx } from "@/lib/auth";
-import { HttpError, handler, json, parseBody } from "@/lib/http";
+import { HttpError, handler, isUuid, json, parseBody } from "@/lib/http";
 import { signalRow } from "@/lib/taste";
 
 export const runtime = "nodejs";
@@ -10,7 +10,7 @@ type P = { params: { id: string } };
 
 /** What you did on one past trip: the places you typed in for it. */
 async function ownTrip(ctx: Ctx & { user: { id: string } }, id: string) {
-  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new HttpError(404, "Trip not found.");
+  if (!isUuid(id)) throw new HttpError(404, "Trip not found.");
   const { data } = await ctx.db.from("past_trips").select("id, city, country_code, year, month").eq("id", id).eq("user_id", ctx.user.id).maybeSingle();
   if (!data) throw new HttpError(404, "Trip not found.");
   return data as { id: string; city: string; country_code: string; year: number | null; month: number | null };

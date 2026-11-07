@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
-import { handler, json, parseBody } from "@/lib/http";
+import { HttpError, handler, json, parseBody } from "@/lib/http";
 import { addFriend, createInvite, loadTogether, mutualFriends } from "@/lib/together";
 import { tripFor } from "@/lib/tripAccess";
 
@@ -21,12 +21,16 @@ const Body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("add"), handle: z.string().trim().min(3).max(24) }),
 ]);
 
-/** Make an invite link (anyone planning the trip), or add a friend directly (the owner). */
+/**
+ * Make an invite link or add a friend directly: the owner only. A link a friend made would still
+ * let them back in after the owner removed them (see removePerson).
+ */
 export const POST = handler(async (req: Request, { params }: P) => {
   const ctx = await requireUser(req);
   const body = await parseBody(req, Body);
   if (body.action === "invite") {
-    const { row } = await tripFor(ctx, params.id);
+    const { row, role } = await tripFor(ctx, params.id);
+    if (role !== "owner") throw new HttpError(403, "Only the trip's organizer can make invite links. Ask them for one.", "forbidden");
     const token = await createInvite(ctx, row);
     return json({ url: `${new URL(req.url).origin}/join/${token}` }, 201);
   }

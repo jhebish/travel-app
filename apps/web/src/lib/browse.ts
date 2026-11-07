@@ -22,6 +22,7 @@ import { myPlaces } from "./community";
 import { HttpError } from "./http";
 import { loadSources, planItinerary } from "./pipeline";
 import { supabaseAdmin } from "./supabase/server";
+import { rateLimit } from "./tripAccess";
 
 /** The trip city keys that count toward a destination ("the cyclades", "cyclades"). */
 const matchKeys = (d: Destination) => new Set([cityKey(d.name), d.key.replace(/-/g, " "), cityKey(d.name.replace(/^the\s+/i, ""))]);
@@ -145,7 +146,7 @@ async function planSample(d: Destination, days?: number): Promise<Itinerary> {
   const t0 = Date.now();
   const { itin } = await planItinerary(req, { eff, lists, history: "" });
   console.log(`[sample] ${d.key} ${req.mode} ${req.days}d in ${Date.now() - t0}ms`);
-  return publicItinerary(itin);
+  return publicItinerary(itin, req);
 }
 
 // ---------------------------------------------------------------------------
@@ -181,9 +182,16 @@ export interface ForYouResult {
 }
 
 const MIN_PLACES = 2;
+/** Picks are kept two weeks while the places they came from stay the same. */
+const KEEP_PICKS_MS = 14 * 86_400_000;
+/** An answer with no usable picks is kept a day: long enough that page views aren't model calls. */
+const KEEP_EMPTY_MS = 86_400_000;
+/** Fresh predictions (model calls) per person per hour; over it, the last picks are shown. */
+const PICKS_PER_HOUR = 12;
 
 export async function forYou(ctx: Ctx): Promise<ForYouResult> {
   if (!ctx.user) return { picks: [], placesLogged: 0, needMore: true };
+  const userId = ctx.user.id;
   const places = await myPlaces(ctx).catch(() => []);
   if (places.length < MIN_PLACES) return { picks: [], placesLogged: places.length, needMore: true };
 
@@ -191,15 +199,42 @@ export async function forYou(ctx: Ctx): Promise<ForYouResult> {
     .update(JSON.stringify(places.map((p) => [p.city, p.countryCode, p.rating, p.highlights]).sort()))
     .digest("hex");
   const admin = supabaseAdmin();
-  const cached = await admin.from("user_recs").select("places_hash, picks, created_at").eq("user_id", ctx.user.id).maybeSingle();
-  if (!cached.error && cached.data && cached.data.places_hash === hash && Date.now() - new Date(cached.data.created_at as string).getTime() < 14 * 86_400_000) {
-    return { picks: cached.data.picks as ForYouPick[], placesLogged: places.length, needMore: false };
+  const cached = await admin.from("user_recs").select("places_hash, picks, created_at").eq("user_id", userId).maybeSingle();
+  const prev =
+    !cached.error && cached.data
+      ? {
+          hash: cached.data.places_hash as string,
+          picks: ((cached.data.picks as ForYouPick[] | null) ?? []).filter(Boolean),
+          age: Date.now() - new Date(cached.data.created_at as string).getTime(),
+        }
+      : null;
+  if (prev && prev.hash === hash && prev.age < (prev.picks.length ? KEEP_PICKS_MS : KEEP_EMPTY_MS)) {
+    return { picks: prev.picks, placesLogged: places.length, needMore: false };
   }
+  const result = (picks: ForYouPick[]): ForYouResult => ({ picks, placesLogged: places.length, needMore: false });
+  // Remember every answer, empty ones too, so the home page doesn't ask the model on each visit.
+  const remember = async (picks: ForYouPick[]) => {
+    const { error } = await admin.from("user_recs").upsert({ user_id: userId, places_hash: hash, picks, created_at: new Date().toISOString() });
+    if (error && !missingTable(error)) console.error("save recs failed", error.message);
+  };
 
   const been = new Set(places.map((p) => cityKey(p.city)));
   const beenCountries = new Set(places.map((p) => p.countryCode.toUpperCase()));
   const month = new Date().getUTCMonth() + 1;
   const options = DESTINATIONS.filter((d) => !been.has(cityKey(d.name)));
+  if (!options.length) {
+    await remember([]);
+    return result([]);
+  }
+
+  // A model call: count it ("sample" is the browse page's kind). Over the limit, show the last
+  // picks rather than an error; this runs on a page load.
+  try {
+    await rateLimit(ctx, "sample", PICKS_PER_HOUR, "Too many new predictions this hour.");
+  } catch (e) {
+    if (e instanceof HttpError && e.status === 429) return result(prev?.picks ?? []);
+    throw e;
+  }
   const prompt = `PLACES THIS TRAVELER HAS BEEN (best rated first)
 ${places
   .slice()
@@ -223,9 +258,6 @@ Call submit_picks.`;
   const picks = parsed.success
     ? parsed.data.picks.filter((p, i, a) => DESTINATION_BY_KEY[p.key] && !been.has(cityKey(DESTINATION_BY_KEY[p.key]!.name)) && a.findIndex((x) => x.key === p.key) === i).slice(0, 4)
     : [];
-  if (picks.length) {
-    const { error } = await admin.from("user_recs").upsert({ user_id: ctx.user.id, places_hash: hash, picks, created_at: new Date().toISOString() });
-    if (error && !missingTable(error)) console.error("save recs failed", error.message);
-  }
-  return { picks, placesLogged: places.length, needMore: false };
+  await remember(picks);
+  return result(picks);
 }

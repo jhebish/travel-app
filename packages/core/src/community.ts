@@ -2,6 +2,7 @@ import { z } from "zod";
 import { isCountryCode } from "./countries";
 import { cityKey, travelStats, TRAVEL_LEVELS, type TravelLevel, type TravelStats } from "./stats";
 export { cityKey, travelStats, TRAVEL_LEVELS, type TravelLevel, type TravelStats } from "./stats";
+import type { ABOUT_OPTIONS } from "./labels";
 import type { Itinerary } from "./schemas";
 import type { TasteSignal } from "./taste";
 
@@ -165,15 +166,30 @@ export function topTripScore(t: { likes: number; ownerRating: number; createdAt:
   return t.likes * 3 + t.ownerRating + Math.max(0, 2 - ageDays / 90);
 }
 
-/** Strip anything the planner used that shouldn't leave the owner's account. */
-export function publicItinerary(it: Itinerary): Itinerary {
+/**
+ * "About you" answers that the trip's notes are written around (the planner adds an LGBTQ+ safety
+ * note for an LGBTQ+ traveler), so notes shown to anyone else would give the answer away.
+ */
+const NOTES_REVEAL: readonly (typeof ABOUT_OPTIONS)[number][] = ["LGBTQ+ traveler"];
+
+/**
+ * Strip anything the planner used that shouldn't leave the owner's account. Pass the trip's
+ * request (its "About you" answers stay private): when they include one of NOTES_REVEAL, the
+ * notes are left out too. Every public view of someone's trip (share links, community trips,
+ * link previews) goes through here.
+ */
+export function publicItinerary(it: Itinerary, request?: { about?: readonly string[] | null } | null): Itinerary {
   const { replaced: _replaced, ...rest } = it;
+  const raw: unknown = request?.about;
+  const about: readonly unknown[] = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
+  const privateNotes = about.some((a) => (NOTES_REVEAL as readonly unknown[]).includes(a));
   // "For you" lines are about the owner's own trips and favorites: never shown to anyone else.
   return {
     ...rest,
     summary: "",
     forYou: "",
     replaced: [],
+    notes: privateNotes ? [] : rest.notes,
     days: rest.days.map((d) => ({ ...d, stops: d.stops.map(({ locked: _l, candidateId: _c, forYou: _f, ...s }) => s) })),
     hotels: (rest.hotels ?? []).map(({ candidateId: _c, expediaPropertyId: _e, liveRate: _r, forYou: _f, ...h }) => h),
   };

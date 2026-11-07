@@ -58,14 +58,21 @@ const PRICE_LEVELS: Record<string, number> = {
  * After an error that will keep happening (key, API switched off, quota, Google down), Places is
  * paused for a few minutes. Trips then build from unverified picks, as with no key, instead of
  * every lookup failing and every place being dropped.
+ *
+ * Photos (/api/photo and galleries) pause on their own: they're public, requested in bulk, and
+ * have their own quota, so photo requests running into a limit must not switch off checking the
+ * places in people's trips.
  */
 const PAUSE_MS = 5 * 60_000;
-let pausedUntil = 0;
-const pauseOn = (status: number, body = "") => {
-  if (status === 401 || status === 403 || status === 429 || status >= 500 || /api key/i.test(body)) pausedUntil = Date.now() + PAUSE_MS;
+type PauseKind = "places" | "photos";
+const pausedUntil: Record<PauseKind, number> = { places: 0, photos: 0 };
+const pauseOn = (status: number, body = "", kind: PauseKind = "places") => {
+  if (status === 401 || status === 403 || status === 429 || status >= 500 || /api key/i.test(body)) pausedUntil[kind] = Date.now() + PAUSE_MS;
 };
 
-export const placesEnabled = () => !!env.placesKey() && Date.now() >= pausedUntil;
+export const placesEnabled = () => !!env.placesKey() && Date.now() >= pausedUntil.places;
+/** Photo lookups have their own pause (see above). */
+export const photosEnabled = () => !!env.placesKey() && Date.now() >= pausedUntil.photos;
 
 /** Cached lookups. `load` throws on a failed request, so failures are never cached. */
 async function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
@@ -80,10 +87,10 @@ async function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
 /** A failed Places request: Google couldn't answer, which is not the same as "no such place". */
 export class PlacesError extends Error {}
 
-async function failed(res: Response, what: string): Promise<never> {
+async function failed(res: Response, what: string, kind: PauseKind = "places"): Promise<never> {
   const body = (await res.text().catch(() => "")).slice(0, 200);
   console.error(`Places ${what} failed`, res.status, body);
-  pauseOn(res.status, body);
+  pauseOn(res.status, body, kind);
   throw new PlacesError(`${what} ${res.status}`);
 }
 
@@ -211,14 +218,14 @@ export async function placeById(placeId: string): Promise<PlaceVerification | nu
 
 /** All of a place's photos (up to ten), for its gallery when a trip stored only a few (cached). */
 export async function placePhotos(placeId: string): Promise<PlacePhoto[]> {
-  if (!placesEnabled() || !/^[A-Za-z0-9_-]{10,300}$/.test(placeId)) return [];
+  if (!photosEnabled() || !/^[A-Za-z0-9_-]{10,300}$/.test(placeId)) return [];
   return cached(`photos1:${placeId}`, async () => {
     const res = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
       headers: { "X-Goog-Api-Key": env.placesKey(), "X-Goog-FieldMask": "photos" },
       cache: "no-store",
     });
     if (res.status === 404) return [];
-    if (!res.ok) return failed(res, "photos");
+    if (!res.ok) return failed(res, "photos", "photos");
     return toPhotos(((await res.json()) as GPlace).photos) ?? [];
   }).catch((e) => {
     if (e instanceof PlacesError) return [];
@@ -228,13 +235,13 @@ export async function placePhotos(placeId: string): Promise<PlacePhoto[]> {
 
 /** A fresh photo for a place (photo names expire; ids don't). */
 export async function freshPhotoName(placeId: string): Promise<string | null> {
-  if (!placesEnabled() || !/^[A-Za-z0-9_-]+$/.test(placeId)) return null;
+  if (!photosEnabled() || !/^[A-Za-z0-9_-]+$/.test(placeId)) return null;
   const res = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
     headers: { "X-Goog-Api-Key": env.placesKey(), "X-Goog-FieldMask": "photos" },
     cache: "no-store",
   });
   if (!res.ok) {
-    pauseOn(res.status);
+    pauseOn(res.status, "", "photos");
     return null;
   }
   const body = (await res.json()) as { photos?: { name: string }[] };
@@ -243,13 +250,13 @@ export async function freshPhotoName(placeId: string): Promise<string | null> {
 
 /** A short-lived image URL for a photo name at a given width (null if the name expired). */
 export async function photoUrl(name: string, width: number): Promise<string | null> {
-  if (!placesEnabled()) return null;
+  if (!photosEnabled()) return null;
   const res = await fetch(`https://places.googleapis.com/v1/${name}/media?maxWidthPx=${width}&skipHttpRedirect=true`, {
     headers: { "X-Goog-Api-Key": env.placesKey() },
     cache: "no-store",
   });
   if (!res.ok) {
-    pauseOn(res.status); // an expired photo name is a 400/404 and doesn't pause
+    pauseOn(res.status, "", "photos"); // an expired photo name is a 400/404 and doesn't pause
     return null;
   }
   const body = (await res.json()) as { photoUri?: string };

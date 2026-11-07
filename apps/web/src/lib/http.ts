@@ -13,6 +13,12 @@ export class HttpError extends Error {
 
 export const json = (data: unknown, status = 200) => NextResponse.json(data, { status });
 
+/**
+ * A row id from a URL: a canonical UUID. Check before querying, so junk ids are a 404 rather than
+ * a database "invalid input syntax for type uuid" error (a 500).
+ */
+export const isUuid = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
 export async function parseBody<S extends ZodTypeAny>(req: Request, schema: S): Promise<output<S>> {
   let raw: unknown;
   try {

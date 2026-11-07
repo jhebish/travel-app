@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { HttpError, handler, parseBody } from "@/lib/http";
 import { clientIp } from "@/lib/ip";
-import { generateTrip } from "@/lib/pipeline";
+import { countBuild, generateTrip } from "@/lib/pipeline";
 import { ndjsonResponse } from "@/lib/stream";
 import { fetchResponse } from "@/lib/typeform";
 
@@ -21,7 +21,10 @@ const Body = z.object({ responseId: z.string().trim().min(4).max(100).regex(/^[A
 export const POST = handler(async (req: Request) => {
   const ctx = await requireUser(req);
   const { responseId } = await parseBody(req, Body);
-  const opts = { ip: clientIp(req), tripsPerHour: env.tripsPerHour() };
+  const opts = { ip: clientIp(req), tripsPerHour: env.tripsPerHour(), counted: true };
+  // Count the build before reading the answers: that polls Typeform's API for up to ~14 s, so it
+  // mustn't be free to repeat (it would use up the account's Typeform rate limit for everyone).
+  await countBuild(ctx, opts.tripsPerHour);
 
   return ndjsonResponse(async (send) => {
     send({ type: "progress", pct: 1, label: "Reading your answers" });

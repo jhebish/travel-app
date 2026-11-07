@@ -1,13 +1,13 @@
 import { PastTripInputSchema } from "@travel/core";
 import { requireUser } from "@/lib/auth";
 import { deletePlace, updatePlace } from "@/lib/community";
-import { HttpError, handler, json, parseBody } from "@/lib/http";
+import { HttpError, handler, isUuid, json, parseBody } from "@/lib/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const checkId = (id: string) => {
-  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new HttpError(404, "That place isn't in your list.");
+  if (!isUuid(id)) throw new HttpError(404, "That place isn't in your list.");
 };
 
 export const PUT = handler(async (req: Request, { params }: { params: { id: string } }) => {

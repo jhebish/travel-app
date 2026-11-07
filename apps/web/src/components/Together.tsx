@@ -72,6 +72,9 @@ export const TogetherSheet = forwardRef<
     run(p.userId, async () => {
       await api(`/api/trips/${tripId}/together/people/${p.userId}`, { method: "DELETE" });
       if (p.me) return onLeft();
+      // Removing someone turns off every invite link to the trip (they may hold one): a link
+      // still shown here would no longer work.
+      setInvite(null);
       if (together) onChange({ ...together, people: together.people.filter((x) => x.userId !== p.userId) });
     });
 
@@ -107,32 +110,37 @@ export const TogetherSheet = forwardRef<
           {people.length <= 1 && <li className="hint">Just you so far.</li>}
         </ul>
 
-        <div className="field">
-          <span className="label">Invite with a link</span>
-          {invite ? (
-            <div className="copyrow">
-              <input type="text" readOnly value={invite} aria-label="Invite link" onFocus={(e) => e.currentTarget.select()} />
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={() =>
-                  navigator.clipboard.writeText(invite).then(() => {
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1800);
-                  })
-                }
-              >
-                {copied ? "Copied" : "Copy"}
+        {!isOwner && <p className="hint">Want to bring someone else in? Ask the organizer for an invite link.</p>}
+        {isOwner && (
+          <div className="field">
+            <span className="label">Invite with a link</span>
+            {invite ? (
+              <div className="copyrow">
+                <input type="text" readOnly value={invite} aria-label="Invite link" onFocus={(e) => e.currentTarget.select()} />
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={() =>
+                    navigator.clipboard.writeText(invite).then(() => {
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 1800);
+                    })
+                  }
+                >
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+            ) : (
+              <button type="button" className="btn ghost" style={{ alignSelf: "flex-start" }} disabled={busy === "invite"} onClick={makeInvite}>
+                <IconLink />
+                {busy === "invite" ? "Making a link…" : "Create invite link"}
               </button>
-            </div>
-          ) : (
-            <button type="button" className="btn ghost" style={{ alignSelf: "flex-start" }} disabled={busy === "invite"} onClick={makeInvite}>
-              <IconLink />
-              {busy === "invite" ? "Making a link…" : "Create invite link"}
-            </button>
-          )}
-          <span className="hint">Anyone with the link can join the planning for two weeks. They don&apos;t need an account.</span>
-        </div>
+            )}
+            <span className="hint">
+              Anyone with the link can join the planning for two weeks. They don&apos;t need an account. Removing someone turns off the links you&apos;ve made.
+            </span>
+          </div>
+        )}
 
         {isOwner && (
           <div className="field">
