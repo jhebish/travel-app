@@ -1,7 +1,10 @@
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
+import { Alert } from "react-native";
 import { api } from "../../src/api";
+import { useAuth } from "../../src/auth";
 import { scanCalendar, scanPhotos } from "../../src/deviceImports";
+import { supabase } from "../../src/supabase";
 import { Button, Card, H1, H2, Loading, P, Screen, Status } from "../../src/ui";
 
 type Busy = null | "calendar" | "photos";
@@ -12,6 +15,38 @@ export default function You() {
   const [progress, setProgress] = useState("");
   const [msg, setMsg] = useState<{ text: string; err?: boolean } | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
+  const { session } = useAuth();
+  const router = useRouter();
+  const email = session?.user && !session.user.is_anonymous ? session.user.email : undefined;
+  const [deleting, setDeleting] = useState(false);
+
+  function confirmDelete() {
+    Alert.alert(
+      "Delete your account?",
+      `This permanently deletes your trips, saved places and taste profile for ${email ?? "this account"}. It can't be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: () => void deleteAccount() },
+      ],
+    );
+  }
+
+  async function deleteAccount() {
+    setDeleting(true);
+    setMsg(null);
+    try {
+      await api("/api/me", { method: "DELETE", json: { confirm: "delete" } });
+      // The account is gone: drop it from this phone and carry on as a new guest.
+      await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+      setSummary(null);
+      setMsg({ text: "Your account and everything in it has been deleted." });
+      router.replace("/");
+    } catch (e) {
+      setMsg({ text: (e as Error).message, err: true });
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const loadTaste = useCallback(() => {
     api<{ profile: { summary?: string } | null }>("/api/taste")
@@ -74,6 +109,21 @@ export default function You() {
       </Card>
       {progress ? <Loading text={progress} /> : null}
       <Status text={msg?.text} err={msg?.err} />
+      <Card>
+        <H2>Account</H2>
+        {email ? (
+          <>
+            <P muted>Signed in as {email}</P>
+            <Button ghost title="Sign out" disabled={deleting} onPress={() => void supabase.auth.signOut()} />
+            <Button ghost danger title={deleting ? "Deleting…" : "Delete account"} disabled={deleting || !!busy} onPress={confirmDelete} />
+          </>
+        ) : (
+          <>
+            <P muted>You&apos;re using Pylos as a guest. Sign in with your email to keep your trips on every device.</P>
+            <Button ghost title="Sign in" onPress={() => router.push("/login")} />
+          </>
+        )}
+      </Card>
     </Screen>
   );
 }

@@ -2,7 +2,7 @@
 import { SIGNAL_KIND_LABELS, travelStats, type MyCommunityProfile, type PastTrip, type PickKind, type Trip, type Visibility } from "@travel/core";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { PlaceChip, PlaceForm, StatsRow, countryName } from "@/components/community";
 import { ConnectCard } from "@/components/connect";
 import { QuickLog, type PresetTrip } from "@/components/QuickLog";
@@ -43,6 +43,23 @@ function ProfileEditor() {
   const logCity = params.get("city") ?? "";
   const taste = useTaste(!!me?.user);
   const [preset, setPreset] = useState<PresetTrip | null>(null);
+  const deleteDlg = useRef<HTMLDialogElement>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteErr, setDeleteErr] = useState<string | null>(null);
+
+  async function deleteAccount() {
+    setDeleting(true);
+    setDeleteErr(null);
+    try {
+      await api("/api/me", { method: "DELETE", json: { confirm: "delete" } });
+      // The account is gone; drop this browser's session too.
+      await supabaseBrowser().auth.signOut({ scope: "local" }).catch(() => {});
+      window.location.href = "/";
+    } catch (e) {
+      setDeleteErr(e instanceof ApiError ? e.message : "We couldn't delete your account. Try again.");
+      setDeleting(false);
+    }
+  }
 
   // Logging a Pylos trip ("I went"): tick what you loved from that plan's hotels and stops.
   useEffect(() => {
@@ -341,7 +358,42 @@ function ProfileEditor() {
             You&apos;re using Pylos as a guest. <Link href="/login?next=/profile">Sign in with your email</Link> to keep your trips on every device.
           </p>
         )}
+        {signedIn && (
+          <button
+            type="button"
+            className="linkbtn danger"
+            style={{ alignSelf: "flex-start" }}
+            onClick={() => {
+              setDeleteErr(null);
+              deleteDlg.current?.showModal();
+            }}
+          >
+            Delete account
+          </button>
+        )}
       </section>
+
+      <dialog ref={deleteDlg} className="sheet" aria-labelledby="delete-title" onClick={(e) => e.target === deleteDlg.current && !deleting && deleteDlg.current?.close()}>
+        <div className="stack">
+          <div className="head">
+            <h2 id="delete-title">Delete your account?</h2>
+            <p className="hint">
+              This permanently deletes your trips, saved places, taste profile and community profile for {me?.user?.email ?? "this account"}. It can&apos;t be undone.
+            </p>
+          </div>
+          <button type="button" className="btn ghost danger" disabled={deleting} onClick={deleteAccount}>
+            {deleting ? "Deleting…" : "Delete my account"}
+          </button>
+          <button type="button" className="linkbtn" style={{ alignSelf: "flex-start" }} disabled={deleting} onClick={() => deleteDlg.current?.close()}>
+            Cancel
+          </button>
+          {deleteErr && (
+            <p className="status err" role="alert">
+              {deleteErr}
+            </p>
+          )}
+        </div>
+      </dialog>
     </div>
   );
 }

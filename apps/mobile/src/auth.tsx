@@ -20,9 +20,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setReady(true);
     });
     const { data } = supabase.auth.onAuthStateChange((event, s) => {
+      // After signing out (or deleting the account), carry straight on as a fresh guest rather
+      // than passing through "no session", which would send the app to the sign-in screen.
+      if (event === "SIGNED_OUT") {
+        supabase.auth.signInAnonymously().catch(() => setSession(null));
+        return;
+      }
       setSession(s);
-      // After signing out, continue as a fresh guest.
-      if (event === "SIGNED_OUT") supabase.auth.signInAnonymously().catch(() => {});
     });
     // Refresh tokens only while the app is in the foreground.
     const sub = AppState.addEventListener("change", (state) => {
