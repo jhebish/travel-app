@@ -42,7 +42,7 @@ export function PlacePhoto({
   sizes?: string;
   credit?: boolean;
   onOpen?: () => void;
-  /** How many photos the gallery has, shown on the badge. */
+  /** How many photos the gallery has. Shows the photos badge; leave out for no badge. */
   count?: number;
 }) {
   const [failed, setFailed] = useState(false);
@@ -63,10 +63,12 @@ export function PlacePhoto({
       {onOpen ? (
         <button type="button" className="pphoto-open" onClick={onOpen} aria-label={`See photos of ${alt}`}>
           {img}
-          <span className="pphoto-count" aria-hidden="true">
-            <IconPhotos />
-            {count && count > 1 ? count : null}
-          </span>
+          {count != null && (
+            <span className="pphoto-count" aria-hidden="true">
+              <IconPhotos />
+              {count > 1 ? count : null}
+            </span>
+          )}
         </button>
       ) : (
         img
