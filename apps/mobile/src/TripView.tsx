@@ -1,8 +1,8 @@
 import {
   AIRBNB_ICONS,
   SOURCE_BY_ID,
-  STAY_PRICES,
   STAY_STYLES,
+  STAY_TIERS,
   airbnbSearchUrl,
   dateSpan,
   fitText,
@@ -14,11 +14,15 @@ import {
   legLabel,
   lengthFit,
   rangeText,
+  stayTier,
   stayWindows,
+  tierLabel,
   type Hotel,
   type PlaceVerification,
   type StayPrefs,
   type Stop,
+  type StayScale,
+  type StayTier,
   type Trip,
   type TripLength,
 } from "@travel/core";
@@ -211,8 +215,27 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
   const [rebuildOpen, setRebuildOpen] = useState(false);
   const [dayHint, setDayHint] = useState("");
   const [stay, setStay] = useState<StayPrefs>(
-    initial.request.stay?.styles?.length ? { ...initial.request.stay, on: true } : { on: true, styles: ["Boutique"], price: "$150–300" },
+    initial.request.stay?.styles?.length
+      ? { ...initial.request.stay, on: true, price: stayTier(initial.request.stay.price) }
+      : { on: true, styles: ["Boutique"], price: "$$" },
   );
+  // What hotels cost there, for the $ to $$$$ choices (cached per destination). An older trip's
+  // price in dollars becomes the tier it buys there.
+  const [scale, setScale] = useState<StayScale | null>(null);
+  useEffect(() => {
+    let gone = false;
+    api<{ scale: StayScale | null }>(`/api/stay-scale?destination=${encodeURIComponent(initial.destination)}`)
+      .then((r) => {
+        if (gone || !r.scale) return;
+        setScale(r.scale);
+        const asked = initial.request.stay?.price;
+        if (asked && !STAY_TIERS.includes(asked as StayTier)) setStay((s) => ({ ...s, price: stayTier(asked, r.scale) }));
+      })
+      .catch(() => {});
+    return () => {
+      gone = true;
+    };
+  }, [initial.id, initial.destination]); // eslint-disable-line react-hooks/exhaustive-deps
   const [showStay, setShowStay] = useState(false);
   const [gallery, setGallery] = useState<GalleryTarget | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -313,7 +336,14 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
   const stayControls = (
     <View style={{ gap: 12 }}>
       <ChipRow options={STAY_STYLES} value={stay.styles} onChange={(s) => setStay({ ...stay, styles: s })} />
-      <ChipRow options={STAY_PRICES} value={[stay.price]} single onChange={([price]) => price && setStay({ ...stay, price })} />
+      <ChipRow
+        options={STAY_TIERS}
+        labels={Object.fromEntries(STAY_TIERS.map((x) => [x, tierLabel(x, scale)]))}
+        value={[stayTier(stay.price)]}
+        single
+        onChange={([price]) => price && setStay({ ...stay, price })}
+      />
+      <Text style={{ color: t.muted, fontSize: 13 }}>{scale ? `What a night for two costs in ${trip.destination}.` : "Judged by local prices."}</Text>
       {busy === "hotels" ? <Loading text="Finding places to stay near where your days happen" /> : <Button ghost title={it.hotels?.length ? "Find new hotels" : "Find hotels"} onPress={findHotels} />}
     </View>
   );

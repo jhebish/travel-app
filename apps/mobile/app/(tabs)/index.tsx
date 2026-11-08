@@ -6,8 +6,11 @@ import {
   MAX_DAYS,
   PACES,
   PARTIES,
-  STAY_PRICES,
   STAY_STYLES,
+  STAY_TIERS,
+  stayTier,
+  tierLabel,
+  type StayScale,
   type Trip,
   type TripRequest,
 } from "@travel/core";
@@ -46,7 +49,7 @@ const blank: TripRequest = {
   clubs: false,
   pace: "Balanced",
   extra: "",
-  stay: { on: true, styles: ["Boutique"], price: "$150–300" },
+  stay: { on: true, styles: ["Boutique"], price: "$$" },
   with: [],
 };
 
@@ -66,7 +69,7 @@ export default function Plan() {
     if (!params.from) return;
     api<{ trip: Trip }>(`/api/trips/${params.from}`)
       .then(({ trip }) => {
-        setReq({ ...blank, ...trip.request, startDate: null });
+        setReq({ ...blank, ...trip.request, stay: { ...trip.request.stay, price: stayTier(trip.request.stay?.price) }, startDate: null });
         setTrip(null);
         setMsg({ text: "Loaded your earlier request. Adjust anything, then build." });
       })
@@ -86,6 +89,20 @@ export default function Plan() {
     }, 2000);
     return () => clearTimeout(t);
   }, [req.mode, req.destination, req.interests]);
+
+  // What hotels cost where they're going, so $ to $$$$ can show local prices (cached per place).
+  const [scale, setScale] = useState<{ dest: string; scale: StayScale | null } | null>(null);
+  useEffect(() => {
+    const dest = req.destination.trim();
+    if (!req.stay.on || dest.length < 3) return;
+    const t = setTimeout(() => {
+      api<{ scale: StayScale | null }>(`/api/stay-scale?destination=${encodeURIComponent(dest)}`)
+        .then((r) => setScale({ dest, scale: r.scale }))
+        .catch(() => {});
+    }, 900);
+    return () => clearTimeout(t);
+  }, [req.destination, req.stay.on]);
+  const localScale = scale && scale.dest.toLowerCase() === req.destination.trim().toLowerCase() ? scale.scale : null;
 
   async function build() {
     if (req.destination.trim().length < 2) return setMsg({ text: "Add a destination first.", err: true });
@@ -189,7 +206,14 @@ export default function Plan() {
             </View>
             <View style={styles.field}>
               <Label>Per night</Label>
-              <ChipRow options={STAY_PRICES} value={[req.stay.price]} single onChange={([price]) => price && set("stay", { ...req.stay, price })} />
+              <ChipRow
+                options={STAY_TIERS}
+                labels={Object.fromEntries(STAY_TIERS.map((x) => [x, tierLabel(x, localScale)]))}
+                value={[stayTier(req.stay.price)]}
+                single
+                onChange={([price]) => price && set("stay", { ...req.stay, price })}
+              />
+              <Text style={{ color: t.muted, fontSize: 13 }}>{localScale ? `What a night for two costs in ${req.destination.trim()}.` : "Judged by local prices."}</Text>
             </View>
           </>
         )}

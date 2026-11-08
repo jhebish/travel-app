@@ -1,5 +1,5 @@
 "use client";
-import { PICK_CATEGORIES, SOURCES, STAY_PRICES, STAY_STYLES, type LocalPickInput } from "@travel/core";
+import { PICK_CATEGORIES, SOURCES, STAY_STYLES, STAY_TIERS, isStayTier, tierLabel, type LocalPickInput } from "@travel/core";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SingleChips } from "@/components/Chips";
@@ -117,8 +117,9 @@ export default function PicksPage() {
               <SingleChips label="Stay style" options={STAY_STYLES} value={form.stayStyle} onChange={(stayStyle) => setForm({ ...form, stayStyle })} />
             </div>
             <div className="field">
-              <span className="label">Per night</span>
-              <SingleChips label="Price band" options={STAY_PRICES} value={form.priceBand} onChange={(priceBand) => setForm({ ...form, priceBand })} />
+              <span className="label">Price, for the city</span>
+              <SingleChips label="Price for the city" options={STAY_TIERS.map((t) => ({ value: t, label: tierLabel(t) }))} value={form.priceBand} onChange={(priceBand) => setForm({ ...form, priceBand })} />
+              <span className="hint">Judged by local prices: a $$ hotel in Cairo costs far less than one in Paris.</span>
             </div>
           </div>
         )}
@@ -185,7 +186,7 @@ function PickRow({ p, curator, onReview }: { p: Pick; curator: boolean; onReview
       <div className="meta">
         {[p.neighborhood, p.city].filter(Boolean).join(", ")}. {p.category[0]!.toUpperCase() + p.category.slice(1)}
         {p.stay_style ? `, ${p.stay_style.toLowerCase()}` : ""}
-        {p.price_band ? `, ${p.price_band} a night` : ""}. From {SOURCES.find((s) => s.id === p.source)?.name.toLowerCase() ?? p.source}.{" "}
+        {p.price_band ? (isStayTier(p.price_band) ? `, ${p.price_band} for the city` : `, ${p.price_band} a night`) : ""}. From {SOURCES.find((s) => s.id === p.source)?.name.toLowerCase() ?? p.source}.{" "}
         {p.google_place_id ? "Found on Google Maps." : "Not matched on Google Maps yet."}
       </div>
       {p.note && <p className="why">{p.note}</p>}

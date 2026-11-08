@@ -46,13 +46,4 @@ export const defaultBlocked = (): SourceId[] =>
   SOURCES.filter((s) => s.defaultBlocked).map((s) => s.id);
 
 export const STAY_STYLES = ["Boutique", "Design-led", "Guesthouse or B&B", "Luxury", "Apartment-style"] as const;
-export const STAY_PRICES = ["Under $150", "$150–300", "$300–600", "$600+"] as const;
-export type StayPrice = (typeof STAY_PRICES)[number];
-
-/** Nightly USD bounds for a price band, used to filter live rates. */
-export const STAY_PRICE_RANGE: Record<StayPrice, [number, number]> = {
-  "Under $150": [0, 150],
-  "$150–300": [150, 300],
-  "$300–600": [300, 600],
-  "$600+": [600, Number.POSITIVE_INFINITY],
-};
+// Hotel prices are tiers judged against local prices: see stayPrice.ts.

@@ -8,8 +8,11 @@ import {
   MONTH_NAMES,
   PACES,
   PARTIES,
-  STAY_PRICES,
   STAY_STYLES,
+  STAY_TIERS,
+  stayTier,
+  tierLabel,
+  type StayScale,
   soonMonth,
   travelMonth,
   type BrowseDestination,
@@ -66,7 +69,7 @@ const blank: TripRequest = {
   clubs: false,
   pace: "Balanced",
   extra: "",
-  stay: { on: true, styles: ["Boutique"], price: "$150–300" },
+  stay: { on: true, styles: ["Boutique"], price: "$$" },
   with: [],
 };
 
@@ -127,6 +130,29 @@ function Planner() {
     return () => clearTimeout(t);
   }, [signedIn, req.mode, req.destination, req.interests]);
 
+  // What hotels cost where they're going, so $ to $$$$ can show local prices (cached per place).
+  const [scale, setScale] = useState<{ dest: string; scale: StayScale | null } | null>(null);
+  const scales = useRef(new Map<string, StayScale | null>());
+  useEffect(() => {
+    const dest = req.destination.trim();
+    if (!req.stay.on || dest.length < 3) return;
+    const key = dest.toLowerCase();
+    if (scales.current.has(key)) {
+      setScale({ dest, scale: scales.current.get(key)! });
+      return;
+    }
+    const t = setTimeout(() => {
+      api<{ scale: StayScale | null }>(`/api/stay-scale?${new URLSearchParams({ destination: dest })}`)
+        .then((r) => {
+          scales.current.set(key, r.scale);
+          setScale({ dest, scale: r.scale });
+        })
+        .catch(() => {});
+    }, 900);
+    return () => clearTimeout(t);
+  }, [req.destination, req.stay.on]);
+  const localScale = scale && scale.dest.toLowerCase() === req.destination.trim().toLowerCase() ? scale.scale : null;
+
   // Links from Browse and Friends: /plan?dest=Egypt&mode=multi&days=7
   useEffect(() => {
     const dest = params.get("dest");
@@ -161,7 +187,8 @@ function Planner() {
       api<{ trip: Trip }>(`/api/trips/${from}`)
         .then(({ trip }) => {
           setMode("quick");
-          setReq({ ...blank, ...trip.request, startDate: null, month: travelMonth(trip.request) ?? soonMonth() });
+          // An older trip's price in dollars becomes a tier (judged against local prices).
+          setReq({ ...blank, ...trip.request, stay: { ...trip.request.stay, price: stayTier(trip.request.stay?.price) }, startDate: null, month: travelMonth(trip.request) ?? soonMonth() });
           setStatus({ text: "Loaded your earlier request. Adjust anything, then build." });
         })
         .catch(() => {});
@@ -429,7 +456,15 @@ function Planner() {
                       </div>
                       <div className="field">
                         <span className="label">Per night</span>
-                        <SingleChips label="Price per night" options={STAY_PRICES} value={req.stay.price} onChange={(price) => set("stay", { ...req.stay, price })} />
+                        <SingleChips
+                          label="Price per night"
+                          options={STAY_TIERS.map((t) => ({ value: t, label: tierLabel(t, localScale) }))}
+                          value={stayTier(req.stay.price)}
+                          onChange={(price) => set("stay", { ...req.stay, price })}
+                        />
+                        <span className="hint">
+                          {localScale ? `What a night for two costs in ${req.destination.trim()}.` : "Judged by local prices: $$ in Cairo costs far less than in Paris."}
+                        </span>
                       </div>
                     </div>
                   )}

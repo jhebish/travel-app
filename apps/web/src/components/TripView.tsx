@@ -2,8 +2,8 @@
 import {
   AIRBNB_ICONS,
   SOURCE_BY_ID,
-  STAY_PRICES,
   STAY_STYLES,
+  STAY_TIERS,
   airbnbSearchUrl,
   buildIcs,
   dateSpan,
@@ -16,12 +16,16 @@ import {
   legLabel,
   lengthFit,
   rangeText,
+  stayTier,
   stayWindows,
+  tierLabel,
   type Hotel,
   type PlaceVerification,
   type StayPrefs,
   type Stop,
   type Together,
+  type StayScale,
+  type StayTier,
   type Trip,
   type TripLength,
 } from "@travel/core";
@@ -368,7 +372,9 @@ export function TripView({
   const [dayHintOpen, setDayHintOpen] = useState(false);
   const [dayHint, setDayHint] = useState("");
   const [stay, setStay] = useState<StayPrefs>(
-    initial.request.stay?.styles?.length ? { ...initial.request.stay, on: true } : { on: true, styles: ["Boutique"], price: "$150–300" },
+    initial.request.stay?.styles?.length
+      ? { ...initial.request.stay, on: true, price: stayTier(initial.request.stay.price) }
+      : { on: true, styles: ["Boutique"], price: "$$" },
   );
   const [calDate, setCalDate] = useState(initial.request.startDate ?? "");
   const [gallery, setGallery] = useState<GalleryTarget | null>(null);
@@ -392,6 +398,25 @@ export function TripView({
   const dayCity = d.city ? `${d.city}, ${city}` : city;
   // The dates for booking a stay: the trip's start date, or the one picked for the calendar.
   const stayStart = trip.request.startDate ?? (/^\d{4}-\d{2}-\d{2}$/.test(calDate) ? calDate : null);
+
+  // What hotels cost there, for the $ to $$$$ choices (cached per destination). An older trip's
+  // price in dollars becomes the tier it buys there.
+  const [scale, setScale] = useState<StayScale | null>(null);
+  useEffect(() => {
+    if (readOnly) return;
+    let gone = false;
+    api<{ scale: StayScale | null }>(`/api/stay-scale?${new URLSearchParams({ destination: trip.destination })}`)
+      .then((r) => {
+        if (gone || !r.scale) return;
+        setScale(r.scale);
+        const asked = trip.request.stay?.price;
+        if (asked && !STAY_TIERS.includes(asked as StayTier)) setStay((s) => ({ ...s, price: stayTier(asked, r.scale) }));
+      })
+      .catch(() => {});
+    return () => {
+      gone = true;
+    };
+  }, [trip.id, trip.destination, readOnly]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // How long most people stay. New trips carry it; others (older trips, shared links, destination
   // pages) ask once: cached per destination, and only a signed-in visit asks the model.
@@ -630,7 +655,15 @@ export function TripView({
   const stayControls = (
     <div className="stack" style={{ gap: 14 }}>
       <Chips label="Hotel style" options={STAY_STYLES} value={stay.styles} onChange={(styles) => setStay({ ...stay, styles })} />
-      <SingleChips label="Price per night" options={STAY_PRICES} value={stay.price} onChange={(price) => setStay({ ...stay, price })} />
+      <div className="field">
+        <SingleChips
+          label="Price per night"
+          options={STAY_TIERS.map((t) => ({ value: t, label: tierLabel(t, scale) }))}
+          value={stayTier(stay.price)}
+          onChange={(price) => setStay({ ...stay, price })}
+        />
+        <span className="hint">{scale ? `What a night for two costs in ${city}.` : "Judged by local prices."}</span>
+      </div>
       {busy?.kind === "hotels" ? (
         <span className="thinking">
           <span className="dot" />
@@ -752,7 +785,7 @@ export function TripView({
             <b>For you</b> {it.forYou}
           </p>
         ) : null}
-        {/* Owners get Save and Share (planning together and the calendar are in the share sheet). */}
+        {/* Owners get Save, Share and Plan together (the calendar is in the share sheet). */}
         <div className="actions">
           {isOwner && (
             <button type="button" className="hbtn" aria-pressed={trip.saved} onClick={() => update({ saved: !trip.saved })}>
@@ -766,7 +799,7 @@ export function TripView({
               Share
             </button>
           )}
-          {!readOnly && (togetherOn || isMember) && (
+          {!readOnly && (
             <button type="button" className="hbtn" onClick={() => togDlg.current?.showModal()}>
               <IconPeople />
               {togetherOn ? `Planning with ${tog!.people.length - 1}` : "Plan together"}
@@ -1256,17 +1289,6 @@ export function TripView({
               )}
             </div>
             <div className="share-more">
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={() => {
-                  shareDlg.current?.close();
-                  togDlg.current?.showModal();
-                }}
-              >
-                <IconPeople />
-                {togetherOn ? `Planning with ${tog!.people.length - 1}` : "Plan together"}
-              </button>
               <button
                 type="button"
                 className="btn ghost"

@@ -3,7 +3,8 @@ import { STOP_KINDS } from "./quality";
 // Plain lists and limits live in labels.ts (no zod) so the browser can use them on their own.
 import { PARTIES, AGE_BANDS, BUDGETS, PACES, ABOUT_OPTIONS, INTERESTS, TRIP_MODES, MAX_DAYS, MAX_PLACE_PHOTOS, PICK_CATEGORIES, type TripMode } from "./labels";
 export { PARTIES, AGE_BANDS, BUDGETS, PACES, ABOUT_OPTIONS, INTERESTS, TRIP_MODES, MAX_DAYS, MAX_PLACE_PHOTOS, PICK_CATEGORIES, type TripMode } from "./labels";
-import { SOURCE_IDS, STAY_PRICES, STAY_STYLES } from "./sources";
+import { SOURCE_IDS, STAY_STYLES } from "./sources";
+import { STAY_PRICE_VALUES, STAY_TIERS, nicePrice } from "./stayPrice";
 
 const sourceId = z.enum(SOURCE_IDS);
 
@@ -38,7 +39,8 @@ export const WeightsSchema = z.record(sourceId, weight);
 export const StaySchema = z.object({
   on: z.boolean(),
   styles: z.array(z.enum(STAY_STYLES)).max(5).default([]),
-  price: z.enum(STAY_PRICES).default("$150–300"),
+  /** A tier judged against local prices ("$$"); older requests and the Typeform give dollar bands. */
+  price: z.enum(STAY_PRICE_VALUES).default("$$"),
 });
 export type StayPrefs = z.infer<typeof StaySchema>;
 
@@ -64,7 +66,7 @@ export const TripRequestSchema = z.object({
   clubs: z.boolean().default(false),
   pace: z.enum(PACES),
   extra: z.string().trim().max(500).default(""),
-  stay: StaySchema.default({ on: false, styles: [], price: "$150–300" }),
+  stay: StaySchema.default({ on: false, styles: [], price: "$$" }),
   /** Friends (handles) planning this trip together: their taste is blended in and they can edit it. */
   with: z.array(z.string().trim().toLowerCase().regex(/^[a-z0-9_]{3,24}$/)).max(7).default([]),
 }).transform((r) => (r.days > MAX_DAYS[r.mode] ? { ...r, days: MAX_DAYS[r.mode] } : r));
@@ -236,6 +238,15 @@ export const TripLengthSchema = z
   })
   .transform((t) => (t.max < t.min ? { ...t, min: t.max, max: t.min } : t));
 
+/**
+ * A destination's hotel prices (stayPrice.ts): where $, $$ and $$$ top out, in US dollars a night.
+ * Rounded to figures people use; the three must rise.
+ */
+export const StayScaleSchema = z
+  .object({ cuts: z.tuple([z.number(), z.number(), z.number()]) })
+  .transform((s) => ({ cuts: s.cuts.map((n) => nicePrice(n)) as [number, number, number] }))
+  .refine((s) => s.cuts[0] >= 5 && s.cuts[0] < s.cuts[1] && s.cuts[1] < s.cuts[2] && s.cuts[2] <= 5000, "prices must rise, from $5 to $5,000");
+
 export const ItinerarySchema = z.object({
   title: clipReq(140),
   /** How long most people stay: shown at the top of the trip against the days planned. */
@@ -315,7 +326,8 @@ export const LocalPickInputSchema = z.object({
   source: z.enum(["locals", "hosts", "press", "indie", "reviews", "guidebooks", "social"]).default("locals"),
   note: z.string().trim().max(600).optional().nullable(),
   tags: z.array(z.string().trim().max(40)).max(12).default([]),
-  priceBand: z.enum(STAY_PRICES).optional().nullable(),
+  /** How it's priced for its city: $ simple to $$$$ top end. */
+  priceBand: z.enum(STAY_TIERS).optional().nullable(),
   stayStyle: z.enum(STAY_STYLES).optional().nullable(),
 });
 export type LocalPickInput = z.infer<typeof LocalPickInputSchema>;

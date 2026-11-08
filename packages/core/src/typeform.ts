@@ -17,7 +17,8 @@ import {
   TripRequestSchema,
   type TripRequest,
 } from "./schemas";
-import { STAY_PRICES, STAY_STYLES } from "./sources";
+import { STAY_STYLES } from "./sources";
+import { LEGACY_STAY_PRICES } from "./stayPrice";
 
 export const TF = {
   tripType: "trip_type",
@@ -201,7 +202,9 @@ export function typeformDefinition(opts: { title?: string; themeHref?: string; b
       }),
       { ref: TF.stayOn, title: "Want us to suggest places to stay?", type: "yes_no", properties: { description: "Three hotels that fit the trip." }, validations: { required: true } },
       multiple(TF.stayStyles, "What kind of place?", STAY_STYLES, { multi: true, required: false }),
-      multiple(TF.stayPrice, "Roughly how much per night?", STAY_PRICES),
+      // In dollars: a fixed form can't show each destination's prices. Answers are read through the
+      // destination's price scale (stayPrice.ts), so "$150–300" means upscale in Cairo.
+      multiple(TF.stayPrice, "Roughly how much per night?", LEGACY_STAY_PRICES),
       { ref: TF.extra, title: "Anything else we should know?", type: "long_text", properties: { description: "Anniversary trip, hate crowds, staying near the old town…" }, validations: { required: false, max_length: 500 } },
     ],
     logic: [
@@ -319,7 +322,7 @@ export function typeformToRequest(answers: TypeformAnswer[]): TripRequest {
     stay: {
       on: stayOn,
       styles: stayOn ? many(TF.stayStyles, STAY_STYLES) : [],
-      price: (stayOn && one(TF.stayPrice, STAY_PRICES)) || "$150–300",
+      price: (stayOn && one(TF.stayPrice, LEGACY_STAY_PRICES)) || "$$",
     },
   });
 }

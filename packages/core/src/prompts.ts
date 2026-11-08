@@ -4,6 +4,7 @@ import type { Candidate } from "./ranking";
 import type { Itinerary, RouteLeg, StayPrefs, TripRequest } from "./schemas";
 import { STOP_KINDS } from "./quality";
 import { SOURCE_BY_ID, SOURCES } from "./sources";
+import { stayTier, tierForPriceLevel, tierForPrompt, type StayScale } from "./stayPrice";
 import { activeSources, type EffectiveSources } from "./weights";
 
 export const SYSTEM_PROMPT = `You are the itinerary engine for a travel app whose whole point is experiencing a place the way locals do.
@@ -83,6 +84,16 @@ Never use: ${off.length ? off.map((s) => s.name).join(", ") : "none"}.${
   }${never.length ? `\nNever recommend:\n${never.map((x) => `- ${x}`).join("\n")}` : ""}`;
 }
 
+/** A candidate's price: a stay's tier for its city ($ to $$$$), else Google's level ($ cheap to $$$$). */
+function priceText(c: Candidate): string {
+  if (c.category === "stay") {
+    const tier = c.priceBand ? stayTier(c.priceBand) : c.priceLevel ? tierForPriceLevel(c.priceLevel) : null;
+    return tier ? `· price ${tier} for the city` : "";
+  }
+  if (c.priceLevel == null) return "";
+  return c.priceLevel === 0 ? "· free" : `· price ${"$".repeat(Math.min(4, c.priceLevel))}`;
+}
+
 export function candidateBlock(cands: Candidate[]): string {
   if (!cands.length) return "CANDIDATES\n(none supplied: choose well-known, long-established places you are highly confident exist)";
   const fmt = (c: Candidate) =>
@@ -93,7 +104,7 @@ export function candidateBlock(cands: Candidate[]): string {
       `· ${c.category}`,
       `· source:${c.source}`,
       c.stayStyle ? `· ${c.stayStyle}` : "",
-      c.priceBand ? `· ${c.priceBand}/night` : c.priceLevel != null ? `· price ${"$".repeat(c.priceLevel + 1)}` : "",
+      priceText(c),
       c.rating != null ? `· ${c.rating}★ (${c.ratingCount ?? 0})` : "",
       c.tags?.length ? `· tags: ${c.tags.join(", ")}` : "",
       c.note ? `· note: ${c.note}` : "",
@@ -104,9 +115,10 @@ export function candidateBlock(cands: Candidate[]): string {
 ${cands.map(fmt).join("\n")}`;
 }
 
-export function stayRules(stay: StayPrefs, count = 3): string {
+export function stayRules(stay: StayPrefs, count = 3, scale?: StayScale | null): string {
   return `HOTELS
-- Exactly ${count} places to stay. Style: ${stay.styles.length ? stay.styles.join(" or ") : "any"}. Typical nightly rate for a standard double: ${stay.price}.
+- Exactly ${count} places to stay. Style: ${stay.styles.length ? stay.styles.join(" or ") : "any"}. Price: ${tierForPrompt(stayTier(stay.price, scale), scale)}.
+- Judge price against what hotels cost in this destination, not in a Western capital: a comfortable hotel in Cairo costs a fraction of one in Paris.
 - Prefer "stay" candidates; independent and characterful over big chains. Pick neighborhoods that suit this traveler and sit close to where the days happen.
 - "nightly" is an approximate USD range for a standard double in a typical season (e.g. "$180–240"). Never claim live availability.`;
 }
@@ -144,6 +156,7 @@ export function buildHotelPromptForAreas(
   areas: string[],
   candidates: Candidate[],
   count = 3,
+  scale?: StayScale | null,
 ): string {
   return `${travelerBlock(req)}
 
@@ -153,7 +166,7 @@ ${sourceBlock(eff, lists)}
 
 ${candidateBlock(candidates)}
 
-${stayRules(req.stay, count)}
+${stayRules(req.stay, count, scale)}
 - Set "candidateId" to the bracketed id you used, or null for a place you are highly confident exists.
 - Give approximate "lat" and "lng" for each hotel. "why" under 18 words, "localTip" under 14 words.
 - Every "source" must be one of: ${activeSources(eff).join(", ")}.
@@ -320,8 +333,7 @@ ${
 Call submit_day with the theme and stops in time order.`;
 }
 
-export const stayLabel = (s: StayPrefs) =>
-  `${(s.styles.length ? s.styles.join(" or ") : "any style").toLowerCase()} · ${s.price}/night`;
+export const stayLabel = (s: StayPrefs) => `${(s.styles.length ? s.styles.join(" or ") : "any style").toLowerCase()} · ${stayTier(s.price)}`;
 
 // ---------------------------------------------------------------------------
 // Fast path: outline first, then every day planned in parallel

@@ -1,6 +1,7 @@
 import type { TripRequest } from "./schemas";
 import type { HotNow, PlaceVerification } from "./schemas";
-import { STAY_PRICE_RANGE, type SourceId, type StayPrice } from "./sources";
+import type { SourceId } from "./sources";
+import { STAY_TIERS, stayTier, tierForPriceLevel, type StayTier } from "./stayPrice";
 import type { EffectiveSources } from "./weights";
 import { guessKind, kindFromHints } from "./imports/kind";
 import { wantsClubs, wantsNightlife } from "./nightlife";
@@ -23,7 +24,8 @@ export interface Candidate {
   ratingCount?: number | null;
   priceLevel?: number | null; // 0–4 (Google)
   stayStyle?: string | null;
-  priceBand?: StayPrice | null;
+  /** A curated stay's price for its city ($ to $$$$); older picks may still hold a dollar band. */
+  priceBand?: string | null;
   expediaPropertyId?: string | null;
   /** Google Places details from the search that found it, so it needn't be looked up again. */
   verification?: PlaceVerification;
@@ -45,8 +47,8 @@ const INTEREST_CATEGORIES: Record<string, CandidateCategory[]> = {
 const hasTag = (c: Candidate, ...needles: string[]) =>
   (c.tags ?? []).some((t) => needles.some((n) => t.toLowerCase().includes(n)));
 
-/** Google price level (0–4) to a rough nightly USD midpoint for stays. */
-const PRICE_LEVEL_NIGHTLY = [80, 120, 220, 420, 800];
+/** How far apart two price tiers are: 0 for the same, 3 for $ against $$$$. */
+const tierGap = (a: StayTier, b: StayTier) => Math.abs(STAY_TIERS.indexOf(a) - STAY_TIERS.indexOf(b));
 
 /**
  * Score a candidate for this traveler. Source weight dominates (that's the product),
@@ -64,11 +66,15 @@ export function scoreCandidate(c: Candidate, eff: EffectiveSources, req: TripReq
   if (c.category === "stay") {
     if (req.stay.on) {
       if (req.stay.styles.length && c.stayStyle && req.stay.styles.some((s) => s === c.stayStyle)) score += 0.3;
-      const [lo, hi] = STAY_PRICE_RANGE[req.stay.price];
-      if (c.priceBand) score += c.priceBand === req.stay.price ? 0.3 : -0.2;
-      else if (c.priceLevel != null) {
-        const mid = PRICE_LEVEL_NIGHTLY[Math.max(0, Math.min(4, c.priceLevel))]!;
-        score += mid >= lo && mid <= hi ? 0.15 : -0.15;
+      // Both sides are tiers judged against local prices (stayPrice.ts); the pipeline has already
+      // read any dollar band through the destination's price scale.
+      const want = stayTier(req.stay.price);
+      if (c.priceBand) {
+        const gap = tierGap(stayTier(c.priceBand), want);
+        score += gap === 0 ? 0.3 : gap === 1 ? -0.05 : -0.2;
+      } else if (c.priceLevel) {
+        const gap = tierGap(tierForPriceLevel(c.priceLevel), want);
+        score += gap === 0 ? 0.15 : gap === 1 ? 0 : -0.15;
       }
     }
   } else {

@@ -23,3 +23,4 @@ export * from "./nightpulse";
 export * from "./region";
 export * from "./stays";
 export * from "./tripLength";
+export * from "./stayPrice";

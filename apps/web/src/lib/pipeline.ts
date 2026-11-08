@@ -17,6 +17,9 @@ import {
   placesQueries,
   selectCandidates,
   stayLabel,
+  isStayTier,
+  stayTier,
+  type StayScale,
   type BuildEvent,
   type Candidate,
   type EffectiveSources,
@@ -78,6 +81,7 @@ import { tasteBlock } from "./taste";
 import { addFriendsOnCreate, companionsFromHandles, editPeople } from "./together";
 import { rateLimit, updateTrip } from "./tripAccess";
 import { idealDays } from "./tripLength";
+import { readStayScale, stayScale } from "./stayScale";
 import { toTrip, type TripRow } from "./trips";
 
 // ---------------------------------------------------------------------------
@@ -115,7 +119,8 @@ async function localPickCandidates(city: string, staysOnly: boolean): Promise<Ca
     .ilike("city", `%${likeEscape(city.split(",")[0]!.trim())}%`)
     .limit(200);
   if (staysOnly) q = q.eq("category", "stay");
-  const { data, error } = await q;
+  // Older picks give a dollar band: read through the city's hotel prices (stayPrice.ts).
+  const [{ data, error }, scale] = await Promise.all([q, readStayScale(city).catch(() => null)]);
   if (error) {
     console.error("local picks query failed", error.message);
     return [];
@@ -131,7 +136,7 @@ async function localPickCandidates(city: string, staysOnly: boolean): Promise<Ca
     tags: p.tags ?? [],
     placeId: p.google_place_id,
     stayStyle: p.stay_style,
-    priceBand: p.price_band,
+    priceBand: p.price_band ? stayTier(p.price_band, scale) : null,
     expediaPropertyId: p.expedia_property_id,
   }));
 }
@@ -498,6 +503,8 @@ export interface PlanInputs {
   rebuildUntil?: number;
   /** Every model call a rebuild makes must be over by this time (ms): the hard stop under the route's limit. */
   rebuildDeadline?: number;
+  /** What hotels cost in the destination (stayPrice.ts), for the hotel prompts; may still be on its way. */
+  stayScale?: Promise<StayScale | null> | null;
 }
 
 type CuratorLists = { alwaysFeature: string; neverRecommend: string };
@@ -541,7 +548,7 @@ interface Planned {
   candsByCity: Map<string, Candidate[]>;
 }
 
-async function planSingle(req: TripRequest, { eff, lists, history, rebuildUntil, rebuildDeadline }: PlanInputs, emit: Emit): Promise<Planned> {
+async function planSingle(req: TripRequest, { eff, lists, history, rebuildUntil, rebuildDeadline, stayScale: scaleJob }: PlanInputs, emit: Emit): Promise<Planned> {
   const progress = (pct: number, label: string) => emit({ type: "progress", pct, label });
   progress(8, "Gathering local picks");
   // Nightlife: the bars and clubs that are hot now, if this city's pulse is ready in time.
@@ -600,7 +607,7 @@ async function planSingle(req: TripRequest, { eff, lists, history, rebuildUntil,
     return day;
   });
   const hotelJob = req.stay.on
-    ? planHotels(req, eff, lists, history, o.days.map((d) => d.area).filter(Boolean), cands.filter((c) => c.category === "stay"), 3, emit, tick)
+    ? planHotels(req, eff, lists, history, o.days.map((d) => d.area).filter(Boolean), cands.filter((c) => c.category === "stay"), 3, emit, tick, undefined, scaleJob)
     : Promise.resolve([] as Hotel[]);
 
   const [days, hotels] = await Promise.all([Promise.all(dayJobs), hotelJob]);
@@ -620,11 +627,14 @@ async function planHotels(
   emit: Emit,
   tick: (label: string) => void,
   city?: string,
+  scaleJob?: Promise<StayScale | null> | null,
 ): Promise<Hotel[]> {
   try {
+    // What hotels cost there, so the prompt can say what the tier means locally.
+    const scale = await within(scaleJob ?? null, 4_000);
     const { data } = await step(
       `hotels${city ? ` ${city}` : ""}`,
-      (attempt) => callTool(withHistory(history, buildHotelPromptForAreas(req, eff, lists, areas, stayCands, count)), HOTELS_TOOL, 3000, fastThenMain(attempt)),
+      (attempt) => callTool(withHistory(history, buildHotelPromptForAreas(req, eff, lists, areas, stayCands, count, scale)), HOTELS_TOOL, 3000, fastThenMain(attempt)),
       z.object({ hotels: salvage(HotelSchema, 1, 5) }),
     );
     const hotels = data.hotels.slice(0, count).map((h) => (city ? { ...h, city } : h));
@@ -646,7 +656,7 @@ const RouteSchema = z.object({
   legs: salvage(RouteLegSchema, 1, 8),
 });
 
-async function planMulti(req: TripRequest, { eff, lists, history, rebuildUntil, rebuildDeadline }: PlanInputs, emit: Emit): Promise<Planned> {
+async function planMulti(req: TripRequest, { eff, lists, history, rebuildUntil, rebuildDeadline, stayScale: scaleJob }: PlanInputs, emit: Emit): Promise<Planned> {
   const progress = (pct: number, label: string) => emit({ type: "progress", pct, label });
   progress(8, `Mapping a route through ${req.destination}`);
   const { data: route, model } = await step(
@@ -781,6 +791,7 @@ async function planMulti(req: TripRequest, { eff, lists, history, rebuildUntil, 
           emit,
           tick,
           l.city,
+          scaleJob,
         ),
       )
     : [];
@@ -825,7 +836,7 @@ export async function generateTrip(ctx: Ctx, reqIn: TripRequest, opts: { ip: str
   const t0 = Date.now();
   // No date and no month given (Typeform, the app): plan for the weeks ahead, so stops suit the season.
   // An explicit null means "not sure yet": an evergreen route.
-  const req: TripRequest = reqIn.month === undefined && !reqIn.startDate ? { ...reqIn, month: soonMonth() } : reqIn;
+  let req: TripRequest = reqIn.month === undefined && !reqIn.startDate ? { ...reqIn, month: soonMonth() } : reqIn;
   // Before anything is counted or looked up.
   if (regionPolicy(req.destination) === "blocked") throw blockedDestination();
   emit({ type: "progress", pct: 3, label: "Reading your request" });
@@ -841,8 +852,13 @@ export async function generateTrip(ctx: Ctx, reqIn: TripRequest, opts: { ip: str
   // (cached per destination; never throws). It finishes even if the build fails, for next time.
   const lengthJob = idealDays(req.destination, req.mode);
   waitUntil(lengthJob);
+  // What hotels cost there (cached per destination). Hotel prices are tiers judged against it; an
+  // answer in dollars (the Typeform asks that way) becomes the tier it buys there.
+  const scaleJob = req.stay.on ? stayScale(req.destination) : null;
+  if (scaleJob) waitUntil(scaleJob);
+  if (!isStayTier(req.stay.price)) req = { ...req, stay: { ...req.stay, price: stayTier(req.stay.price, await within(scaleJob, 8_000)) } };
 
-  const { itin, model } = await planItinerary(req, { eff, lists, history }, emit);
+  const { itin, model } = await planItinerary(req, { eff, lists, history, stayScale: scaleJob }, emit);
   console.log(`[build] planned ${req.mode} ${req.days}d in ${Date.now() - t0}ms`);
   const [ideal] = await Promise.all([within(lengthJob, 3_000), attachLiveRates(itin.hotels, req.startDate, req.days, adultsFor(req.party), opts.ip)]);
   if (ideal) itin.idealDays = ideal;
@@ -874,14 +890,16 @@ export async function generateTrip(ctx: Ctx, reqIn: TripRequest, opts: { ip: str
 }
 
 export async function generateHotels(ctx: Ctx, row: TripRow, stay: StayPrefs, opts: { ip: string }) {
-  const req: TripRequest = { ...row.request, stay: { ...stay, on: true } };
   // Whoever asks (the owner or a friend planning with them), the hotels are for everyone on the
   // trip: the owner's taste plus their friends', as for edits.
   const { companions } = await editPeople(row);
-  const [{ lists }, history] = await Promise.all([
+  const [{ lists }, history, scale] = await Promise.all([
     loadSources(ctx),
-    loadHistory(ctx, req.destination, { ownerId: row.user_id, companions }),
+    loadHistory(ctx, row.request.destination, { ownerId: row.user_id, companions }),
+    // What hotels cost there: the tier's local meaning, and an older trip's dollar band as a tier.
+    stayScale(row.request.destination, Date.now() + 10_000),
   ]);
+  const req: TripRequest = { ...row.request, stay: { ...stay, on: true, price: stayTier(stay.price, scale) } };
   const eff: EffectiveSources = { weights: row.weights, blocked: (row.blocked ?? []).filter(isSourceId), custom: row.custom_mix };
   const route = row.itinerary.mode === "multi" ? row.itinerary.route ?? [] : [];
   // One place: three hotels. Several stops: two per stop, each checked against its own city.
@@ -901,7 +919,7 @@ export async function generateHotels(ctx: Ctx, row: TripRow, stay: StayPrefs, op
       ].slice(0, 12);
       const { data } = await step(
         `hotels${g.city ? ` ${g.city}` : ""}`,
-        (attempt) => callTool(withHistory(history, buildHotelPromptForAreas(g.req, eff, lists, areas, cands, g.count)), HOTELS_TOOL, 3000, fastThenMain(attempt)),
+        (attempt) => callTool(withHistory(history, buildHotelPromptForAreas(g.req, eff, lists, areas, cands, g.count, scale)), HOTELS_TOOL, 3000, fastThenMain(attempt)),
         z.object({ hotels: salvage(HotelSchema, 1, 5) }),
       );
       const hotels = data.hotels.slice(0, g.count).map((h) => (g.city ? { ...h, city: g.city } : h));
@@ -1146,7 +1164,7 @@ export async function swapCity(ctx: Ctx, row: TripRow, legIndex: number, cityIn:
     };
   });
   const hotelJob = oldHotels.length
-    ? planHotels(legReq, eff, lists, history, themes.map((t) => t.area).filter(Boolean), cands.filter((c) => c.category === "stay"), Math.min(2, oldHotels.length), () => {}, () => {}, city)
+    ? planHotels(legReq, eff, lists, history, themes.map((t) => t.area).filter(Boolean), cands.filter((c) => c.category === "stay"), Math.min(2, oldHotels.length), () => {}, () => {}, city, readStayScale(row.request.destination).catch(() => null))
     : Promise.resolve([] as Hotel[]);
   const [days, hotels] = await Promise.all([Promise.all(dayJobs), hotelJob]);
 
