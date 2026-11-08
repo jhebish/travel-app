@@ -393,7 +393,8 @@ export function TripView({
   // The dates for booking a stay: the trip's start date, or the one picked for the calendar.
   const stayStart = trip.request.startDate ?? (/^\d{4}-\d{2}-\d{2}$/.test(calDate) ? calDate : null);
 
-  // How long most people stay. New trips carry it; older ones ask once (cached per destination).
+  // How long most people stay. New trips carry it; others (older trips, shared links, destination
+  // pages) ask once: cached per destination, and only a signed-in visit asks the model.
   const [ideal, setIdeal] = useState<TripLength | null>(it.idealDays ?? null);
   const tripMode = it.mode ?? trip.request.mode ?? "single";
   useEffect(() => {
@@ -402,7 +403,6 @@ export function TripView({
       return;
     }
     setIdeal(null);
-    if (readOnly) return;
     let gone = false;
     api<{ idealDays: TripLength | null }>(`/api/trip-length?${new URLSearchParams({ destination: trip.destination, mode: tripMode })}`)
       .then((r) => {
@@ -412,7 +412,7 @@ export function TripView({
     return () => {
       gone = true;
     };
-  }, [trip.id, trip.destination, it.idealDays, tripMode, readOnly]);
+  }, [trip.id, trip.destination, it.idealDays, tripMode]);
 
   const pickDay = (i: number) => {
     setDay(i);
