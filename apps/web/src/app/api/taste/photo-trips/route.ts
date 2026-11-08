@@ -69,10 +69,14 @@ Call name_places.`;
   return names;
 }
 
-/** The phone found trips in your photos: name the places and add them to Places you've been. */
+/**
+ * The phone found trips in your photos: name the places and add them to Places you've been. With
+ * `preview: true` they're only named: the phone shows them for review and saves the ones kept
+ * with /api/community/places/bulk.
+ */
 export const POST = handler(async (req: Request) => {
   const ctx = await requireUser(req);
-  const { stays } = await parseBody(req, z.object({ stays: z.array(Stay).min(1).max(300) }));
+  const { stays, preview } = await parseBody(req, z.object({ stays: z.array(Stay).min(1).max(300), preview: z.boolean().optional() }));
   await rateLimit(ctx, "extract", 20, "That's a lot of scans this hour. Try again a little later.");
   const names = await nameAll(stays);
   if (!names.size) throw new HttpError(502, "We couldn't name those places just now. Try again.", "bad_output");
@@ -92,6 +96,7 @@ export const POST = handler(async (req: Request) => {
     }
   });
   const trips = [...by.values()].sort((a, b) => (b.year ?? 0) - (a.year ?? 0)).slice(0, 100);
+  if (preview) return json({ trips: trips.map(({ city, countryCode, year, month, days }) => ({ city, countryCode, year, month, days })) });
   const result = trips.length ? await addPlacesBulk(ctx, trips) : { added: 0, skipped: 0 };
   return json({ ...result, trips: trips.map(({ city, countryCode, year, month, days }) => ({ city, countryCode, year, month, days })) }, 201);
 });

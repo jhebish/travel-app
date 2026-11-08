@@ -6,3 +6,4 @@
 export { guessKind, kindFromHints } from "./kind";
 export { dedupeSignals } from "./dedupe";
 export { calendarSignals, type CalendarEventLike } from "./calendar";
+export * from "./gmail";

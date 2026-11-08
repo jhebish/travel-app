@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getCtx } from "@/lib/auth";
 import { addPlacesBulk } from "@/lib/community";
 import { OAUTH_COOKIE, facebookPlaces, facebookSignals, googleCalendarEvents, isProvider, type OAuthCookie } from "@/lib/connect";
+import { readGmail } from "@/lib/gmail";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { signalRow } from "@/lib/taste";
 
@@ -11,7 +12,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-/** Back from Google or Facebook: read once, keep only the places and trips we find, give the access back. */
+/** Back from Google (Calendar or Gmail) or Facebook: read once, keep only the places and trips we find, give the access back. */
 export async function GET(req: Request, { params }: { params: { provider: string } }) {
   const url = new URL(req.url);
   const back = (q: string) => {
@@ -36,11 +37,15 @@ export async function GET(req: Request, { params }: { params: { provider: string
   }
 
   try {
-    const signals = dedupeSignals(
-      provider === "google_calendar"
-        ? calendarSignals(await googleCalendarEvents(code, saved.v, url.origin), "google_calendar")
-        : facebookSignals(await facebookPlaces(code, url.origin), (n) => guessKind(n)),
-    );
+    // Gmail's bookings are named by the model, and come deduped with their trips (lib/gmail.ts).
+    const gmail = provider === "gmail" ? await readGmail(ctx, code, saved.v, url.origin) : null;
+    const signals = gmail
+      ? gmail.signals
+      : dedupeSignals(
+          provider === "google_calendar"
+            ? calendarSignals(await googleCalendarEvents(code, saved.v, url.origin), "google_calendar")
+            : facebookSignals(await facebookPlaces(code, url.origin), (n) => guessKind(n)),
+        );
     let added = 0;
     const rows = signals.map((s) => signalRow(ctx.user!.id, s));
     for (let i = 0; i < rows.length; i += 500) {
@@ -52,7 +57,7 @@ export async function GET(req: Request, { params }: { params: { provider: string
       added += data?.length ?? 0;
     }
     // The cities and years they were in become past trips (ones already logged are skipped).
-    const trips = tripsFromSignals(signals);
+    const trips = gmail ? gmail.trips : tripsFromSignals(signals);
     const { added: tripsAdded } = trips.length ? await addPlacesBulk(ctx, trips).catch(() => ({ added: 0 })) : { added: 0 };
     await supabaseAdmin()
       .from("connections")
@@ -60,6 +65,11 @@ export async function GET(req: Request, { params }: { params: { provider: string
     return back(`connected=${provider}&found=${signals.length}&added=${added}&trips=${tripsAdded}`);
   } catch (e) {
     console.error(`connect ${provider} failed`, (e as Error).message);
+    const why = (e as { code?: string }).code;
+    if (why === "rate_limited" || why === "not_ready") return back(`connect_error=${why}&provider=${provider}`);
+    if (why === "scope_denied") return back(`connect_error=denied&provider=${provider}`);
+    // 23514: the database doesn't take this source yet (its migration hasn't been run). Nothing was kept.
+    if (why === "23514") return back(`connect_error=not_ready&provider=${provider}`);
     return back(`connect_error=failed&provider=${provider}`);
   }
 }

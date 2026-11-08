@@ -54,7 +54,7 @@ export const SIGNAL_KIND_LABELS: Record<SignalKind, string> = {
 
 /**
  * Where a signal came from. New ones only come from typing them in, signing in (Google Calendar,
- * Facebook) or allowing the phone's calendar ("ics"). The others are kept for places saved by
+ * Gmail, Facebook) or allowing the phone's calendar ("ics"). The others are kept for places saved by
  * earlier file imports; the database accepts the same list.
  */
 export const SIGNAL_SOURCES = [
@@ -66,6 +66,7 @@ export const SIGNAL_SOURCES = [
   "facebook", // signed-in Facebook (check-ins, tagged places)
   "swarm", // earlier imports only
   "paste", // earlier imports only
+  "gmail", // signed-in Gmail (hotel, flight, restaurant and tour confirmations)
 ] as const;
 export type SignalSource = (typeof SIGNAL_SOURCES)[number];
 export const SIGNAL_SOURCE_LABELS: Record<SignalSource, string> = {
@@ -77,6 +78,7 @@ export const SIGNAL_SOURCE_LABELS: Record<SignalSource, string> = {
   facebook: "Facebook",
   swarm: "Swarm",
   paste: "Pasted list",
+  gmail: "Gmail",
 };
 
 /**
