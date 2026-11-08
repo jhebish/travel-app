@@ -41,6 +41,7 @@ import {
 import { ShareWhileAway } from "./pages";
 import { PhotoGallery, type GalleryTarget } from "./PhotoGallery";
 import { PlacePhoto } from "./PlacePhoto";
+import { TripRank } from "./Rank";
 import { TogetherSheet, WhoIsIn } from "./Together";
 
 const srcColor = (s: string) => `var(--s-${isSourceId(s) ? s : "reviews"})`;
@@ -698,6 +699,9 @@ export function TripView({
           </span>
         </p>
       )}
+
+      {/* After a dated trip: rank its stops (with friends, the group's favourites). */}
+      {!readOnly && <TripRank trip={trip} />}
 
       {/* ---------- route (several stops) ---------- */}
       {!!it.route && it.route.length > 1 && (

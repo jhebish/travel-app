@@ -23,3 +23,4 @@ export * from "./nightpulse";
 export * from "./region";
 export * from "./privacy";
 export * from "./recap";
+export * from "./rank";

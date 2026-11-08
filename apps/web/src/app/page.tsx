@@ -20,6 +20,7 @@ import { DaysSlider } from "@/components/DaysSlider";
 import { useDaysPlan } from "@/components/useDaysPlan";
 import { ItineraryPreview, previewFromItinerary } from "@/components/ItineraryPreview";
 import { HomeLoop } from "@/components/pages";
+import { RankNudge } from "@/components/RankNudge";
 import { useMe } from "@/components/useMe";
 import { api } from "@/lib/api";
 import { planHref } from "@/lib/links";
@@ -230,6 +231,7 @@ export default function Browse() {
         <h1>Where to next?</h1>
         <p className="lede">Turn the globe and tap a pin for an itinerary you can fit to your days, and the best-rated trips there. Pins are this season&apos;s trending places.</p>
       </header>
+      <RankNudge />
 
       <div className="chips" role="group" aria-label="Filter by what you're into">
         {(["All", ...DESTINATION_TAGS] as const).map((t) => (

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { SIGNAL_KINDS, SIGNAL_KIND_LABELS, SIGNAL_SOURCES, SIGNAL_SOURCE_LABELS, type SignalKind, type SignalSource } from "./labels";
+import { RANK_GROUPS, RANK_GROUP_LABELS, TOP_RANK_SCORE, topRanked } from "./rank";
 export { SIGNAL_KINDS, SIGNAL_KIND_LABELS, SIGNAL_SOURCES, SIGNAL_SOURCE_LABELS, type SignalKind, type SignalSource } from "./labels";
 
 /**
@@ -31,6 +32,8 @@ export interface TasteSignal {
   /** A short note: a review, caption or "what we ordered". At most 280 characters. */
   note?: string | null;
   url?: string | null;
+  /** Their own ranking ("Which did you love more?"): 50 is average for its kind, higher is loved more. */
+  rankScore?: number | null;
 }
 
 const clip = (n: number) => z.preprocess((v) => (typeof v === "string" ? v.trim().slice(0, n) : v), z.string());
@@ -138,14 +141,56 @@ export interface TasteFeedback {
 }
 
 const KIND_WEIGHT: Record<SignalKind, number> = { stay: 3, food: 3, drink: 2, coffee: 2, nightlife: 1, activity: 1, sight: 1, shop: 1, city: 0 };
-/** Strongest evidence first: explicit likes and high ratings, places over cities, then recent. */
-export function rankSignals<T extends Pick<TasteSignal, "kind" | "rating" | "liked" | "date">>(signals: T[]): T[] {
+/**
+ * Strongest evidence first: explicit likes and high ratings, places over cities, then recent.
+ * Their own ranking counts too: a place they keep choosing over others of its kind moves up, one
+ * that keeps losing moves down.
+ */
+export function rankSignals<T extends Pick<TasteSignal, "kind" | "rating" | "liked" | "date"> & { rankScore?: number | null }>(signals: T[]): T[] {
   const score = (s: T) =>
     (s.liked === true ? 4 : s.liked === false ? 3 : 0) +
     (s.rating ? Math.abs(s.rating - 3) * 1.5 : 0) +
     KIND_WEIGHT[s.kind] +
-    (s.date ? Math.max(0, 2 - (Date.now() - Date.parse(s.date)) / (3 * 365 * 864e5)) : 0);
+    (s.date ? Math.max(0, 2 - (Date.now() - Date.parse(s.date)) / (3 * 365 * 864e5)) : 0) +
+    (typeof s.rankScore === "number" ? Math.max(-2, Math.min(3, (s.rankScore - 50) / 4)) : 0);
   return [...signals].sort((a, b) => score(b) - score(a));
+}
+
+/** Their "Which did you love more?" answers, ready for the taste prompt: best first. */
+export interface TasteRanking {
+  /** Past trips, e.g. "Lisbon, Portugal (2025)". */
+  trips: string[];
+  /** One line per kind, e.g. "Restaurants: Taberna da Rua das Flores (Lisbon) > Cervejaria Ramiro (Lisbon)". */
+  places: string[];
+}
+
+/** A ranked place: one of their own (a taste signal) or a stop on a Pylos trip they ranked after it. */
+export interface RankedPlace {
+  name: string;
+  city?: string | null;
+  group: string;
+  rankScore: number;
+}
+
+/** The top of their own ranking: up to 8 trips, and up to 4 places of each kind. */
+export function tasteRanking(trips: { city: string; country: string; year?: number | null; rankScore?: number | null }[], places: RankedPlace[]): TasteRanking {
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const g of RANK_GROUPS) {
+    const best = topRanked(
+      places.filter((p) => p.group === g),
+      12,
+    )
+      .filter((p) => {
+        const k = `${p.name.toLowerCase()}|${(p.city ?? "").toLowerCase()}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .slice(0, 4);
+    if (best.length) lines.push(`${RANK_GROUP_LABELS[g]}: ${best.map((p) => `${p.name}${p.city ? ` (${p.city})` : ""}`).join(" > ")}`);
+  }
+  return { trips: topRanked(trips, 8).map((t) => `${t.city}, ${t.country}${t.year ? ` (${t.year})` : ""}`), places: lines };
 }
 
 const sigLine = (s: Pick<TasteSignal, "kind" | "name" | "city" | "rating" | "liked" | "note">) =>
@@ -154,9 +199,16 @@ const sigLine = (s: Pick<TasteSignal, "kind" | "name" | "city" | "rating" | "lik
   }${s.note ? ` · "${s.note.replace(/\s+/g, " ").slice(0, 120)}"` : ""}`;
 
 /** The prompt that turns someone's places into a taste profile. */
-export function buildTastePrompt(input: { pastTrips: TastePastTrip[]; signals: TasteSignal[]; feedback: TasteFeedback }): string {
+export function buildTastePrompt(input: { pastTrips: TastePastTrip[]; signals: TasteSignal[]; feedback: TasteFeedback; ranking?: TasteRanking }): string {
   const sigs = rankSignals(input.signals.filter((s) => s.kind !== "city")).slice(0, 160);
   const cities = input.signals.filter((s) => s.kind === "city").slice(0, 40);
+  const r = input.ranking;
+  const ranking =
+    r && (r.trips.length || r.places.length)
+      ? `\nTHEIR OWN RANKING (their answers to "which did you love more?", favorite first: the clearest evidence of what they love most)\n${
+          r.trips.length ? `Trips: ${r.trips.join(" > ")}\n` : ""
+        }${r.places.join("\n")}${r.places.length ? "\n" : ""}`
+      : "";
   return `Read this traveler's taste from the places they've been and how they felt about them. The app uses your profile to choose hotels and restaurants they will love on future trips.
 Use only the evidence below. Prefer concrete traits (e.g. "courtyard riads", "natural wine bars", "counter seating") over generic words. Leave a field empty rather than guess.
 
@@ -165,7 +217,7 @@ ${input.pastTrips.length ? input.pastTrips.slice(0, 40).map((t) => `- ${t.city},
 
 PLACES (strongest evidence first)
 ${sigs.length ? sigs.map(sigLine).join("\n") : "(none)"}
-${cities.length ? `\nCITIES VISITED\n${cities.map((c) => `- ${c.name}${c.date ? ` (${c.date.slice(0, 4)})` : ""}`).join("\n")}\n` : ""}
+${cities.length ? `\nCITIES VISITED\n${cities.map((c) => `- ${c.name}${c.date ? ` (${c.date.slice(0, 4)})` : ""}`).join("\n")}\n` : ""}${ranking}
 THUMBS ON PYLOS TRIPS
 Liked: ${input.feedback.liked.slice(0, 30).join("; ") || "(none)"}
 Not for them: ${input.feedback.disliked.slice(0, 20).join("; ") || "(none)"}
@@ -178,8 +230,9 @@ Call submit_taste.`;
  * nearest to this trip first. With several people (planning together) pass one entry each.
  */
 export function tasteForPrompt(
-  people: { label: string | null; profile: TasteProfileCore | null; favorites: Pick<TasteSignal, "kind" | "name" | "city" | "rating" | "liked" | "note">[] }[],
+  people: { label: string | null; profile: TasteProfileCore | null; favorites: Pick<TasteSignal, "kind" | "name" | "city" | "rating" | "liked" | "note" | "rankScore">[] }[],
 ): string {
+  const topRankedFav = (f: { rankScore?: number | null }) => typeof f.rankScore === "number" && f.rankScore >= TOP_RANK_SCORE;
   const parts = people
     .filter((p) => p.profile?.summary || p.favorites.length)
     .map((p) => {
@@ -195,16 +248,23 @@ export function tasteForPrompt(
           ? `- Food and drink: ${[t.food.cuisines.join(", "), t.food.vibes.join(", "), t.food.price, t.food.avoid.length ? `avoid ${t.food.avoid.join(", ")}` : ""].filter(Boolean).join("; ")}`
           : "",
         t?.activities.length ? `- Likes doing: ${t.activities.join(", ")}` : "",
-        loved.length ? `- Places they loved: ${loved.map((f) => `${f.name}${f.city ? ` (${f.city})` : ""}`).join("; ")}` : "",
+        loved.length
+          ? `- Places they loved: ${loved.map((f) => `${f.name}${f.city ? ` (${f.city})` : ""}${topRankedFav(f) ? " [top-ranked]" : ""}`).join("; ")}`
+          : "",
         disliked.length ? `- Places that weren't for them: ${disliked.map((f) => `${f.name}${f.city ? ` (${f.city})` : ""}`).join("; ")}` : "",
       ].filter(Boolean);
       return `${p.label ? `${p.label}:\n` : ""}${lines.join("\n")}`;
     });
   if (!parts.length) return "";
   const together = people.length > 1;
-  const example = people.flatMap((p) => p.favorites).find((f) => f.kind !== "city" && f.liked !== false && (f.rating ?? 4) >= 4)?.name;
+  // "forYou" is shown only to the trip's owner (listed first), so the example and the reasons are theirs.
+  const ownerLoved = (people[0]?.favorites ?? []).filter((f) => f.kind !== "city" && f.liked !== false && (f.rating ?? 4) >= 4);
+  const example = ownerLoved.find(topRankedFav) ?? ownerLoved[0];
+  const because = example ? `"Because you loved ${example.name}${example.city ? ` in ${example.city}` : ""}"` : "";
   return `TASTE (learned from places ${together ? "these travelers have" : "this traveler has"} been and rated: use it to predict which hotels and restaurants ${together ? "they" : "they"} will love)
 ${parts.join("\n\n")}
 Prefer places with the same character as their favorites (the same feel, not the same place).${together ? " They're planning this trip together: favor places that suit everyone; where tastes differ, balance them across the days." : ""}
-Show the match: on the one or two picks per day (and the hotels) that best fit this taste, set "forYou" to a few words naming the link to one of their favorites or a trait above (e.g. ${example ? `"Like ${example}: same easy feel" or ` : ""}"Your kind of natural wine bar"). Leave "forYou" empty on picks that don't clearly fit. Never invent favorites.`;
+Show the match: on the one or two picks per day (and the hotels) that best fit this taste, set "forYou" (under 12 words) to name the specific favorite it echoes and where that was${because ? `, e.g. ${because}` : ""}. Choose the strongest link: places marked [top-ranked] first (the mark isn't part of the name), then the others they loved, ideally the same kind of place (a restaurant for a restaurant, a hotel for a hotel). When a trait above fits better than any one place, name the trait instead ("Your kind of natural wine bar"). Leave "forYou" empty on picks that don't clearly fit. Never invent favorites.${
+    together ? ` Only the trip owner (listed first) sees "forYou": name only the owner's own favorites there, never another traveler's.` : ""
+  }`;
 }
