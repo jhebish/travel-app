@@ -9,12 +9,11 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 /**
- * How long most people stay in a place, for trips built before new trips started carrying it.
- * ?destination=Lisbon&mode=single. Cached per destination; asks the model only on a miss.
+ * How long most people stay in a place, for trips that don't carry it yet (older trips, shared
+ * links, destination pages). ?destination=Lisbon&mode=single. Anyone gets a cached answer; only a
+ * signed-in traveler's visit asks the model when there isn't one.
  */
 export const GET = handler(async (req: Request) => {
-  const ctx = await getCtx(req);
-  if (!ctx.user) throw new HttpError(401, "Sign in to see this.");
   const q = new URL(req.url).searchParams;
   const destination = (q.get("destination") ?? "").trim().slice(0, 120);
   const mode = q.get("mode") === "multi" ? "multi" : "single";
@@ -22,6 +21,8 @@ export const GET = handler(async (req: Request) => {
   if (regionPolicy(destination) === "blocked") return json({ idealDays: null });
   const cached = await readIdealDays(destination, mode).catch(() => null);
   if (cached) return json({ idealDays: cached });
+  const ctx = await getCtx(req);
+  if (!ctx.user) return json({ idealDays: null });
   await rateLimit(ctx, "extract", 30, "That's a lot of new places this hour. Try again a little later.");
   return json({ idealDays: await idealDays(destination, mode, Date.now() + 25_000) });
 });
