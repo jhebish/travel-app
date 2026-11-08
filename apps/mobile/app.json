@@ -2,9 +2,11 @@
   "expo": {
     "name": "Pylos",
     "slug": "pylos",
+    "owner": "pylos",
     "scheme": ["pylos", "tripplanner"],
     "version": "1.0.0",
     "runtimeVersion": { "policy": "sdkVersion" },
+    "updates": { "url": "https://u.expo.dev/b039f479-663c-444b-adda-766546125b49" },
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "icon": "./assets/icon.png",
@@ -67,6 +69,9 @@
     ],
     "experiments": {
       "typedRoutes": false
+    },
+    "extra": {
+      "eas": { "projectId": "b039f479-663c-444b-adda-766546125b49" }
     }
   }
 }
