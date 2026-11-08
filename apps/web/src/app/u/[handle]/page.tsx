@@ -3,6 +3,7 @@ import type { CommunityTrip, ProfileDTO } from "@travel/core";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Avatar, FollowButton, LevelBadge, PlaceChip, StatsRow, TripCard } from "@/components/community";
+import { LocalExpertLine } from "@/components/Friends";
 import { useMe } from "@/components/useMe";
 import { api } from "@/lib/api";
 
@@ -48,6 +49,7 @@ export default function ProfilePage({ params }: { params: { handle: string } }) 
           ) : null}
         </div>
         {p.bio && <p>{p.bio}</p>}
+        <LocalExpertLine handle={p.handle} />
         <StatsRow stats={p.stats} showNext={p.isMe} />
       </section>
 

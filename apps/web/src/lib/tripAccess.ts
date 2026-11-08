@@ -65,8 +65,9 @@ export function tripForRole(row: TripRow, role: TripRole): Trip {
     itinerary: {
       ...it,
       forYou: "",
-      days: it.days.map((d) => ({ ...d, stops: d.stops.map(({ forYou: _f, ...s }) => s) })),
-      hotels: (it.hotels ?? []).map(({ forYou: _f, ...h }) => h),
+      // Nor whose friend's pick a stop was: those friends shared their places with the owner.
+      days: it.days.map((d) => ({ ...d, stops: d.stops.map(({ forYou: _f, friend: _fr, ...s }) => s) })),
+      hotels: (it.hotels ?? []).map(({ forYou: _f, friend: _fr, ...h }) => h),
     },
     request: { ...t.request, about: [], extra: "", age: null, startDate: t.request.startDate ?? null },
     votes: {},
@@ -80,7 +81,7 @@ export function tripForRole(row: TripRow, role: TripRole): Trip {
  * Count this action against the person's hourly limit. The event is recorded before the work
  * starts, so requests fired in parallel count against each other.
  */
-export async function rateLimit(ctx: Ctx, kind: "build" | "edit" | "hotels" | "extract" | "taste" | "sample", perHour: number, message: string) {
+export async function rateLimit(ctx: Ctx, kind: "build" | "edit" | "hotels" | "extract" | "taste" | "sample" | "gmail", perHour: number, message: string) {
   if (!ctx.user) return;
   const db = supabaseAdmin();
   const { error } = await db.from("rate_events").insert({ user_id: ctx.user.id, kind });

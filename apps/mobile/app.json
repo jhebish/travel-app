@@ -56,7 +56,13 @@
           "granularPermissions": ["photo"]
         }
       ],
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-notifications",
+        {
+          "color": "#3f7472"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false

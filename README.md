@@ -224,16 +224,40 @@ directly: trips are now inserted and edited only by the server, which checks who
     type Web application, redirect URI `https://www.pylos.ai/api/connect/google_calendar/callback`,
     enable the Google Calendar API, scope `calendar.events.readonly`). Until Google verifies the app, only
     the test users you add on the consent screen can connect.
+  - Gmail (`lib/gmail.ts`; searches and parsing in `packages/core/src/imports/gmail.ts`): a one-time
+    read of booking confirmations from about the last six years: hotels and booking sites
+    (Booking.com, Airbnb, Expedia, Hotels.com, Vrbo, the big chains), airlines and rail, Resy,
+    OpenTable, Tock and SevenRooms, GetYourGuide and Viator, plus subjects like "reservation
+    confirmed". Pylos searches one year at a time and reads at most 250 emails, and of each only
+    the Subject and From headers, the date and Gmail's short preview, never the body. The access is
+    revoked as soon as that's read. The fast model gets the sender's domain, the date, and the
+    subject and preview with greetings, addresses, links, phone and booking numbers taken out; the
+    bookings it names become `taste_signals` (source `gmail`) and Places you've been (not in the
+    home city: the profile's, or where most flights leave from). No email is stored. Four reads an
+    hour at most (`rate_events` kind `gmail`).
+    Setup, with the same OAuth client as Calendar: in Google Cloud enable the **Gmail API**; on the
+    OAuth consent screen (Data access) add the scope `https://www.googleapis.com/auth/gmail.readonly`;
+    add the redirect URI `https://www.pylos.ai/api/connect/gmail/callback` (and
+    `http://localhost:3000/api/connect/gmail/callback` for local use); run
+    `supabase/migrations/20261108000000_community_loop.sql` (before it, the import stops before
+    reading anything and says it isn't set up); then set `GMAIL_IMPORT=on` in Vercel and redeploy.
+    Gmail stays hidden until then, even though Calendar uses the same OAuth client. `gmail.readonly` is a Google **restricted**
+    scope: until the app passes Google's verification (for restricted scopes that includes a
+    third-party security assessment, renewed yearly), only test users added on the consent screen
+    can connect, up to 100.
   - Facebook: check-ins and tagged places with `META_APP_ID` / `META_APP_SECRET` (redirect URI
     `/api/connect/facebook/callback`; `user_posts` and `user_tagged_places` need Meta app review).
-  - Both add the cities and years they find to Places you've been (`tripsFromSignals`).
+  - All of them add the cities and years they find to Places you've been (`tripsFromSignals`).
   - Access tokens are used once and revoked; none are stored (`connections` keeps only dates/counts).
   - In the phone app (You tab, `apps/mobile/src/deviceImports.ts`), with the person's permission:
     the calendars on the phone (iCloud, Google, Outlook; read on the phone with `calendarSignals`)
     and photo locations (days away from home become trips with `photoStays`; only rough centres
-    and dates are sent, and `/api/taste/photo-trips` names the places). Instagram doesn't let
+    and dates are sent, and `/api/taste/photo-trips` names the places). Both scans show the trips
+    they found for review first ("We found 12 trips since 2019", `apps/mobile/src/TripReview.tsx`);
+    only the ones kept are added, with `/api/community/places/bulk` (photos are named with
+    `preview: true`, which saves nothing). Instagram doesn't let
     apps read personal accounts any more, and Resy and OpenTable have no sign-in for other apps:
-    their bookings come in through the calendar.
+    their bookings come in through the calendar or Gmail.
 - **Photos.** Google Places photos are captured when places are verified and served through
   `/api/photo` (a cached redirect; author credited). Needs `GOOGLE_PLACES_API_KEY` with the Places
   API (New) enabled; each photo size is fetched from Google about once a week.
@@ -254,3 +278,35 @@ that works most of the year). The route picks stops for that month (beach towns 
 season) and gives each stop a `season` line and 2–3 `alternatives`. On the trip, each stop shows
 them; swapping (`swap_city` edit) re-plans that stop's days, its hotels if it had them, the
 transfers either side and the trip title, and keeps the old town as a one-tap swap back.
+
+## The community loop: easy logging, payback, friends
+
+Logging a trip takes seconds and pays off right away, and friends' trips make your plans better.
+
+- **Setup:** in the Supabase SQL editor run, in order, `20261108000000_community_loop.sql`,
+  `20261108200000_ranking.sql` and `20261108300000_pages.sql`. Until then these features stay off
+  and everything else works as before.
+- **Easy logging:** the phone's photo and calendar scans end with a review ("We found N trips since
+  2019", remove any before saving). Gmail booking confirmations can be imported once (see the Gmail
+  setup above; off until `GMAIL_IMPORT=on`). "Which did you love more?" (`/rank`) ranks your trips
+  and places two at a time; rankings feed the taste profile and the "Because you loved X" notes.
+  The morning after a dated trip, a banner (web) or a local notification (phone) asks you to rank it.
+- **Payback:** the taste card unlocks after 3 trips; each past trip has a page (`/p/:id`) with a map
+  of what you loved and "Plan a trip like this" (`/plan?like=:id`); `/recap` is your year in travel
+  with a 1080×1920 story picture to share; "A year ago you were in Kyoto" memories.
+- **Friends** (people who follow each other): "Friends who've been" is a source in the mix (weight 9),
+  so their loved places become candidates, shown as "Sara's pick" (with "Local" when they live there
+  or have been 3+ times). The plan page and trips list friends who've been, with "Ask Sara"; answers
+  are saved into your trip under "From friends" and feed later rebuilds. Planning together ends with
+  "The group's favourites". Your profile shows "Your picks helped 4 friends".
+- **Privacy:** each past trip is Only me, Followers or Everyone, with "Hide dates". Dated trips stay
+  hidden from others until the day after they end, unless "Share while I'm away" is on. People can
+  turn off "Let friends' planners use places I loved". Friends' places come only from past trips that
+  aren't private and never from trips dated in the future.
+- **Phone notifications:** the app registers an Expo push token (`/api/push/register`) for
+  questions and answers from friends. Needs `eas init` (to set `extra.eas.projectId`), APNs/FCM
+  credentials in EAS, and a new build of the phone app (expo-notifications is a native module).
+- **API:** `/api/rank` (next pair, vote), `/api/rank/nudges`, `/api/trips/:id/rank` (group
+  favourites), `/api/community/past/:id`, `/api/recap`, `/api/recap/story`, `/api/friends/been`,
+  `/api/friends/like/:id`, `/api/friends/trip/:id`, `/api/friends/u/:handle`, `/api/friends/me`,
+  `/api/asks` (ask, list), `/api/asks/:id` (answer, decline), `/api/asks/count`.

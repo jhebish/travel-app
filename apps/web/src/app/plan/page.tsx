@@ -25,6 +25,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { Chips, SingleChips } from "@/components/Chips";
+import { FriendsWhoveBeen, InspiredBy, buildPath, useLikeTrip } from "@/components/Friends";
 import { useMe } from "@/components/useMe";
 import { api, streamEvents } from "@/lib/api";
 import { BuildProgress, initialBuild, reduceBuild, type BuildState } from "@/components/BuildProgress";
@@ -168,6 +169,12 @@ function Planner() {
     }));
   }, [params]);
 
+  // "Plan a trip like this" (/plan?like=<past trip id>): its city now, its loved places in the build.
+  const like = useLikeTrip((destination) => {
+    setMode("quick");
+    setReq((r) => ({ ...r, mode: "single", destination: destination.slice(0, 120), days: Math.min(r.days, MAX_DAYS.single) }));
+  });
+
   function setTripMode(m: TripMode) {
     setReq((r) => ({ ...r, mode: m, days: m === "multi" ? Math.max(r.days, 5) : Math.min(r.days, MAX_DAYS.single) }));
   }
@@ -247,7 +254,7 @@ function Planner() {
       setStatus({ text: "Add a destination first.", err: true });
       return;
     }
-    await runBuild("/api/trips", req, { destination: req.destination.trim(), days: req.days, hotels: req.stay.on, multi: req.mode === "multi" });
+    await runBuild(buildPath(like, req.destination), req, { destination: req.destination.trim(), days: req.days, hotels: req.stay.on, multi: req.mode === "multi" });
   }
 
   function onTypeformSubmit(responseId: string) {
@@ -324,6 +331,7 @@ function Planner() {
               value={req.destination}
               onChange={(e) => set("destination", e.target.value)}
             />
+            <InspiredBy like={like} destination={req.destination} />
             {/* Ideas only while the box is empty: picking one fills it. */}
             {trending.length > 0 && !req.destination.trim() && (
               <div className="trending" aria-label="Trending destinations">
@@ -337,6 +345,8 @@ function Planner() {
               </div>
             )}
           </div>
+
+          {req.mode === "single" && <FriendsWhoveBeen city={req.destination} month={travelMonth(req)} />}
 
           <div className="card plan-card">
             <div className="plan-when">

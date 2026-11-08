@@ -1,6 +1,7 @@
 import {
   AIRBNB_ICONS,
   SOURCE_BY_ID,
+  friendPickLabel,
   STAY_STYLES,
   STAY_TIERS,
   airbnbSearchUrl,
@@ -45,7 +46,7 @@ function SourceTag({ p }: { p: Stop | Hotel }) {
   return (
     <View style={styles.row}>
       <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: t.sources[id] }} />
-      <Text style={{ color: t.muted, fontSize: 13, fontWeight: "600" }}>{SOURCE_BY_ID[id].name}</Text>
+      <Text style={{ color: t.muted, fontSize: 13, fontWeight: "600" }}>{p.friend ? `${friendPickLabel(p.friend)}${p.friend.local ? " · Local" : ""}` : SOURCE_BY_ID[id].name}</Text>
       {p.origin === "ai" && <Text style={{ color: t.faint, fontSize: 12 }}>AI pick</Text>}
     </View>
   );

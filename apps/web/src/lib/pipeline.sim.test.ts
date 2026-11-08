@@ -3,7 +3,7 @@
  * planItinerary as on the site. Claude, Google Places and the database are replaced at the module
  * boundary; everything else (prompts, schemas, checks, the rebuild) is the real code.
  */
-import { BLOCKED_REDIRECT, DAY_TOOL, NightSpotsSchema, OUTLINE_TOOL, ROUTE_TOOL, TripRequestSchema, blendWeights, buildPulse, defaultWeights, type Candidate } from "@travel/core";
+import { BLOCKED_REDIRECT, DAY_TOOL, NightSpotsSchema, OUTLINE_TOOL, ROUTE_TOOL, TripRequestSchema, blendWeights, buildPulse, defaultWeights, friendCandidates, type Candidate } from "@travel/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
@@ -348,6 +348,73 @@ describe("a build with a night out", () => {
     expect(day).toMatch(/Tonight: a drink at a good bar near dinner\. No club\./);
     expect(day).not.toMatch(/Club nights/);
     expect(dayPrompts()).toHaveLength(1); // no club demanded, nothing rebuilt
+  });
+});
+
+describe("a build with friends' picks", () => {
+  const sara = { userId: "u-sara", name: "Sara Haddad", local: true, from: "loved" as const };
+  /** What lib/friends.ts would hand the planner for Sara's Lisbon trip. */
+  const fromSara = () =>
+    friendCandidates(
+      [
+        { credit: sara, name: "Tasca do Chico", kind: "food" }, // Google finds it too
+        { credit: sara, name: "Café da Garagem", kind: "coffee", note: "Sit by the window" }, // only Sara knows it
+      ],
+      "Lisbon",
+    );
+  const source = (cands: Candidate[]) => ({ candidates: async () => cands, credit: async <T,>(t: T) => t });
+  const own = (time: string, name: string, kind: string, extra: Record<string, unknown> = {}) => ({ time, name, neighborhood: "", why: "", localTip: "", source: "locals", candidateId: null, kind, cost: "~€10", ...extra });
+
+  it("plans with friends' places as their picks, and grounding keeps them theirs", async () => {
+    const cands = fromSara();
+    const tasca = cands.find((c) => c.name === "Tasca do Chico")!.id;
+    const garagem = cands.find((c) => c.name === "Café da Garagem")!.id;
+    h.callTool.mockImplementation(async (_prompt: string, tool: unknown) => {
+      if (tool === OUTLINE_TOOL) return reply({ title: "Lisbon", days: [{ label: "Day 1", theme: "Alfama", area: "Alfama", candidateIds: [tasca, garagem, ...ids("castelo")], mustSee: [] }] });
+      if (tool === DAY_TOOL)
+        return reply({
+          stops: [
+            own("09:00", "Café da Garagem", "coffee"), // named without its id
+            stop("10:30", "castelo", "sight"),
+            own("13:00", "Tasca do Chico", "meal", { source: "friends", candidateId: tasca }),
+            own("16:00", "MAAT", "sight", { source: "reviews", candidateId: "gp_maat" }),
+            own("20:00", "Some Bar", "drinks", { source: "friends" }), // the model's own idea, labelled a friend's
+          ],
+        });
+      throw new Error("unexpected tool");
+    });
+    const { itin } = await planItinerary(request({ destination: "Lisbon", days: 1 }), { eff, lists, history: "", friends: source(cands) });
+    const at = (n: string) => itin.days[0]!.stops.find((x) => x.name === n)!;
+
+    expect(at("Tasca do Chico")).toMatchObject({ source: "friends", origin: "friend", friend: { name: "Sara Haddad", local: true } });
+    expect(at("Tasca do Chico").place?.placeId).toBe("pid_tasca"); // Google's details came with it
+    expect(at("Café da Garagem")).toMatchObject({ source: "friends", origin: "friend", candidateId: garagem, friend: { name: "Sara Haddad", local: true } });
+    expect(at("Some Bar")).toMatchObject({ origin: "ai", source: "guidebooks" });
+    expect(at("Some Bar").friend).toBeUndefined();
+    expect(at("Castelo de São Jorge").friend).toBeUndefined();
+
+    // The planner saw the friends source, and one Tasca do Chico (Sara's), not two.
+    const outline = h.callTool.mock.calls.find((c) => c[1] === OUTLINE_TOOL)![0] as string;
+    expect(outline).toContain(`"friends" · Friends who've been · weight 9`);
+    expect(outline).toContain(`[${tasca}] Tasca do Chico`);
+    expect(outline.match(/Tasca do Chico/g)).toHaveLength(1);
+    expect(outline).toMatch(/Café da Garagem .*source:friends.*note: Sit by the window/);
+  });
+
+  it("leaves friends out when the traveler turned the source off", async () => {
+    const off = blendWeights({ weights: defaultWeights(), blocked: [] }, { useCustom: true, weights: {}, blocked: ["friends"] });
+    h.callTool.mockImplementation(async (_prompt: string, tool: unknown) => {
+      if (tool === OUTLINE_TOOL) return reply({ title: "Lisbon", days: [{ label: "Day 1", theme: "Alfama", area: "Alfama", candidateIds: ids("castelo", "tasca"), mustSee: [] }] });
+      if (tool === DAY_TOOL) return reply({ stops: [stop("10:30", "castelo", "sight"), stop("13:00", "tasca", "meal")] });
+      throw new Error("unexpected tool");
+    });
+    const { itin } = await planItinerary(request({ destination: "Lisbon", days: 1 }), { eff: off, lists, history: "", friends: source(fromSara()) });
+    const outline = h.callTool.mock.calls.find((c) => c[1] === OUTLINE_TOOL)![0] as string;
+    expect(outline).not.toContain("source:friends");
+    expect(outline).not.toContain("Café da Garagem");
+    // Google's Tasca do Chico is still there to plan with.
+    expect(outline).toContain("[gp_tasca] Tasca do Chico");
+    expect(itin.days[0]!.stops.every((x) => !x.friend && x.source !== "friends")).toBe(true);
   });
 });
 

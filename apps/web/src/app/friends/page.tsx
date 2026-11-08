@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { FollowButton, LevelBadge, PersonLine, TripCard } from "@/components/community";
+import { AsksInbox } from "@/components/FriendsAsks";
 import { useMe } from "@/components/useMe";
 import { api, ApiError } from "@/lib/api";
 import { planHref } from "@/lib/links";
@@ -247,6 +248,7 @@ function Community() {
           </Link>
         </div>
       )}
+      {joined && <AsksInbox focus={params.get("ask")} />}
       <div className="seg wide" role="tablist" aria-label="Friends">
         {TABS.map((x) => (
           <button key={x.id} role="tab" aria-selected={tab === x.id} onClick={() => router.replace(`/friends?tab=${x.id}`, { scroll: false })}>

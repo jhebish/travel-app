@@ -4,7 +4,8 @@ import { useCallback, useState } from "react";
 import { Pressable, View } from "react-native";
 import { api } from "../../src/api";
 import { useAuth } from "../../src/auth";
-import { supabase } from "../../src/supabase";
+import { signOut } from "../../src/notifications";
+import { ReminderOptIn } from "../../src/RankCards";
 import { useTheme } from "../../src/theme";
 import { Button, Card, Chip, H1, Loading, P, Screen, Status, styles, Text } from "../../src/ui";
 
@@ -46,6 +47,7 @@ export default function Trips() {
 
   return (
     <Screen>
+      <ReminderOptIn />
       <Card>
         <H1>My trips</H1>
         <P muted>Every trip you build is kept here, private to you.</P>
@@ -85,7 +87,7 @@ export default function Trips() {
       {isGuest ? (
         <Button ghost title="Sign in to keep trips across devices" onPress={() => router.push("/login")} />
       ) : (
-        <Button ghost title="Sign out" onPress={() => supabase.auth.signOut()} />
+        <Button ghost title="Sign out" onPress={() => void signOut()} />
       )}
     </Screen>
   );

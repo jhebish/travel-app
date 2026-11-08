@@ -1215,3 +1215,161 @@ dialog.gallery::backdrop { background: rgba(14, 10, 12, .82); }
   .tl-tools { gap: 8px; }
   .btn.small { min-height: 40px; }
 }
+
+/* ---- Trip pages, recap and privacy ---- */
+/* Places as links (to their trip pages). */
+a.place { color: inherit; text-decoration: none; }
+@media (hover: hover) { a.place:hover { border-color: var(--faint); } }
+a.place:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Who sees each past trip, in your list of places. */
+.ptc { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 8px; }
+.ptc select.ptc-vis { width: auto; font-size: 14px; padding: 5px 8px; min-height: 0; }
+.ptc-dates { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); cursor: pointer; }
+.ptc-dates input { width: 16px; height: 16px; accent-color: var(--accent); margin: 0; }
+.ptc-share { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.ptc-ask { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ptc .status, .ptc-share .status { font-size: 14px; flex-basis: 100%; }
+
+/* A past trip's page. */
+.ptrip-stars { color: var(--warm); letter-spacing: .1em; font-size: 18px; }
+.ptrip-mine { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: var(--r-ctl); background: var(--sunk); }
+.loved { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.loved li { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.loved li:last-child { border-bottom: 0; }
+.loved-n {
+  flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent); color: var(--surface); font-size: 13px; font-weight: 700;
+}
+.loved-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.loved-text small { font-size: 13px; color: var(--muted); }
+.loved-text b { font-weight: 650; overflow-wrap: anywhere; }
+.loved .btn.ghost.small { min-height: 34px; }
+
+/* Memories: "A year ago you were in Kyoto". */
+.memory { background: var(--ochre); border-color: transparent; gap: 14px; }
+.memory .lede { color: var(--ink); }
+.memory-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.memory .iconbtn { background: transparent; }
+
+/* The year in travel. */
+.recap-link b { font-weight: 650; }
+.recap-card { gap: 16px; }
+.recap-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.recap-stats > div { background: var(--sunk); border-radius: var(--r-ctl); padding: 14px; display: flex; flex-direction: column; gap: 2px; }
+.recap-stats b { font-size: 30px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; }
+.recap-stats span { font-size: 14px; color: var(--muted); }
+.recap-facts { margin: 0; display: flex; flex-direction: column; gap: 14px; }
+.recap-facts > div { display: flex; flex-direction: column; gap: 4px; }
+.recap-facts dt { font: 400 12.5px var(--font-display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.recap-facts dd { margin: 0; font-size: 18px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 8px; }
+.recap-facts dd small { color: var(--muted); font-size: 14px; }
+.recap-share .btn { align-self: flex-start; width: auto; }
+.recap-story { width: 216px; height: auto; aspect-ratio: 9 / 16; border-radius: 18px; border: 1px solid var(--line); box-shadow: 0 10px 28px rgba(0, 0, 0, .1); }
+@media (max-width: 600px) {
+  .recap-stats { grid-template-columns: 1fr 1fr; }
+}
+
+/* Taste profile, before it unlocks. */
+.taste-count { color: var(--muted); font-weight: inherit; white-space: nowrap; }
+
+/* ---- Ranking and nudges ---- */
+/* "Which did you love more?": two cards side by side, tap one; then the ranking, best first. */
+.rank-picker { display: flex; flex-direction: column; gap: 14px; }
+.rank-pair { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 12px; align-items: stretch; }
+.rank-side { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rank-card {
+  flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 10px 14px; text-align: left;
+  border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--bg); color: var(--ink); font: inherit; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; transition: border-color .15s, background .15s, transform .15s;
+}
+@media (hover: hover) { .rank-card:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); } }
+.rank-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rank-card:active:not(:disabled) { transform: scale(.98); }
+.rank-card:disabled { cursor: default; }
+.rank-side.won .rank-card { border-color: var(--accent); background: var(--accent-soft); transform: scale(1.02); }
+.rank-picker[aria-busy="true"] .rank-side:not(.won) .rank-card { opacity: .6; }
+.rank-img, .rank-nophoto { display: block; width: 100%; aspect-ratio: 4 / 3; border-radius: 12px; margin-bottom: 6px; background: var(--sunk); }
+.rank-img { object-fit: cover; }
+.rank-nophoto { display: flex; align-items: center; justify-content: center; font: 400 44px var(--font-display); color: var(--faint); background: linear-gradient(135deg, var(--sunk), var(--lavender)); }
+.rank-kind { font: 400 12px var(--font-display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.rank-name { font: 400 20px/1.2 var(--font-display); overflow-wrap: anywhere; }
+.rank-where { font-size: 15px; font-style: italic; color: var(--muted); }
+.rank-credit { font-size: 12px; color: var(--faint); padding: 0 6px; }
+.rank-credit a { color: inherit; }
+.rank-or { align-self: center; font: italic 18px var(--font); color: var(--faint); }
+.rank-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.rank-progress { display: inline-flex; align-items: center; gap: 6px; }
+.rank-progress i { width: 10px; height: 10px; border-radius: 999px; background: var(--sunk); border: 1px solid var(--line); transition: background .2s; }
+.rank-progress i.on { background: var(--accent); border-color: var(--accent); }
+.rank-progress small { margin-left: 4px; font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rank-done { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 14px 16px; border-radius: 14px; background: var(--olive); }
+.rank-done b { font: 400 21px var(--font-display); }
+.rank-done span { color: var(--muted); }
+.rank-done .btn { margin-top: 6px; }
+.rank-results { display: flex; flex-direction: column; gap: 14px; }
+.rank-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 18px 24px; }
+.rank-group { display: flex; flex-direction: column; gap: 8px; }
+.rank-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.rank-list li { display: flex; align-items: baseline; gap: 10px; }
+.rank-list b { font-weight: 600; }
+.rank-n { flex: none; width: 24px; height: 24px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font: 400 13px var(--font-display); background: var(--sunk); color: var(--muted); transform: translateY(2px); }
+.rank-list li:first-child .rank-n { background: var(--ochre); color: var(--ink); }
+.rank-trip, .rank-entry { gap: 18px; }
+@media (max-width: 520px) {
+  .rank-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+  .rank-or { display: none; }
+  .rank-card { padding: 8px 8px 12px; }
+  .rank-name { font-size: 17px; }
+}
+
+/* "Back from Lisbon? Rank 5 spots in 60 seconds." Closed for good with the cross (kept in this browser). */
+.rank-nudge { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 10px 10px 18px; border-radius: 14px; background: var(--ochre); color: var(--ink); }
+.rank-nudge-link { color: inherit; text-decoration: none; font-size: 17px; line-height: 1.35; }
+.rank-nudge-link b { font: 400 18px var(--font-display); }
+.rank-nudge-link span { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, var(--ink) 35%, transparent); }
+.rank-nudge-link:hover span { text-decoration-color: currentColor; }
+.rank-nudge-x { flex: none; width: 40px; height: 40px; border: 0; border-radius: 999px; background: transparent; color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.rank-nudge-x:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.rank-nudge-x svg { width: 18px; height: 18px; }
+.browse > .rank-nudge { max-width: 720px; margin: 0 0 4px; }
+@media (prefers-reduced-motion: reduce) {
+  .rank-card, .rank-progress i { transition: none; }
+  .rank-side.won .rank-card, .rank-card:active:not(:disabled) { transform: none; }
+}
+
+/* ---- Friends ---- */
+/* Friends who've been: a source color, "Sara's pick" on stops, the Local badge, asking and answering. */
+:root { --s-friends: #4f79a8; }
+@media (prefers-color-scheme: dark) { :root { --s-friends: #9dbde0; } }
+.pill.local { align-self: auto; font-size: 12px; padding: 2px 8px; background: var(--ochre); color: var(--ink); }
+.friend-pick { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
+.nav a, .tabbar a { position: relative; }
+.ask-count {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: 6px;
+  border-radius: 999px; background: var(--accent); color: var(--accent-ink);
+  font: 600 11px/1 var(--font); letter-spacing: 0; text-transform: none; vertical-align: 2px;
+}
+.tabbar .ask-count { position: absolute; top: 4px; left: calc(50% + 6px); margin: 0; }
+.inspired { margin: 8px 0 0; font-style: italic; color: var(--muted); }
+.friends-been .been, .from-friends .answers, .asks .asklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.friends-been .been li, .from-friends .answers li, .asks .asklist li { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.friends-been .been li:last-child, .from-friends .answers li:last-child, .asks .asklist li:last-child { border-bottom: 0; }
+.been-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.been-top .person { flex: 1 1 auto; }
+.been-loved, .ask-q, .answer-text, .answer-who, .ask-who { margin: 0; }
+.been-loved small { font-family: var(--font-display); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-right: 6px; }
+.askbox, .answerbox { display: flex; flex-direction: column; gap: 10px; background: var(--sunk); border-radius: var(--r-ctl); padding: 12px 14px; }
+.answer-text { white-space: pre-line; }
+.answer-places { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.answer-places a { font-size: 14px; font-weight: 600; }
+.ask-who { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.asks .pill.new { align-self: auto; background: var(--olive); color: var(--olive-ink); font-size: 12px; padding: 2px 8px; }
+.asks .asklist li.focus { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); border-radius: var(--r-ctl); padding-inline: 10px; }
+.ask-answer { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.answerbox .chosen { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.answerbox .chosen li { display: flex; justify-content: space-between; gap: 10px; }
+.local-expert { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); }
+@media (max-width: 600px) {
+  .been-top { flex-wrap: wrap; }
+}

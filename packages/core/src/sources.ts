@@ -1,6 +1,7 @@
 export const SOURCE_IDS = [
   "locals",
   "hosts",
+  "friends",
   "press",
   "indie",
   "reviews",
@@ -22,6 +23,7 @@ export interface SourceDef {
 export const SOURCES: readonly SourceDef[] = [
   { id: "locals", name: "Local residents", description: "Picks from people who live in the neighborhood: their regular café, their Friday spot.", defaultWeight: 10 },
   { id: "hosts", name: "Vetted local hosts & guides", description: "Your network of hosts and guides on the ground.", defaultWeight: 9 },
+  { id: "friends", name: "Friends who've been", description: "Places your friends loved there, and their answers when you ask them.", defaultWeight: 9 },
   { id: "press", name: "Local press & food writers", description: "City magazines, local critics, neighborhood newsletters.", defaultWeight: 7 },
   { id: "indie", name: "Independent blogs", description: "Long-form travel writers and niche bloggers.", defaultWeight: 5 },
   { id: "reviews", name: "Review platforms", description: "Google Maps, Yelp, TripAdvisor ratings.", defaultWeight: 3 },

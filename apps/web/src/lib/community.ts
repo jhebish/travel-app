@@ -1,10 +1,12 @@
 import {
   cityKey as toCityKey,
   cityLabel,
+  hiddenWhileAway,
   publicItinerary,
   rankTravellers,
   topTripScore,
   travelStats,
+  visiblePastTrips,
   type CommunityProfileInput,
   type CommunityTrip,
   type Itinerary,
@@ -37,6 +39,15 @@ function check(error: DbError, what: string): void {
   }
   console.error(`community: ${what} failed`, error.code ?? "", (error.message ?? "").slice(0, 120).replace(/sb_[A-Za-z0-9_]+/g, "[key]"));
   throw new HttpError(500, "Something went wrong loading the community. Try again.");
+}
+
+/**
+ * Run a query with the columns the community-loop migration adds (who sees each past trip, hidden
+ * dates, sharing while away), or without them while that migration hasn't been run.
+ */
+async function withLoop<R extends { error: DbError }>(run: (loop: boolean) => PromiseLike<R>): Promise<R> {
+  const res = await run(true);
+  return res.error && ["42703", "PGRST204"].includes(res.error.code ?? "") ? run(false) : res;
 }
 
 const isGuest = (ctx: Ctx) => !ctx.user || !!(ctx.user as { is_anonymous?: boolean }).is_anonymous;
@@ -73,8 +84,11 @@ interface PastRow {
   rating: number | null;
   highlights: string | null;
   trip_id: string | null;
+  visibility?: Visibility;
+  hide_dates?: boolean;
 }
 const PAST_COLS = "id, user_id, city, country_code, year, month, days, rating, highlights, trip_id";
+const pastCols = (loop: boolean): string => (loop ? `${PAST_COLS}, visibility, hide_dates` : PAST_COLS);
 const toPast = (r: PastRow): PastTrip => ({
   id: r.id,
   city: r.city,
@@ -85,7 +99,23 @@ const toPast = (r: PastRow): PastTrip => ({
   rating: r.rating,
   highlights: r.highlights ?? "",
   tripId: r.trip_id,
+  visibility: r.visibility ?? "followers",
+  hideDates: r.hide_dates ?? false,
 });
+/** The privacy columns to write: only the ones given (an edit that leaves them out keeps them). */
+const privacyCols = (p: Pick<PastTripInput, "visibility" | "hideDates">) => ({
+  // Choosing who sees the trip also shares the places loved on it with them.
+  ...(p.visibility ? { visibility: p.visibility, places_shared: true } : {}),
+  ...(p.hideDates !== undefined ? { hide_dates: p.hideDates } : {}),
+});
+
+/** Who sees a new past trip when the person didn't say: everyone if their places are public, else followers. */
+async function newPlaceVisibility(ctx: Ctx, p: Pick<PastTripInput, "visibility">): Promise<Visibility> {
+  if (p.visibility) return p.visibility;
+  if (isGuest(ctx)) return "followers";
+  const { data } = await ctx.db.from("community_profiles").select("places_public").eq("user_id", ctx.user!.id).maybeSingle();
+  return data?.places_public ? "public" : "followers";
+}
 const byRecent = (a: PastTrip, b: PastTrip) => (b.year ?? 0) - (a.year ?? 0) || (b.month ?? 0) - (a.month ?? 0) || a.city.localeCompare(b.city);
 
 // ---------------------------------------------------------------------------
@@ -187,7 +217,8 @@ export async function follow(ctx: Ctx, handle: string, on: boolean) {
 // ---------------------------------------------------------------------------
 export async function myPlaces(ctx: Ctx): Promise<PastTrip[]> {
   if (!ctx.user) return [];
-  const { data, error } = await ctx.db.from("past_trips").select(PAST_COLS).eq("user_id", ctx.user.id).limit(1000);
+  const userId = ctx.user.id;
+  const { data, error } = await withLoop((loop) => ctx.db.from("past_trips").select<string, PastRow>(pastCols(loop)).eq("user_id", userId).limit(1000));
   check(error, "my places");
   return (data as PastRow[]).map(toPast).sort(byRecent);
 }
@@ -198,22 +229,26 @@ export async function addPlace(ctx: Ctx, p: PastTripInput): Promise<PastTrip> {
     const { data: own } = await ctx.db.from("trips").select("id").eq("id", p.tripId).maybeSingle();
     if (!own) throw new HttpError(404, "That trip isn't yours.");
   }
-  const { data, error } = await ctx.db
-    .from("past_trips")
-    .insert({
-      user_id: ctx.user.id,
-      city: p.city,
-      city_key: toCityKey(p.city),
-      country_code: p.countryCode,
-      year: p.year,
-      month: p.month,
-      days: p.days,
-      rating: p.rating,
-      highlights: p.highlights,
-      trip_id: p.tripId,
-    })
-    .select(PAST_COLS)
-    .single();
+  const row = {
+    user_id: ctx.user.id,
+    city: p.city,
+    city_key: toCityKey(p.city),
+    country_code: p.countryCode,
+    year: p.year,
+    month: p.month,
+    days: p.days,
+    rating: p.rating,
+    highlights: p.highlights,
+    trip_id: p.tripId,
+  };
+  const privacy = privacyCols({ ...p, visibility: await newPlaceVisibility(ctx, p) });
+  const { data, error } = await withLoop((loop) =>
+    ctx.db
+      .from("past_trips")
+      .insert(loop ? { ...row, ...privacy } : row)
+      .select<string, PastRow>(pastCols(loop))
+      .single(),
+  );
   if (error?.code === "23505") throw new HttpError(409, "You've already logged this trip.", "duplicate");
   check(error, "add place");
   return toPast(data as PastRow);
@@ -224,15 +259,19 @@ export async function addPlacesBulk(ctx: Ctx, list: PastTripInput[]): Promise<{ 
   if (!ctx.user) throw new HttpError(401, "Sign in to continue.", "unauthenticated");
   const { data: have } = await ctx.db.from("past_trips").select("city_key, year").eq("user_id", ctx.user.id).limit(1000);
   const seen = new Set((have ?? []).map((r) => `${r.city_key}|${r.year ?? ""}`));
-  const rows = [];
+  const rows: { row: Record<string, unknown>; privacy: Record<string, unknown> }[] = [];
+  const fallback = await newPlaceVisibility(ctx, {});
   for (const p of list) {
     const key = `${toCityKey(p.city)}|${p.year ?? ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    rows.push({ user_id: ctx.user.id, city: p.city, city_key: toCityKey(p.city), country_code: p.countryCode, year: p.year, month: p.month, days: p.days, rating: p.rating, highlights: p.highlights });
+    rows.push({
+      row: { user_id: ctx.user.id, city: p.city, city_key: toCityKey(p.city), country_code: p.countryCode, year: p.year, month: p.month, days: p.days, rating: p.rating, highlights: p.highlights },
+      privacy: privacyCols({ ...p, visibility: p.visibility ?? fallback }),
+    });
   }
   if (rows.length) {
-    const { error } = await ctx.db.from("past_trips").insert(rows);
+    const { error } = await withLoop((loop) => ctx.db.from("past_trips").insert(rows.map((r) => (loop ? { ...r.row, ...r.privacy } : r.row))));
     check(error, "add places");
   }
   return { added: rows.length, skipped: list.length - rows.length };
@@ -240,13 +279,17 @@ export async function addPlacesBulk(ctx: Ctx, list: PastTripInput[]): Promise<{ 
 
 export async function updatePlace(ctx: Ctx, id: string, p: PastTripInput): Promise<PastTrip> {
   if (!ctx.user) throw new HttpError(401, "Sign in to continue.", "unauthenticated");
-  const { data, error } = await ctx.db
-    .from("past_trips")
-    .update({ city: p.city, city_key: toCityKey(p.city), country_code: p.countryCode, year: p.year, month: p.month, days: p.days, rating: p.rating, highlights: p.highlights })
-    .eq("id", id)
-    .eq("user_id", ctx.user.id)
-    .select(PAST_COLS)
-    .maybeSingle();
+  const userId = ctx.user.id;
+  const patch = { city: p.city, city_key: toCityKey(p.city), country_code: p.countryCode, year: p.year, month: p.month, days: p.days, rating: p.rating, highlights: p.highlights };
+  const { data, error } = await withLoop((loop) =>
+    ctx.db
+      .from("past_trips")
+      .update(loop ? { ...patch, ...privacyCols(p) } : patch)
+      .eq("id", id)
+      .eq("user_id", userId)
+      .select<string, PastRow>(pastCols(loop))
+      .maybeSingle(),
+  );
   check(error, "update place");
   if (!data) throw new HttpError(404, "That place isn't in your list.");
   return toPast(data as PastRow);
@@ -261,7 +304,7 @@ export async function deletePlace(ctx: Ctx, id: string) {
 async function placesFor(userIds: string[]): Promise<Map<string, PastTrip[]>> {
   const out = new Map<string, PastTrip[]>(userIds.map((id) => [id, []]));
   if (!userIds.length) return out;
-  const { data, error } = await supabaseAdmin().from("past_trips").select(PAST_COLS).in("user_id", userIds).limit(20000);
+  const { data, error } = await withLoop((loop) => supabaseAdmin().from("past_trips").select<string, PastRow>(pastCols(loop)).in("user_id", userIds).limit(20000));
   check(error, "places");
   for (const r of (data ?? []) as PastRow[]) out.get(r.user_id)?.push(toPast(r));
   return out;
@@ -291,7 +334,8 @@ export async function getProfile(ctx: Ctx, handle: string): Promise<{ profile: P
   const iFollow = !!rel.data?.some((x) => x.follower_id === viewer);
   const followsMe = !!rel.data?.some((x) => x.follower_id === r.user_id);
   const list = (places.get(r.user_id) ?? []).sort(byRecent);
-  const canSeePlaces = isMe || iFollow || r.places_public;
+  // Each past trip says who sees it (counts include them all); ones still ahead stay hidden.
+  const shown = visiblePastTrips(list, { isOwner: isMe, follows: iFollow });
 
   const profile: ProfileDTO = {
     ...person(r),
@@ -299,7 +343,7 @@ export async function getProfile(ctx: Ctx, handle: string): Promise<{ profile: P
     followers: followers.count ?? 0,
     following: following.count ?? 0,
     stats: travelStats(list),
-    places: canSeePlaces ? list : null,
+    places: isMe || iFollow || shown.length ? shown : null,
     isMe,
     iFollow,
     followsMe,
@@ -324,16 +368,21 @@ interface CTripRow {
   likes_count: number;
   visibility: Visibility;
   created_at: string;
+  share_while_away?: boolean;
 }
 const CTRIP_COLS = "id, user_id, title, destination, city_key, request, itinerary, rating, likes_count, visibility, created_at";
+const tripCols = (loop: boolean): string => (loop ? `${CTRIP_COLS}, share_while_away` : CTRIP_COLS);
+/** Dated trips stay hidden from everyone but their owner until the day after they end (unless shared while away). */
+const awayFrom = (ctx: Ctx, r: { user_id: string; request?: Partial<TripRequest> | null; share_while_away?: boolean }) =>
+  r.user_id !== ctx.user?.id && hiddenWhileAway({ request: r.request, shareWhileAway: r.share_while_away });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Q = any;
 
 async function tripList(ctx: Ctx, build: (q: Q) => Q, withItinerary = false): Promise<CommunityTrip[]> {
-  const { data, error } = await build(supabaseAdmin().from("trips").select(CTRIP_COLS));
+  const { data, error } = await withLoop<{ data: unknown[] | null; error: DbError }>((loop) => build(supabaseAdmin().from("trips").select(tripCols(loop))));
   check(error, "trips");
-  const rows = (data ?? []) as CTripRow[];
+  const rows = ((data ?? []) as CTripRow[]).filter((r) => !awayFrom(ctx, r));
   if (!rows.length) return [];
   const [people, liked] = await Promise.all([peopleById(rows.map((r) => r.user_id)), likedSet(ctx, rows.map((r) => r.id))]);
   // Only trips by community members are shown to others.
@@ -373,8 +422,9 @@ async function likedSet(ctx: Ctx, tripIds: string[]): Promise<Set<string>> {
 }
 
 /** Can this viewer see this trip? Mirrors public.can_view_trip in the database. */
-async function canView(ctx: Ctx, r: Pick<CTripRow, "user_id" | "visibility">): Promise<boolean> {
+async function canView(ctx: Ctx, r: Pick<CTripRow, "user_id" | "visibility" | "request" | "share_while_away">): Promise<boolean> {
   if (ctx.user?.id === r.user_id) return true;
+  if (awayFrom(ctx, r)) return false;
   if (r.visibility === "public") return true;
   if (r.visibility !== "followers" || !ctx.user) return false;
   const { data } = await supabaseAdmin().from("follows").select("follower_id").eq("follower_id", ctx.user.id).eq("followee_id", r.user_id).maybeSingle();
@@ -383,7 +433,7 @@ async function canView(ctx: Ctx, r: Pick<CTripRow, "user_id" | "visibility">): P
 
 export async function getCommunityTrip(ctx: Ctx, id: string): Promise<CommunityTrip | null> {
   if (!isUuid(id)) return null;
-  const { data, error } = await supabaseAdmin().from("trips").select(CTRIP_COLS).eq("id", id).maybeSingle();
+  const { data, error } = await withLoop((loop) => supabaseAdmin().from("trips").select<string, CTripRow>(tripCols(loop)).eq("id", id).maybeSingle());
   check(error, "trip");
   const r = data as CTripRow | null;
   if (!r || !(await canView(ctx, r))) return null;
@@ -400,11 +450,22 @@ export async function feed(ctx: Ctx): Promise<CommunityTrip[]> {
 }
 
 export async function topCities(): Promise<{ key: string; label: string; trips: number }[]> {
-  const { data, error } = await supabaseAdmin().from("trips").select("city_key, destination, user_id").eq("visibility", "public").order("created_at", { ascending: false }).limit(3000);
+  const cols = "city_key, destination, user_id, start_date:request->>startDate, trip_days:request->days";
+  const { data, error } = await withLoop((loop) =>
+    supabaseAdmin()
+      .from("trips")
+      .select<string, Record<string, unknown>>(loop ? `${cols}, share_while_away` : cols)
+      .eq("visibility", "public")
+      .order("created_at", { ascending: false })
+      .limit(3000),
+  );
   check(error, "cities");
-  const members = await peopleById((data ?? []).map((r) => r.user_id as string));
+  const rows = ((data ?? []) as Record<string, unknown>[]).filter(
+    (r) => !hiddenWhileAway({ request: { startDate: r.start_date as string | null, days: Number(r.trip_days) || 1 }, shareWhileAway: r.share_while_away as boolean | undefined }),
+  );
+  const members = await peopleById(rows.map((r) => r.user_id as string));
   const counts = new Map<string, { label: string; trips: number }>();
-  for (const r of data ?? []) {
+  for (const r of rows) {
     if (!members.has(r.user_id as string)) continue;
     const key = (r.city_key as string) || toCityKey(r.destination as string);
     if (!key) continue;

@@ -34,6 +34,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { Chips, SingleChips } from "./Chips";
 import { DayMap } from "./DayMap";
+import { FriendTag } from "./FriendsBits";
 import {
   IconBookmark,
   IconCalendar,
@@ -52,8 +53,10 @@ import {
   IconUp,
   IconWalk,
 } from "./icons";
+import { ShareWhileAway } from "./pages";
 import { PhotoGallery, type GalleryTarget } from "./PhotoGallery";
 import { PlacePhoto } from "./PlacePhoto";
+import { TripRank } from "./Rank";
 import { TogetherSheet, WhoIsIn } from "./Together";
 
 const srcColor = (s: string) => `var(--s-${isSourceId(s) ? s : "reviews"})`;
@@ -65,7 +68,7 @@ function Source({ p }: { p: Stop | Hotel }) {
   return (
     <span className="src">
       <i style={{ background: srcColor(p.source) }} />
-      {srcName(p.source)}
+      {p.friend ? <FriendTag f={p.friend} /> : srcName(p.source)}
       {p.origin === "ai" && (
         <span className="ai" title={p.place ? "Suggested by the AI and confirmed on Google Maps" : "Suggested by the AI from its own knowledge"}>
           AI pick
@@ -825,6 +828,9 @@ export function TripView({
         </p>
       )}
 
+      {/* After a dated trip: rank its stops (with friends, the group's favourites). */}
+      {!readOnly && <TripRank trip={trip} />}
+
       {/* ---------- route (several stops) ---------- */}
       {!!it.route && it.route.length > 1 && (
         <nav className="route" aria-label="Route">
@@ -1280,6 +1286,7 @@ export function TripView({
               <span className="hint">
                 {VIS.find((v) => v.value === (trip.visibility ?? "private"))!.hint} Your personal details stay private, but stop descriptions may reflect what you told us.
               </span>
+              <ShareWhileAway trip={trip} onChange={(on) => apply({ ...trip, shareWhileAway: on })} />
               {visNote && (
                 <p className="status err" role="status">
                   {visNote.text}{" "}

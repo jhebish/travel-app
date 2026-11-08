@@ -3,16 +3,17 @@ import type { HotNow, PlaceVerification } from "./schemas";
 import type { SourceId } from "./sources";
 import { STAY_TIERS, stayTier, tierForPriceLevel, type StayTier } from "./stayPrice";
 import type { EffectiveSources } from "./weights";
+import { friendBonus, type FriendCredit } from "./friends";
 import { guessKind, kindFromHints } from "./imports/kind";
 import { wantsClubs, wantsNightlife } from "./nightlife";
 import { regionPolicy } from "./region";
 
 export type CandidateCategory = "food" | "drink" | "culture" | "outdoors" | "shopping" | "nightlife" | "stay" | "other";
 
-/** A real place the planner may use, from a local pick or a Places search. */
+/** A real place the planner may use, from a local pick, a friend who's been, or a Places search. */
 export interface Candidate {
-  id: string; // stable within one request, e.g. "lp_<uuid>" or "gp_<placeId>"
-  origin: "local_pick" | "google";
+  id: string; // stable within one request, e.g. "lp_<uuid>", "fr_<hash>" or "gp_<placeId>"
+  origin: "local_pick" | "google" | "friend";
   name: string;
   neighborhood?: string | null;
   category: CandidateCategory;
@@ -31,6 +32,8 @@ export interface Candidate {
   verification?: PlaceVerification;
   /** A bar or club recent sources call one of the places to go now (from the night pulse). */
   hot?: HotNow;
+  /** The friends who loved it or recommended it (friends.ts). */
+  friends?: FriendCredit[];
 }
 
 const INTEREST_CATEGORIES: Record<string, CandidateCategory[]> = {
@@ -95,6 +98,7 @@ export function scoreCandidate(c: Candidate, eff: EffectiveSources, req: TripReq
   const sight = c.category === "culture" || c.category === "outdoors";
   if ((c.ratingCount ?? 0) > 8000) score += sight ? 0.1 : -0.1;
   if (c.origin === "local_pick") score += 0.1; // human-vetted
+  if (c.friends?.length) score += friendBonus(c.friends);
   // The night pulse: places recent sources agree are the ones to go to now (nightpulse.ts).
   if (c.hot) score += 0.3;
   else if (c.tags?.includes("night_pulse")) score += 0.1;
@@ -115,15 +119,17 @@ export function selectCandidates(
   { maxActivities = 45, maxStays = 12 }: SelectOptions = {},
 ): Candidate[] {
   const seen = new Set<string>();
+  // Duplicates are dropped among usable candidates, so a copy from a blocked source (a friend's
+  // pick when friends are off) leaves the other copy (Google's) in.
   const scored = all
-    .filter((c) => {
+    .map((c) => ({ c, s: scoreCandidate(c, eff, req) }))
+    .filter((x) => Number.isFinite(x.s))
+    .filter(({ c }) => {
       const key = (c.placeId ?? `${c.name}|${c.neighborhood ?? ""}`).toLowerCase();
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     })
-    .map((c) => ({ c, s: scoreCandidate(c, eff, req) }))
-    .filter((x) => Number.isFinite(x.s))
     .sort((a, b) => b.s - a.s);
   // Keep the shortlist varied: a city whose top picks are all cafés would otherwise hand the
   // planner nothing but cafés to build days from.

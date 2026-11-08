@@ -820,3 +820,35 @@ export function appleIconImage(): ImageResponse {
     { ...ICON_SIZE, headers: { "cache-control": CACHE.static } },
   );
 }
+
+// ---------------------------------------------------------------------------
+// The same look for other cards: past trips and the year-in-travel story (lib/ogPages.tsx)
+// ---------------------------------------------------------------------------
+export {
+  C as OG_COLORS,
+  DISPLAY as OG_DISPLAY,
+  BODY as OG_BODY,
+  COL as OG_COL,
+  EYEBROW as OG_EYEBROW,
+  TITLE as OG_TITLE,
+  BADGE_GAP as OG_BADGE_GAP,
+  BADGE_H as OG_BADGE_H,
+  fonts as ogFonts,
+  png as ogPng,
+  measure as ogMeasure,
+  wrap as ogWrap,
+  fitLines as ogFitLines,
+  eyebrowText as ogEyebrowText,
+  fitTitle as ogFitTitle,
+  summaryLines as ogSummaryLines,
+  summaryHeight as ogSummaryHeight,
+  arch as ogArch,
+  octagram as ogOctagram,
+  markSvg as ogMarkSvg,
+  wave as ogWave,
+  Frame as OgFrame,
+  Eyebrow as OgEyebrow,
+  Title as OgTitle,
+  Summary as OgSummary,
+  Badge as OgBadge,
+};
