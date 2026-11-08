@@ -2,6 +2,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { Alert } from "react-native";
 import { api } from "../../src/api";
+import { AsksCard } from "../../src/AsksCard";
 import { useAuth } from "../../src/auth";
 import { saveTrips, scanCalendar, scanPhotos, type FoundTrip } from "../../src/deviceImports";
 import { signOut } from "../../src/notifications";
@@ -135,6 +136,7 @@ export default function You() {
       {progress ? <Loading text={progress} /> : null}
       {review ? <TripReview key={`${review.source}-${review.trips.length}`} trips={review.trips} source={review.source} note={review.note} onSave={saveReview} onSkip={skipReview} /> : null}
       <Status text={msg?.text} err={msg?.err} />
+      {email ? <AsksCard /> : null}
       <Card>
         <H2>Account</H2>
         {email ? (

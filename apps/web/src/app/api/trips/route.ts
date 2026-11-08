@@ -38,7 +38,8 @@ export const GET = handler(async (req: Request) => {
 export const POST = handler(async (req: Request) => {
   const ctx = await requireUser(req);
   const body = await parseBody(req, TripRequestSchema);
-  const opts = { ip: clientIp(req), tripsPerHour: env.tripsPerHour() };
+  // ?like=<past trip id>: "Plan a trip like this" (checked in lib/friends.ts).
+  const opts = { ip: clientIp(req), tripsPerHour: env.tripsPerHour(), like: new URL(req.url).searchParams.get("like") };
 
   if (!(req.headers.get("accept") ?? "").includes("application/x-ndjson")) {
     const trip = await generateTrip(ctx, body, opts);

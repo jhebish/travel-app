@@ -63,12 +63,16 @@ import {
   type DayCheckOptions,
   type NightPlan,
   type NightPulse,
+  friendBadge,
+  matchFriendCandidate,
+  withFriendCandidates,
 } from "@travel/core";
 import { waitUntil } from "@vercel/functions";
 import { z } from "zod";
 import type { Ctx } from "./auth";
 import { callTool } from "./claude";
 import { syncFeedback } from "./feedback";
+import { friendSource, friendsForTrip, isGuest, type FriendSource } from "./friends";
 import { adultsFor, attachLiveRates } from "./hotels";
 import { HttpError } from "./http";
 import { nightPulse, readPulse } from "./nightPulse";
@@ -135,14 +139,16 @@ async function localPickCandidates(city: string, staysOnly: boolean): Promise<Ca
   }));
 }
 
-async function gatherCandidates(req: TripRequest, staysOnly = false): Promise<Candidate[]> {
+/** `friends`: the trip owner's friends' places there (friends.ts), ahead of the rest. */
+async function gatherCandidates(req: TripRequest, staysOnly = false, friends?: FriendSource): Promise<Candidate[]> {
   const queries = placesQueries(req).filter((q) => !staysOnly || q.category === "stay");
-  const [picks, ...places] = await Promise.allSettled([
+  const [picks, fromFriends, ...places] = await Promise.allSettled([
     localPickCandidates(req.destination, staysOnly),
+    friends ? friends.candidates(req.destination, staysOnly) : Promise.resolve([]),
     ...queries.map((q) => placesCandidates(q.query, q.category, 8)),
   ]);
   const ok = <T,>(r: PromiseSettledResult<T[]> | undefined) => (r?.status === "fulfilled" ? r.value : []);
-  const all = [...ok(picks), ...places.flatMap((p) => ok(p))];
+  const all = withFriendCandidates(ok(fromFriends), [...ok(picks), ...places.flatMap((p) => ok(p))]);
   // Jerusalem: Palestinian businesses only, so nothing Google finds in West Jerusalem (region.ts).
   return regionPolicy(req.destination) === "jerusalem" ? all.filter(inEastJerusalem) : all;
 }
@@ -170,17 +176,23 @@ async function ground(picks: Pick[], cands: Candidate[], city: string): Promise<
     delete p.place;
     delete (p as Hotel).liveRate;
     delete (p as Stop).hot;
+    delete p.friend;
     p.expediaPropertyId = null;
-    const cand = p.candidateId ? byId.get(p.candidateId) : undefined;
+    // A friend's place the model named without its id is still that friend's pick.
+    const cand = (p.candidateId ? byId.get(p.candidateId) : undefined) ?? matchFriendCandidate(cands, p.name);
     if (cand) {
+      p.candidateId = cand.id;
       p.origin = cand.origin;
       p.source = cand.source; // the candidate's real source wins over the model's label
+      // "Sara's pick" comes only from a friend's candidate (friends.ts).
+      if (cand.friends?.length) p.friend = friendBadge(cand.friends);
       if (cand.category === "stay") p.expediaPropertyId = cand.expediaPropertyId ?? null;
       // "Hot right now" comes only from the night pulse's dated sources (nightPulse.ts).
       if (cand.hot && cand.category !== "stay") (p as Stop).hot = cand.hot;
     } else {
       p.candidateId = null;
       p.origin = "ai";
+      if (p.source === "friends") p.source = "guidebooks"; // not a friend's place, whatever the label says
     }
     try {
       // A Google candidate already carries its details from the search; others are looked up.
@@ -497,6 +509,8 @@ export interface PlanInputs {
   rebuildUntil?: number;
   /** Every model call a rebuild makes must be over by this time (ms): the hard stop under the route's limit. */
   rebuildDeadline?: number;
+  /** Friends' places as candidates (friends.ts). */
+  friends?: FriendSource;
 }
 
 type CuratorLists = { alwaysFeature: string; neverRecommend: string };
@@ -540,12 +554,12 @@ interface Planned {
   candsByCity: Map<string, Candidate[]>;
 }
 
-async function planSingle(req: TripRequest, { eff, lists, history, rebuildUntil, rebuildDeadline }: PlanInputs, emit: Emit): Promise<Planned> {
+async function planSingle(req: TripRequest, { eff, lists, history, rebuildUntil, rebuildDeadline, friends }: PlanInputs, emit: Emit): Promise<Planned> {
   const progress = (pct: number, label: string) => emit({ type: "progress", pct, label });
   progress(8, "Gathering local picks");
   // Nightlife: the bars and clubs that are hot now, if this city's pulse is ready in time.
   const pulseJob = startPulse(req, req.destination, rebuildDeadline ?? Date.now() + 100_000);
-  const [gathered, early] = await Promise.all([gatherCandidates(req), within(pulseJob, 8_000)]);
+  const [gathered, early] = await Promise.all([gatherCandidates(req, false, friends), within(pulseJob, 8_000)]);
   const cands = selectCandidates(withPulse(gathered, early), eff, req);
 
   progress(15, `Sketching your ${req.days}-day outline`);
@@ -645,7 +659,7 @@ const RouteSchema = z.object({
   legs: salvage(RouteLegSchema, 1, 8),
 });
 
-async function planMulti(req: TripRequest, { eff, lists, history, rebuildUntil, rebuildDeadline }: PlanInputs, emit: Emit): Promise<Planned> {
+async function planMulti(req: TripRequest, { eff, lists, history, rebuildUntil, rebuildDeadline, friends }: PlanInputs, emit: Emit): Promise<Planned> {
   const progress = (pct: number, label: string) => emit({ type: "progress", pct, label });
   progress(8, `Mapping a route through ${req.destination}`);
   const { data: route, model } = await step(
@@ -682,7 +696,7 @@ async function planMulti(req: TripRequest, { eff, lists, history, rebuildUntil, 
   const pulseJobs = legReqs.map((r) => startPulse(req, r.destination, rebuildDeadline ?? Date.now() + 100_000));
   const legCands = await Promise.all(
     legReqs.map(async (r, i) => {
-      const [gathered, pulse] = await Promise.all([gatherCandidates(r), within(pulseJobs[i]!, 8_000)]);
+      const [gathered, pulse] = await Promise.all([gatherCandidates(r, false, friends), within(pulseJobs[i]!, 8_000)]);
       return selectCandidates(withPulse(gathered, pulse), eff, r);
     }),
   );
@@ -819,8 +833,11 @@ async function groundByCity(itin: Itinerary, candsByCity: Map<string, Candidate[
   if (!itin.days.length) throw new HttpError(502, "We couldn't verify enough places for this trip. Try again or adjust the request.", "unverified");
 }
 
-/** `opts.counted`: the caller already counted this build (countBuild), so it isn't counted twice. */
-export async function generateTrip(ctx: Ctx, reqIn: TripRequest, opts: { ip: string; tripsPerHour: number; counted?: boolean }, emit: Emit = () => {}) {
+/**
+ * `opts.counted`: the caller already counted this build (countBuild), so it isn't counted twice.
+ * `opts.like`: "Plan a trip like this" (a past trip id; ignored unless this traveler may see it).
+ */
+export async function generateTrip(ctx: Ctx, reqIn: TripRequest, opts: { ip: string; tripsPerHour: number; counted?: boolean; like?: string | null }, emit: Emit = () => {}) {
   const t0 = Date.now();
   // No date and no month given (Typeform, the app): plan for the weeks ahead, so stops suit the season.
   // An explicit null means "not sure yet": an evergreen route.
@@ -837,7 +854,8 @@ export async function generateTrip(ctx: Ctx, reqIn: TripRequest, opts: { ip: str
     defaultVisibility(ctx),
   ]);
 
-  const { itin, model } = await planItinerary(req, { eff, lists, history }, emit);
+  const friends = friendSource(ctx.user!.id, { guest: isGuest(ctx), like: opts.like });
+  const { itin, model } = await planItinerary(req, { eff, lists, history, friends }, emit);
   console.log(`[build] planned ${req.mode} ${req.days}d in ${Date.now() - t0}ms`);
   await attachLiveRates(itin.hotels, req.startDate, req.days, adultsFor(req.party), opts.ip);
 
@@ -862,6 +880,7 @@ export async function generateTrip(ctx: Ctx, reqIn: TripRequest, opts: { ip: str
   if (missingColumn(error)) ({ data, error } = await admin.from("trips").insert(row).select("*").single());
   if (error || !data) throw new HttpError(500, "Your trip was built but couldn't be saved. Try again.");
   if (companions.length) await addFriendsOnCreate(ctx, (data as TripRow).id, companions);
+  await friends.credit(data as TripRow);
   console.log(`[build] total ${Date.now() - t0}ms`);
   emit({ type: "progress", pct: 100, label: "Done" });
   return toTrip(data as TripRow);
@@ -878,13 +897,14 @@ export async function generateHotels(ctx: Ctx, row: TripRow, stay: StayPrefs, op
   ]);
   const eff: EffectiveSources = { weights: row.weights, blocked: (row.blocked ?? []).filter(isSourceId), custom: row.custom_mix };
   const route = row.itinerary.mode === "multi" ? row.itinerary.route ?? [] : [];
+  const friends = friendsForTrip(row);
   // One place: three hotels. Several stops: two per stop, each checked against its own city.
   const groups = route.length
     ? route.map((l) => ({ city: l.city, req: requestForCity(req, l.city), count: 2 }))
     : [{ city: undefined as string | undefined, req, count: 3 }];
   const found = await Promise.all(
     groups.map(async (g) => {
-      const cands = selectCandidates(await gatherCandidates(g.req, true), eff, g.req);
+      const cands = selectCandidates(await gatherCandidates(g.req, true, friends), eff, g.req);
       const areas = [
         ...new Set(
           row.itinerary.days
@@ -912,7 +932,7 @@ export async function generateHotels(ctx: Ctx, row: TripRow, stay: StayPrefs, op
   const votes = Object.fromEntries(Object.entries(row.votes ?? {}).filter(([k]) => !k.startsWith("h-")));
   const saved = await updateTrip(row, { itinerary, request: req, votes });
   await syncFeedback(saved);
-  return saved;
+  return friends.credit(saved);
 }
 
 // ---------------------------------------------------------------------------
@@ -965,9 +985,10 @@ export async function swapStop(ctx: Ctx, row: TripRow, day: number, index: numbe
   await rateLimit(ctx, "edit", 60, "That's a lot of changes this hour. Try again a little later.");
   const { req: base, eff, inTrip } = editContext(row);
   const req = requestForCity(base, row.itinerary.days[day]?.city);
+  const friends = friendsForTrip(row);
   const [{ lists }, gathered, history, pulse] = await Promise.all([
     loadSources(ctx),
-    gatherCandidates(req),
+    gatherCandidates(req, false, friends),
     loadHistory(ctx, req.destination, { ownerId: row.user_id, companions: people.companions }),
     wantsNightlife(req) ? readPulse(req.destination) : null,
   ]);
@@ -984,7 +1005,7 @@ export async function swapStop(ctx: Ctx, row: TripRow, day: number, index: numbe
   const { votes, replaced } = retireVotes(row, [`${day}-${index}`], itinerary);
   itinerary.replaced = replaced;
   itinerary.days[day]!.stops[index] = { ...stop, locked: false };
-  return saveEdit(row, itinerary, votes);
+  return friends.credit(await saveEdit(row, itinerary, votes));
 }
 
 export async function regenerateDay(ctx: Ctx, row: TripRow, day: number, hint: string, people: EditPeople = noPeople) {
@@ -998,9 +1019,10 @@ export async function regenerateDay(ctx: Ctx, row: TripRow, day: number, hint: s
   const otherDays = new Set(
     [...row.itinerary.days.flatMap((d, i) => (i === day ? [] : d.stops)), ...(row.itinerary.hotels ?? [])].map((p) => p.name.toLowerCase()),
   );
+  const friends = friendsForTrip(row);
   const [{ lists }, gathered, history, pulse] = await Promise.all([
     loadSources(ctx),
-    gatherCandidates(req),
+    gatherCandidates(req, false, friends),
     loadHistory(ctx, req.destination, { ownerId: row.user_id, companions: people.companions }),
     wantsNightlife(req) ? readPulse(req.destination) : null,
   ]);
@@ -1052,7 +1074,7 @@ export async function regenerateDay(ctx: Ctx, row: TripRow, day: number, hint: s
   });
   itinerary.replaced = replaced;
   itinerary.days[day] = { ...current, theme: parsed.data.theme || current.theme, stops };
-  return saveEdit(row, itinerary, votes);
+  return friends.credit(await saveEdit(row, itinerary, votes));
 }
 
 const LegResultSchema = RouteLegSchema.pick({ region: true, why: true, season: true, transfer: true, dayThemes: true, alternatives: true }).extend({
@@ -1112,7 +1134,8 @@ export async function swapCity(ctx: Ctx, row: TripRow, legIndex: number, cityIn:
   const elsewhere = new Set(
     [...it.days.filter((_, i) => !dayIdx.includes(i)).flatMap((d) => d.stops), ...(it.hotels ?? []).filter((h) => h.city !== old.city)].map((p) => p.name.toLowerCase()),
   );
-  const cands = selectCandidates(await gatherCandidates(legReq), eff, legReq).filter((c) => !elsewhere.has(c.name.toLowerCase()));
+  const friends = friendsForTrip(row);
+  const cands = selectCandidates(await gatherCandidates(legReq, false, friends), eff, legReq).filter((c) => !elsewhere.has(c.name.toLowerCase()));
   const ids = cands.filter((c) => c.category !== "stay").map((c) => c.id);
   const outline: Outline = {
     title: leg.title || it.title,
@@ -1196,7 +1219,7 @@ export async function swapCity(ctx: Ctx, row: TripRow, legIndex: number, cityIn:
 
   const saved = await updateTrip(row, { itinerary, votes, title: itinerary.title });
   await syncFeedback(saved);
-  return saved;
+  return friends.credit(saved);
 }
 
 export async function setLocked(ctx: Ctx, row: TripRow, day: number, index: number, locked: boolean) {

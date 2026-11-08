@@ -23,7 +23,7 @@ interface Pick {
   created_at: string;
 }
 
-const SUBMIT_SOURCES = SOURCES.filter((s) => s.id !== "sponsored");
+const SUBMIT_SOURCES = SOURCES.filter((s) => s.id !== "sponsored" && s.id !== "friends");
 const empty: LocalPickInput = { city: "", name: "", neighborhood: "", category: "food", source: "locals", note: "", tags: [], priceBand: null, stayStyle: null };
 
 export default function PicksPage() {

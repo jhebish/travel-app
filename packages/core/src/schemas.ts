@@ -10,6 +10,7 @@ const sourceId = z.enum(SOURCE_IDS);
 /** Map loose source labels from the model ("Local", "local_picks", "Press coverage") onto real ids. */
 const SOURCE_ALIASES: [RegExp, (typeof SOURCE_IDS)[number]][] = [
   [/local/, "locals"],
+  [/friend/, "friends"],
   [/host|concierge|airbnb/, "hosts"],
   [/press|editor|magazine|news|journal/, "press"],
   [/indie|blog|independent|newsletter/, "indie"],
@@ -138,6 +139,16 @@ export const HotNowSchema = z.object({
 });
 export type HotNow = z.infer<typeof HotNowSchema>;
 
+/** Whose pick it is, when it came from a friend who's been ("Sara's pick"). Set by the server, never the model. */
+export const FriendPickSchema = z.object({
+  name: z.string().trim().min(1).max(60),
+  /** They live there, or have been three times or more. */
+  local: z.boolean().optional(),
+  /** How many other friends loved it too. */
+  more: z.number().int().min(1).max(50).optional(),
+});
+export type FriendPick = z.infer<typeof FriendPickSchema>;
+
 export const StopSchema = z.object({
   time: clip(20).default(""),
   name: clipReq(160),
@@ -152,8 +163,9 @@ export const StopSchema = z.object({
   cost: z.preprocess((v) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 90) : undefined), z.string().optional()).catch(undefined),
   source: looseSource,
   candidateId: looseId,
-  /** Where the pick really came from: a vetted local pick, a Places result, or the model's own knowledge. */
-  origin: z.enum(["local_pick", "google", "ai"]).optional(),
+  /** Where the pick really came from: a vetted local pick, a Places result, a friend, or the model's own knowledge. */
+  origin: z.enum(["local_pick", "google", "ai", "friend"]).optional(),
+  friend: FriendPickSchema.optional().catch(undefined),
   /** Approximate coordinates from the model; replaced by verified ones when Places finds the stop. */
   lat: coord(90),
   lng: coord(180),
@@ -186,7 +198,8 @@ export const HotelSchema = z.object({
   forYou: z.preprocess((v) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 100) : undefined), z.string().optional()).catch(undefined),
   source: looseSource,
   candidateId: looseId,
-  origin: z.enum(["local_pick", "google", "ai"]).optional(),
+  origin: z.enum(["local_pick", "google", "ai", "friend"]).optional(),
+  friend: FriendPickSchema.optional().catch(undefined),
   expediaPropertyId: looseId,
   lat: coord(90),
   lng: coord(180),

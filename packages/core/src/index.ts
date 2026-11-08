@@ -24,3 +24,4 @@ export * from "./region";
 export * from "./privacy";
 export * from "./recap";
 export * from "./rank";
+export * from "./friends";
