@@ -1,5 +1,5 @@
 "use client";
-import { SIGNAL_KIND_LABELS, SIGNAL_SOURCE_LABELS, type SignalKind, type SignalSource, type TasteProfile } from "@travel/core";
+import { SIGNAL_KIND_LABELS, SIGNAL_SOURCE_LABELS, tasteUnlock, type SignalKind, type SignalSource, type TasteProfile } from "@travel/core";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { IconDown, IconUp } from "./icons";
@@ -157,8 +157,38 @@ export function kindFromName(name: string): SignalKind {
   return "food";
 }
 
-/** What Pylos has learned about your taste. */
-export function TasteCard({ data, updating }: { data: TasteResponse | null; updating: boolean }) {
+/**
+ * What Pylos has learned about your taste. Until a few trips are logged (`trips`, or the count from
+ * the taste data), how close the profile is to unlocking, with a way to log the next trip.
+ */
+export function TasteCard({ data, updating, trips, onLog }: { data: TasteResponse | null; updating: boolean; trips?: number; onLog?: () => void }) {
+  const unlock = tasteUnlock(Math.max(trips ?? 0, data?.counts.pastTrips ?? 0));
+  if (!unlock.unlocked) {
+    return (
+      <section className="card stack taste-card taste-locked">
+        <div className="head">
+          <span className="eyebrow">Your taste</span>
+          <h2>
+            Log {unlock.need} trips to unlock your taste profile{" "}
+            <span className="taste-count tabnum">
+              · {unlock.have} of {unlock.need}
+            </span>
+          </h2>
+          <p className="hint">
+            Tick the places you loved on each one. Pylos then predicts the hotels and restaurants you&apos;ll love, and marks them &quot;For you&quot; in your plans.
+          </p>
+        </div>
+        <div className="bar thin" role="progressbar" aria-valuemin={0} aria-valuemax={unlock.need} aria-valuenow={unlock.have} aria-label="Trips logged toward your taste profile">
+          <span style={{ width: `${Math.max(4, Math.round((unlock.have / unlock.need) * 100))}%` }} />
+        </div>
+        {onLog && (
+          <button type="button" className="btn sm" style={{ alignSelf: "flex-start" }} onClick={onLog}>
+            Log a trip
+          </button>
+        )}
+      </section>
+    );
+  }
   const p = data?.profile;
   const sources = data ? (Object.entries(data.counts.bySource) as [SignalSource, number][]).filter(([, n]) => n > 0) : [];
   return (

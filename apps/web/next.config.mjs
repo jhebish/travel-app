@@ -7,6 +7,8 @@ const nextConfig = {
     // Link-preview images (src/lib/og.tsx) read their fonts from disk: ship the files with those functions.
     outputFileTracingIncludes: {
       "**/{opengraph,twitter}-image*": ["./src/app/og/fonts/*.woff"],
+      // The year-in-travel story image (src/lib/ogPages.tsx) uses the same fonts.
+      "/api/recap/story": ["./src/app/og/fonts/*.woff"],
     },
   },
   async redirects() {

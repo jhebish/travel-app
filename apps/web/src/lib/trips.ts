@@ -21,6 +21,7 @@ export interface TripRow {
   shared?: boolean;
   share_token?: string | null;
   visibility?: "private" | "followers" | "public";
+  share_while_away?: boolean;
 }
 
 export const toTrip = (r: TripRow): Trip => ({
@@ -37,6 +38,7 @@ export const toTrip = (r: TripRow): Trip => ({
   votes: r.votes ?? {},
   shareToken: r.shared ? (r.share_token ?? null) : null,
   visibility: r.visibility ?? "private",
+  shareWhileAway: r.share_while_away ?? false,
 });
 
 /** The few columns a trip list needs (selected with JSON paths, so itineraries aren't loaded). */

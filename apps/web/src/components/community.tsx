@@ -8,10 +8,12 @@ import {
   type PastTripInput,
   type PersonDTO,
   type TravelStats,
+  type Visibility,
 } from "@travel/core";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { PlacePrivacyFields } from "./pages";
 import { PlaceItemsEditor, type PlaceItem } from "./taste";
 
 const initials = (name: string) =>
@@ -171,10 +173,10 @@ export function TripCard({ trip, showOwner = true, rank }: { trip: CommunityTrip
 
 export function PlaceChip({ place }: { place: PastTrip }) {
   return (
-    <span className="place">
+    <Link href={`/p/${place.id}`} className="place">
       <span aria-hidden="true">{flag(place.countryCode)}</span> {place.city}
       {place.year ? <small> {place.year}</small> : null}
-    </span>
+    </Link>
   );
 }
 
@@ -196,14 +198,17 @@ export function PlaceForm({
   onSaved,
   onCancel,
   suggestions,
+  defaultVisibility,
 }: {
   initial?: { id?: string; value: PastTripInput };
   onSaved: (p: PastTrip) => void;
   onCancel?: () => void;
   /** Places from a Pylos plan for this trip, offered as "did you go?" chips. */
   suggestions?: PlaceItem[];
+  /** Who sees a new trip unless they choose (the owner's default). */
+  defaultVisibility?: Visibility;
 }) {
-  const [v, setV] = useState<PastTripInput>(initial?.value ?? blankPlace());
+  const [v, setV] = useState<PastTripInput>(initial?.value ?? { ...blankPlace(), visibility: defaultVisibility });
   const [items, setItems] = useState<PlaceItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -237,7 +242,7 @@ export function PlaceForm({
       }
       onSaved(place);
       if (!initial?.id) {
-        setV(blankPlace());
+        setV({ ...blankPlace(), visibility: defaultVisibility });
         setItems([]);
       }
     } catch (e2) {
@@ -329,6 +334,7 @@ export function PlaceForm({
         <textarea id="pf-hi" maxLength={500} placeholder="The night markets, a tiny ramen bar near the station, hiking above town…" value={v.highlights} onChange={(e) => set("highlights", e.target.value)} />
       </div>
       <PlaceItemsEditor items={items} onChange={setItems} suggestions={suggestions} />
+      <PlacePrivacyFields value={v} onChange={(patch) => setV((x) => ({ ...x, ...patch }))} />
       {err && (
         <p className="status err" role="status">
           {err}

@@ -19,6 +19,8 @@ export interface Trip {
   shareToken?: string | null;
   /** Who can see it in the community. */
   visibility?: "private" | "followers" | "public";
+  /** A dated trip is shown to others only from the day after it ends, unless this is on. */
+  shareWhileAway?: boolean;
   /** "member": a friend planning this trip with its owner (can edit, react and rebuild days). */
   role?: "owner" | "member";
 }

@@ -21,3 +21,5 @@ export * from "./quality";
 export * from "./nightlife";
 export * from "./nightpulse";
 export * from "./region";
+export * from "./privacy";
+export * from "./recap";
