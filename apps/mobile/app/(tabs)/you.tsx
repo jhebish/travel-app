@@ -4,6 +4,8 @@ import { Alert } from "react-native";
 import { api } from "../../src/api";
 import { useAuth } from "../../src/auth";
 import { scanCalendar, scanPhotos } from "../../src/deviceImports";
+import { signOut } from "../../src/notifications";
+import { RankEntryCard } from "../../src/RankCards";
 import { supabase } from "../../src/supabase";
 import { Button, Card, H1, H2, Loading, P, Screen, Status } from "../../src/ui";
 
@@ -94,6 +96,7 @@ export default function You() {
         <P muted>Let Pylos learn where you&apos;ve been and what you loved, so it can predict the hotels and restaurants you&apos;ll like next.</P>
         {summary ? <P>{summary}</P> : null}
       </Card>
+      <RankEntryCard />
       <Card>
         <H2>Calendar on this phone</H2>
         <P muted>
@@ -114,7 +117,7 @@ export default function You() {
         {email ? (
           <>
             <P muted>Signed in as {email}</P>
-            <Button ghost title="Sign out" disabled={deleting} onPress={() => void supabase.auth.signOut()} />
+            <Button ghost title="Sign out" disabled={deleting} onPress={() => void signOut()} />
             <Button ghost danger title={deleting ? "Deleting…" : "Delete account"} disabled={deleting || !!busy} onPress={confirmDelete} />
           </>
         ) : (

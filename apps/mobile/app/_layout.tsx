@@ -5,6 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "../src/auth";
+import { NotificationsBridge } from "../src/notifications";
 import { FONT, useTheme } from "../src/theme";
 
 // Keep the splash screen up until the fonts are in, so text never flashes in the system font.
@@ -39,6 +40,7 @@ function Gate() {
       <Stack.Screen name="login" options={{ title: "Sign in" }} />
       <Stack.Screen name="trip/[id]" options={{ title: "Trip" }} />
       <Stack.Screen name="auth-callback" options={{ title: "Signing in", headerBackVisible: false }} />
+      <Stack.Screen name="rank" options={{ title: "Rank" }} />
     </Stack>
   );
 }
@@ -62,6 +64,7 @@ export default function RootLayout() {
       <AuthProvider>
         <StatusBar style="auto" />
         <Gate />
+        <NotificationsBridge />
       </AuthProvider>
     </SafeAreaProvider>
   );

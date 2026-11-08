@@ -1195,3 +1195,68 @@ dialog.gallery::backdrop { background: rgba(14, 10, 12, .82); }
   .tl-tools { gap: 8px; }
   .btn.small { min-height: 40px; }
 }
+
+/* ---- Ranking and nudges ---- */
+/* "Which did you love more?": two cards side by side, tap one; then the ranking, best first. */
+.rank-picker { display: flex; flex-direction: column; gap: 14px; }
+.rank-pair { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 12px; align-items: stretch; }
+.rank-side { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rank-card {
+  flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 10px 14px; text-align: left;
+  border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--bg); color: var(--ink); font: inherit; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; transition: border-color .15s, background .15s, transform .15s;
+}
+@media (hover: hover) { .rank-card:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); } }
+.rank-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rank-card:active:not(:disabled) { transform: scale(.98); }
+.rank-card:disabled { cursor: default; }
+.rank-side.won .rank-card { border-color: var(--accent); background: var(--accent-soft); transform: scale(1.02); }
+.rank-picker[aria-busy="true"] .rank-side:not(.won) .rank-card { opacity: .6; }
+.rank-img, .rank-nophoto { display: block; width: 100%; aspect-ratio: 4 / 3; border-radius: 12px; margin-bottom: 6px; background: var(--sunk); }
+.rank-img { object-fit: cover; }
+.rank-nophoto { display: flex; align-items: center; justify-content: center; font: 400 44px var(--font-display); color: var(--faint); background: linear-gradient(135deg, var(--sunk), var(--lavender)); }
+.rank-kind { font: 400 12px var(--font-display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.rank-name { font: 400 20px/1.2 var(--font-display); overflow-wrap: anywhere; }
+.rank-where { font-size: 15px; font-style: italic; color: var(--muted); }
+.rank-credit { font-size: 12px; color: var(--faint); padding: 0 6px; }
+.rank-credit a { color: inherit; }
+.rank-or { align-self: center; font: italic 18px var(--font); color: var(--faint); }
+.rank-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.rank-progress { display: inline-flex; align-items: center; gap: 6px; }
+.rank-progress i { width: 10px; height: 10px; border-radius: 999px; background: var(--sunk); border: 1px solid var(--line); transition: background .2s; }
+.rank-progress i.on { background: var(--accent); border-color: var(--accent); }
+.rank-progress small { margin-left: 4px; font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rank-done { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 14px 16px; border-radius: 14px; background: var(--olive); }
+.rank-done b { font: 400 21px var(--font-display); }
+.rank-done span { color: var(--muted); }
+.rank-done .btn { margin-top: 6px; }
+.rank-results { display: flex; flex-direction: column; gap: 14px; }
+.rank-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 18px 24px; }
+.rank-group { display: flex; flex-direction: column; gap: 8px; }
+.rank-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.rank-list li { display: flex; align-items: baseline; gap: 10px; }
+.rank-list b { font-weight: 600; }
+.rank-n { flex: none; width: 24px; height: 24px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font: 400 13px var(--font-display); background: var(--sunk); color: var(--muted); transform: translateY(2px); }
+.rank-list li:first-child .rank-n { background: var(--ochre); color: var(--ink); }
+.rank-trip, .rank-entry { gap: 18px; }
+@media (max-width: 520px) {
+  .rank-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+  .rank-or { display: none; }
+  .rank-card { padding: 8px 8px 12px; }
+  .rank-name { font-size: 17px; }
+}
+
+/* "Back from Lisbon? Rank 5 spots in 60 seconds." Closed for good with the cross (kept in this browser). */
+.rank-nudge { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 10px 10px 18px; border-radius: 14px; background: var(--ochre); color: var(--ink); }
+.rank-nudge-link { color: inherit; text-decoration: none; font-size: 17px; line-height: 1.35; }
+.rank-nudge-link b { font: 400 18px var(--font-display); }
+.rank-nudge-link span { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, var(--ink) 35%, transparent); }
+.rank-nudge-link:hover span { text-decoration-color: currentColor; }
+.rank-nudge-x { flex: none; width: 40px; height: 40px; border: 0; border-radius: 999px; background: transparent; color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.rank-nudge-x:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.rank-nudge-x svg { width: 18px; height: 18px; }
+.browse > .rank-nudge { max-width: 720px; margin: 0 0 4px; }
+@media (prefers-reduced-motion: reduce) {
+  .rank-card, .rank-progress i { transition: none; }
+  .rank-side.won .rank-card, .rank-card:active:not(:disabled) { transform: none; }
+}

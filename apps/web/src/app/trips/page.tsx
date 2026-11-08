@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { RankNudge } from "@/components/RankNudge";
 import { useMe } from "@/components/useMe";
 import { api } from "@/lib/api";
 import type { TripSummary } from "@/lib/trips";
@@ -49,6 +50,7 @@ export default function TripsPage() {
 
   return (
     <>
+    <RankNudge />
     <div className="card">
       <div className="head">
         <h1>My trips</h1>

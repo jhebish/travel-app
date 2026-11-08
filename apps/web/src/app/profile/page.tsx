@@ -6,6 +6,8 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { PlaceChip, PlaceForm, StatsRow, countryName } from "@/components/community";
 import { ConnectCard } from "@/components/connect";
 import { QuickLog, type PresetTrip } from "@/components/QuickLog";
+import { RankEntry } from "@/components/Rank";
+import { RankNudge } from "@/components/RankNudge";
 import { TasteCard, kindFromName, useTaste } from "@/components/taste";
 import { canSubmitPicks, useMe } from "@/components/useMe";
 import { api, ApiError } from "@/lib/api";
@@ -164,6 +166,7 @@ function ProfileEditor() {
         <h1>You</h1>
         <p className="lede">Your past trips, your taste, and the accounts that help Pylos plan for you.</p>
       </div>
+      <RankNudge />
       {/* On phones this is the only way in to signing in, so it sits at the top. */}
       {me?.user?.isGuest && (
         <p className="note">
@@ -172,6 +175,7 @@ function ProfileEditor() {
       )}
 
       <TasteCard data={taste.data} updating={taste.updating} />
+      <RankEntry places={taste.data?.signals.length ?? 0} trips={places.length} />
 
       {/* ---------- places ---------- */}
       <section className="card stack">

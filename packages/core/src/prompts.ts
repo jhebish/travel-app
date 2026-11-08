@@ -172,7 +172,7 @@ const placeProps = {
   neighborhood: { type: "string" },
   why: { type: "string", description: "One short, concrete sentence (under 18 words): what it is and what to have or see there." },
   localTip: { type: "string", description: "One practical insider tip (under 14 words)." },
-  forYou: { type: "string", description: "Only when a TASTE section is given and this pick clearly matches it: a few words naming the link. Otherwise empty." },
+  forYou: { type: "string", description: 'Only when a TASTE section is given and this pick clearly matches it: the favorite of theirs it echoes and where that was ("Because you loved …"), under 12 words. Otherwise empty.' },
   source: { type: "string", enum: sourceEnum },
   candidateId: { type: ["string", "null"], description: "Bracketed candidate id, or null." },
   lat: { type: "number", description: "Approximate latitude of the place." },

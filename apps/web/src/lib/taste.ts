@@ -17,6 +17,7 @@ import {
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Ctx } from "./auth";
 import { callTool } from "./claude";
+import { rankColumns, rankColumnsFailed, rankingForTaste } from "./rank";
 import { supabaseAdmin } from "./supabase/server";
 import type { TripRow } from "./trips";
 
@@ -42,6 +43,7 @@ interface SignalRow {
   liked: boolean | null;
   note: string | null;
   url: string | null;
+  rank_score?: number | null;
 }
 const toSignal = (r: SignalRow): StoredSignal => ({
   id: r.id,
@@ -59,6 +61,7 @@ const toSignal = (r: SignalRow): StoredSignal => ({
   liked: r.liked,
   note: r.note,
   url: r.url,
+  rankScore: r.rank_score ?? null,
 });
 export const signalRow = (userId: string, s: TasteSignal, pastTripId: string | null = null) => ({
   user_id: userId,
@@ -79,12 +82,14 @@ export const signalRow = (userId: string, s: TasteSignal, pastTripId: string | n
 });
 
 export async function loadSignals(db: SupabaseClient, userId: string, limit = 2000): Promise<StoredSignal[]> {
-  const { data, error } = await db.from("taste_signals").select(SIGNAL_COLS).eq("user_id", userId).order("created_at", { ascending: false }).limit(limit);
+  const run = (cols: string) => db.from("taste_signals").select(cols).eq("user_id", userId).order("created_at", { ascending: false }).limit(limit);
+  let { data, error } = await run(rankColumns() ? `${SIGNAL_COLS}, rank_score` : SIGNAL_COLS);
+  if (rankColumnsFailed(error)) ({ data, error } = await run(SIGNAL_COLS));
   if (error) {
     if (error.code !== "42P01") console.error("signals load failed", error.code);
     return [];
   }
-  return (data as SignalRow[]).map(toSignal);
+  return (data as unknown as SignalRow[]).map(toSignal);
 }
 
 /** Thumbs on stops and hotels in their Pylos trips, as "Name (City, kind)". */
@@ -111,8 +116,18 @@ async function loadFeedback(db: SupabaseClient, userId: string): Promise<TasteFe
 }
 
 async function loadPastTrips(db: SupabaseClient, userId: string) {
-  const { data } = await db.from("past_trips").select("city, country_code, year, rating, highlights").eq("user_id", userId).limit(200);
-  return (data ?? []).map((r) => ({ city: r.city as string, country: countryName(r.country_code as string), year: r.year as number | null, rating: r.rating as number | null, highlights: (r.highlights as string) ?? "" }));
+  const cols = "city, country_code, year, rating, highlights";
+  const run = (c: string) => db.from("past_trips").select(c).eq("user_id", userId).limit(200);
+  let { data, error } = await run(rankColumns() ? `${cols}, rank_score` : cols);
+  if (rankColumnsFailed(error)) ({ data } = await run(cols));
+  return ((data ?? []) as unknown as Record<string, unknown>[]).map((r) => ({
+    city: r.city as string,
+    country: countryName(r.country_code as string),
+    year: r.year as number | null,
+    rating: r.rating as number | null,
+    highlights: (r.highlights as string) ?? "",
+    rankScore: (r.rank_score as number | null | undefined) ?? null,
+  }));
 }
 
 export async function getCachedProfile(userId: string): Promise<{ profile: TasteProfile; hash: string } | null> {
@@ -123,10 +138,16 @@ export async function getCachedProfile(userId: string): Promise<{ profile: Taste
 
 async function tasteInputs(db: SupabaseClient, userId: string) {
   const [pastTrips, signals, feedback] = await Promise.all([loadPastTrips(db, userId), loadSignals(db, userId), loadFeedback(db, userId)]);
+  // Their "Which did you love more?" answers: the top of the ranking goes in the prompt, and the
+  // answer count goes in the hash, so new answers make the cached profile out of date.
+  const { ranking, stamp } = await rankingForTaste(db, userId, pastTrips, signals);
+  // Without any answers the hash is what it always was, so profiles built before ranking stay fresh.
+  const base = [pastTrips.map(({ rankScore: _r, ...t }) => t), signals.map((s) => [s.id, s.rating, s.liked, s.note]), feedback];
+  const ranked = stamp && !stamp.startsWith("0:0:") ? [pastTrips.map((t) => t.rankScore), signals.map((s) => s.rankScore ?? null), ranking, stamp] : null;
   const hash = createHash("sha1")
-    .update(JSON.stringify([pastTrips, signals.map((s) => [s.id, s.rating, s.liked, s.note]), feedback]))
+    .update(JSON.stringify(ranked ? [...base, ranked] : base))
     .digest("hex");
-  return { pastTrips, signals, feedback, hash };
+  return { pastTrips, signals, feedback, ranking, hash };
 }
 
 /** Is the cached profile out of date (or missing while there's something to learn from)? */
