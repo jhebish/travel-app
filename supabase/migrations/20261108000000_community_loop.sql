@@ -13,8 +13,24 @@
 -- ---------------------------------------------------------------------------
 -- Past trips: visibility, hidden dates, ranking
 -- ---------------------------------------------------------------------------
--- 'followers' matches what followers could already see (the places list on a profile).
-alter table public.past_trips add column if not exists visibility text not null default 'followers';
+-- 'followers' matches what followers could already see (the places list on a profile). People who
+-- had "Show my places to everyone" on keep their existing places public. This runs only when the
+-- column is first added, so running the migration again never overrides a later choice.
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'past_trips' and column_name = 'visibility'
+  ) then
+    alter table public.past_trips add column visibility text not null default 'followers';
+    update public.past_trips p
+       set visibility = 'public'
+      from public.community_profiles c
+     where c.user_id = p.user_id
+       and c.places_public;
+  end if;
+end;
+$$;
 alter table public.past_trips drop constraint if exists past_trips_visibility_check;
 alter table public.past_trips add constraint past_trips_visibility_check check (visibility in ('private', 'followers', 'public'));
 -- Others see the city and what you loved, but not the year or month.

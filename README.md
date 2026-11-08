@@ -240,8 +240,8 @@ directly: trips are now inserted and edited only by the server, which checks who
     add the redirect URI `https://www.pylos.ai/api/connect/gmail/callback` (and
     `http://localhost:3000/api/connect/gmail/callback` for local use); run
     `supabase/migrations/20261108000000_community_loop.sql` (before it, the import stops before
-    reading anything and says it isn't set up). Gmail is offered on the profile as soon as the
-    OAuth client is set, so do this before deploying. `gmail.readonly` is a Google **restricted**
+    reading anything and says it isn't set up); then set `GMAIL_IMPORT=on` in Vercel and redeploy.
+    Gmail stays hidden until then, even though Calendar uses the same OAuth client. `gmail.readonly` is a Google **restricted**
     scope: until the app passes Google's verification (for restricted scopes that includes a
     third-party security assessment, renewed yearly), only test users added on the consent screen
     can connect, up to 100.

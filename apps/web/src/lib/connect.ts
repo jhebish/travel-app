@@ -13,6 +13,9 @@ export const isProvider = (p: string): p is Provider => (PROVIDERS as readonly s
 
 export function configured(p: Provider): boolean {
   const k = p === "facebook" ? env.meta() : env.googleOAuth();
+  // Gmail needs its own Google console setup (the API, the restricted scope, the redirect URI), so
+  // it stays hidden until GMAIL_IMPORT=on, even though it shares Calendar's OAuth keys.
+  if (p === "gmail" && process.env.GMAIL_IMPORT !== "on") return false;
   return !!(k.id && k.secret);
 }
 
