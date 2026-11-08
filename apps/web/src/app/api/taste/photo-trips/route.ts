@@ -97,6 +97,6 @@ export const POST = handler(async (req: Request) => {
   });
   const trips = [...by.values()].sort((a, b) => (b.year ?? 0) - (a.year ?? 0)).slice(0, 100);
   if (preview) return json({ trips: trips.map(({ city, countryCode, year, month, days }) => ({ city, countryCode, year, month, days })) });
-  const result = trips.length ? await addPlacesBulk(ctx, trips) : { added: 0, skipped: 0 };
+  const result = trips.length ? await addPlacesBulk(ctx, trips) : { added: 0, skipped: 0, updated: 0 };
   return json({ ...result, trips: trips.map(({ city, countryCode, year, month, days }) => ({ city, countryCode, year, month, days })) }, 201);
 });

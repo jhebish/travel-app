@@ -21,19 +21,26 @@ export interface FoundTrip {
   days: number | null;
 }
 
-/** Add the trips kept after review to Places you've been. Ones already logged are skipped. */
-export async function saveTrips(trips: FoundTrip[]): Promise<{ added: number; skipped: number }> {
+/**
+ * Add the trips kept after review to Places you've been. Ones already logged are skipped, except
+ * that a longer stay found now corrects a shorter one logged before (`updated`).
+ */
+export async function saveTrips(trips: FoundTrip[]): Promise<{ added: number; skipped: number; updated: number }> {
   let added = 0;
   let skipped = 0;
+  let updated = 0;
   for (let i = 0; i < trips.length; i += 100) {
-    const r = await api<{ added: number; skipped: number }>("/api/community/places/bulk", { method: "POST", json: { places: trips.slice(i, i + 100) } });
+    const r = await api<{ added: number; skipped: number; updated?: number }>("/api/community/places/bulk", { method: "POST", json: { places: trips.slice(i, i + 100) } });
     added += r.added;
     skipped += r.skipped;
+    updated += r.updated ?? 0;
   }
-  return { added, skipped };
+  return { added, skipped, updated };
 }
 
 const YEARS_BACK = 6;
+/** Photos looked at per day until one has a location. */
+const PER_DAY = 6;
 const DAY_MS = 864e5;
 const pad = (n: number) => String(n).padStart(2, "0");
 /** The day on this phone's clock (all-day events and photo days). */
@@ -108,7 +115,8 @@ export async function scanPhotos(progress: Progress): Promise<{ trips: FoundTrip
   if (!perm.granted) throw new Error("Photo access is off. Turn it on for Pylos in Settings to scan.");
   const limited = perm.accessPrivileges === "limited";
 
-  // One or two photos per day, newest first.
+  // A few photos per day, newest first, skipping screenshots: most of a day's pictures carry no
+  // location (saved images, screenshots), so two weren't enough to place a trip's middle days.
   const since = Date.now() - YEARS_BACK * 365 * DAY_MS;
   const byDay = new Map<string, MediaLibrary.Asset[]>();
   let after: string | undefined;
@@ -121,9 +129,11 @@ export async function scanPhotos(progress: Progress): Promise<{ trips: FoundTrip
       createdAfter: since,
     });
     for (const a of r.assets) {
+      if (a.mediaSubtypes?.includes("screenshot")) continue;
       const k = localDay(a.creationTime);
-      const list = byDay.get(k) ?? [];
-      if (list.length < 2) byDay.set(k, [...list, a]);
+      const list = byDay.get(k);
+      if (!list) byDay.set(k, [a]);
+      else if (list.length < PER_DAY) list.push(a);
     }
     progress(`Looking through your photos… ${byDay.size} days`);
     if (!r.hasNextPage) break;

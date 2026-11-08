@@ -626,6 +626,34 @@ describe("trips from photo locations", () => {
     // Centres are rounded to about 1 km.
     expect(stays.every((s) => Math.round(s.lat * 100) / 100 === s.lat)).toBe(true);
   });
+
+  const home = { lat: 40.72, lng: -73.99 }; // New York
+  const lisbon = { lat: 38.72, lng: -9.14 };
+  const at = (day: string, p: { lat: number; lng: number }) => ({ day, ...p });
+  const winterAtHome = Array.from({ length: 60 }, (_, i) => at(new Date(Date.parse("2025-01-01") + i * 864e5).toISOString().slice(0, 10), home));
+  const lengths = async (points: { day: string; lat: number; lng: number }[]) => {
+    const { photoStays } = await import("../src");
+    return photoStays(points).map((s) => `${s.start}+${s.days}`);
+  };
+
+  it("counts a trip's days without a located photo, rather than a day per located photo", async () => {
+    // Five days in Lisbon; only the first and last have a photo with a location.
+    expect(await lengths([...winterAtHome, at("2025-05-11", lisbon), at("2025-05-15", lisbon)])).toEqual(["2025-05-11+5"]);
+    // Two weeks with only a few located days.
+    expect(await lengths([...winterAtHome, at("2025-06-01", lisbon), at("2025-06-05", lisbon), at("2025-06-11", lisbon), at("2025-06-14", lisbon)])).toEqual(["2025-06-01+14"]);
+  });
+
+  it("keeps two visits apart when a photo at home is between them, or weeks are", async () => {
+    expect(await lengths([...winterAtHome, at("2025-05-11", lisbon), at("2025-05-14", home), at("2025-05-18", lisbon)])).toEqual(["2025-05-11+1", "2025-05-18+1"]);
+    expect(await lengths([...winterAtHome, at("2025-05-01", lisbon), at("2025-05-20", lisbon)])).toEqual(["2025-05-01+1", "2025-05-20+1"]);
+  });
+
+  it("doesn't chain weekly visits into one long stay", async () => {
+    const weekly = Array.from({ length: 8 }, (_, w) => at(new Date(Date.parse("2025-05-03") + w * 7 * 864e5).toISOString().slice(0, 10), lisbon));
+    const stays = await lengths([...winterAtHome, ...weekly]);
+    expect(stays.length).toBeGreaterThanOrEqual(4);
+    expect(stays.every((s) => Number(s.split("+")[1]) <= 8)).toBe(true);
+  });
 });
 
 describe("the trip's personal line", () => {

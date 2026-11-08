@@ -254,15 +254,24 @@ export async function addPlace(ctx: Ctx, p: PastTripInput): Promise<PastTrip> {
   return toPast(data as PastRow);
 }
 
-/** Add many past trips (an import). Skips ones already logged for the same city and year. */
-export async function addPlacesBulk(ctx: Ctx, list: PastTripInput[]): Promise<{ added: number; skipped: number }> {
+/**
+ * Add many past trips (an import). Ones already logged for the same city and year are skipped,
+ * except that a longer stay found now raises their days (`updated`, counted in `skipped` too).
+ */
+export async function addPlacesBulk(ctx: Ctx, list: PastTripInput[]): Promise<{ added: number; skipped: number; updated: number }> {
   if (!ctx.user) throw new HttpError(401, "Sign in to continue.", "unauthenticated");
-  const { data: have } = await ctx.db.from("past_trips").select("city_key, year").eq("user_id", ctx.user.id).limit(1000);
-  const seen = new Set((have ?? []).map((r) => `${r.city_key}|${r.year ?? ""}`));
+  const { data: have } = await ctx.db.from("past_trips").select("id, city_key, year, days").eq("user_id", ctx.user.id).limit(1000);
+  const existing = new Map((have ?? []).map((r) => [`${r.city_key}|${r.year ?? ""}`, r as { id: string; days: number | null }]));
+  const seen = new Set(existing.keys());
   const rows: { row: Record<string, unknown>; privacy: Record<string, unknown> }[] = [];
+  // Already logged, but an import found a longer stay (an earlier photo scan counted trips as a
+  // day or two): the longer count is the better one.
+  const longer = new Map<string, number>();
   const fallback = await newPlaceVisibility(ctx, {});
   for (const p of list) {
     const key = `${toCityKey(p.city)}|${p.year ?? ""}`;
+    const had = existing.get(key);
+    if (had && p.days && p.days > Math.max(had.days ?? 0, longer.get(had.id) ?? 0)) longer.set(had.id, p.days);
     if (seen.has(key)) continue;
     seen.add(key);
     rows.push({
@@ -274,7 +283,13 @@ export async function addPlacesBulk(ctx: Ctx, list: PastTripInput[]): Promise<{ 
     const { error } = await withLoop((loop) => ctx.db.from("past_trips").insert(rows.map((r) => (loop ? { ...r.row, ...r.privacy } : r.row))));
     check(error, "add places");
   }
-  return { added: rows.length, skipped: list.length - rows.length };
+  const userId = ctx.user.id;
+  const fixes = [...longer];
+  for (let i = 0; i < fixes.length; i += 10) {
+    const results = await Promise.all(fixes.slice(i, i + 10).map(([id, days]) => ctx.db.from("past_trips").update({ days }).eq("id", id).eq("user_id", userId)));
+    for (const { error } of results) check(error, "update place length");
+  }
+  return { added: rows.length, skipped: list.length - rows.length, updated: longer.size };
 }
 
 export async function updatePlace(ctx: Ctx, id: string, p: PastTripInput): Promise<PastTrip> {

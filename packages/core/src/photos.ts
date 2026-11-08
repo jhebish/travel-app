@@ -16,9 +16,19 @@ function km(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / DAY_MS);
 
 /**
+ * Many days of a trip have no photo with a location (screenshots, saved images, days without
+ * pictures). Days in the same place stay one trip across a gap of up to this many days, unless a
+ * photo at home shows you went back in between.
+ */
+const SAME_TRIP_GAP = 14;
+
+/**
  * Home is where most photo days are (several homes if you've moved). Trips are runs of days
  * more than 60 km from home; each place on a trip is its own stay (a route through Italy gives
- * Rome, Florence, Venice). Centres are rounded to about 1 km before they leave the phone.
+ * Rome, Florence, Venice). A stay runs from its first located photo to its last: days in between
+ * with none still count, up to two weeks of them, unless a photo at home shows you went back (or
+ * the located days get so sparse that they look like separate visits). Centres are rounded to
+ * about 1 km before they leave the phone.
  */
 export function photoStays(points: PhotoPoint[]) {
   const cell = (p: PhotoPoint) => `${Math.round(p.lat * 4)},${Math.round(p.lng * 4)}`; // about 25 km
@@ -32,12 +42,29 @@ export function photoStays(points: PhotoPoint[]) {
   }
   const ranked = [...cells.values()].sort((a, b) => b.n - a.n);
   const homes = ranked.filter((c, i) => i === 0 || c.n >= points.length * 0.15).map((c) => ({ lat: c.lat / c.n, lng: c.lng / c.n }));
-  const away = points.filter((p) => homes.every((h) => km(p, h) > 60)).sort((a, b) => a.day.localeCompare(b.day));
+  const isAway = (p: PhotoPoint) => homes.every((h) => km(p, h) > 60);
+  const away = points.filter(isAway).sort((a, b) => a.day.localeCompare(b.day));
+  const homeDays = points.filter((p) => !isAway(p)).map((p) => p.day).sort();
+  /** A photo at home on a day strictly between a and b. */
+  const wentHome = (a: string, b: string) => {
+    let lo = 0;
+    let hi = homeDays.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (homeDays[mid]! <= a) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo < homeDays.length && homeDays[lo]! < b;
+  };
 
   const runs: { first: PhotoPoint; start: string; end: string; pts: PhotoPoint[] }[] = [];
   for (const p of away) {
     const cur = runs[runs.length - 1];
-    if (cur && daysBetween(cur.end, p.day) <= 3 && km(cur.first, p) <= 50) {
+    const gap = cur ? daysBetween(cur.end, p.day) : Infinity;
+    // Bridging a long gap needs a located day for every four of the stay's days, so weekly
+    // visits somewhere don't chain into one stay that lasts months.
+    const bridge = !!cur && gap <= SAME_TRIP_GAP && !wentHome(cur.end, p.day) && (cur.pts.length + 1) * 4 >= daysBetween(cur.start, p.day) + 1;
+    if (cur && km(cur.first, p) <= 50 && (gap <= 3 || bridge)) {
       cur.end = p.day;
       cur.pts.push(p);
     } else runs.push({ first: p, start: p.day, end: p.day, pts: [p] });

@@ -97,10 +97,13 @@ export default function You() {
   async function saveReview(kept: FoundTrip[]) {
     const r = await saveTrips(kept);
     setReview(null);
+    // A trip already there whose stay this scan found longer gets the longer count (`updated`).
+    const there = r.skipped - r.updated;
+    const fixed = r.updated ? ` Updated the days on ${r.updated} you'd added before.` : "";
     setMsg({
       text: r.added
-        ? `Added ${r.added} ${r.added === 1 ? "trip" : "trips"} to Places you've been.${r.skipped ? ` ${r.skipped} ${r.skipped === 1 ? "was" : "were"} already there.` : ""}`
-        : "Those trips were already in Places you've been.",
+        ? `Added ${r.added} ${r.added === 1 ? "trip" : "trips"} to Places you've been.${there > 0 ? ` ${there} ${there === 1 ? "was" : "were"} already there.` : ""}${fixed}`
+        : `Those trips were already in Places you've been.${fixed}`,
     });
     await refreshTaste();
   }
