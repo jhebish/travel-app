@@ -278,3 +278,35 @@ that works most of the year). The route picks stops for that month (beach towns 
 season) and gives each stop a `season` line and 2–3 `alternatives`. On the trip, each stop shows
 them; swapping (`swap_city` edit) re-plans that stop's days, its hotels if it had them, the
 transfers either side and the trip title, and keeps the old town as a one-tap swap back.
+
+## The community loop: easy logging, payback, friends
+
+Logging a trip takes seconds and pays off right away, and friends' trips make your plans better.
+
+- **Setup:** in the Supabase SQL editor run, in order, `20261108000000_community_loop.sql`,
+  `20261108200000_ranking.sql` and `20261108300000_pages.sql`. Until then these features stay off
+  and everything else works as before.
+- **Easy logging:** the phone's photo and calendar scans end with a review ("We found N trips since
+  2019", remove any before saving). Gmail booking confirmations can be imported once (see the Gmail
+  setup above; off until `GMAIL_IMPORT=on`). "Which did you love more?" (`/rank`) ranks your trips
+  and places two at a time; rankings feed the taste profile and the "Because you loved X" notes.
+  The morning after a dated trip, a banner (web) or a local notification (phone) asks you to rank it.
+- **Payback:** the taste card unlocks after 3 trips; each past trip has a page (`/p/:id`) with a map
+  of what you loved and "Plan a trip like this" (`/plan?like=:id`); `/recap` is your year in travel
+  with a 1080×1920 story picture to share; "A year ago you were in Kyoto" memories.
+- **Friends** (people who follow each other): "Friends who've been" is a source in the mix (weight 9),
+  so their loved places become candidates, shown as "Sara's pick" (with "Local" when they live there
+  or have been 3+ times). The plan page and trips list friends who've been, with "Ask Sara"; answers
+  are saved into your trip under "From friends" and feed later rebuilds. Planning together ends with
+  "The group's favourites". Your profile shows "Your picks helped 4 friends".
+- **Privacy:** each past trip is Only me, Followers or Everyone, with "Hide dates". Dated trips stay
+  hidden from others until the day after they end, unless "Share while I'm away" is on. People can
+  turn off "Let friends' planners use places I loved". Friends' places come only from past trips that
+  aren't private and never from trips dated in the future.
+- **Phone notifications:** the app registers an Expo push token (`/api/push/register`) for
+  questions and answers from friends. Needs `eas init` (to set `extra.eas.projectId`), APNs/FCM
+  credentials in EAS, and a new build of the phone app (expo-notifications is a native module).
+- **API:** `/api/rank` (next pair, vote), `/api/rank/nudges`, `/api/trips/:id/rank` (group
+  favourites), `/api/community/past/:id`, `/api/recap`, `/api/recap/story`, `/api/friends/been`,
+  `/api/friends/like/:id`, `/api/friends/trip/:id`, `/api/friends/u/:handle`, `/api/friends/me`,
+  `/api/asks` (ask, list), `/api/asks/:id` (answer, decline), `/api/asks/count`.
