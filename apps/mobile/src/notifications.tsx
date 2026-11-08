@@ -22,7 +22,7 @@ import { supabase } from "./supabase";
  * first launch.
  */
 
-const WEB = (process.env.EXPO_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+const WEB = (process.env.EXPO_PUBLIC_API_URL ?? "https://www.pylos.ai").replace(/\/$/, "");
 /** Android channel; also where pushes without a channel land. */
 const CHANNEL = "default";
 const REMINDER = "rank-reminder:";

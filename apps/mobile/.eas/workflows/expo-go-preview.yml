@@ -1,0 +1,23 @@
+# Publishes the app to Expo so it opens in Expo Go without a computer running.
+# Runs on Expo's servers when the phone app (or the code it shares with the site) changes on main.
+# Open it on the phone, signed in to Expo Go with the account that owns this project:
+#   exp://u.expo.dev/<projectId>?channel-name=preview
+# Before the first App Store or Play build, move app.json's runtimeVersion off "sdkVersion"
+# (to "appVersion" or "fingerprint"); "sdkVersion" is what lets Expo Go load these updates.
+name: Expo Go preview
+
+on:
+  push:
+    branches: ['main']
+    paths: ['apps/mobile/**', 'packages/core/**', 'pnpm-lock.yaml', '!**/*.md']
+
+jobs:
+  publish:
+    name: Publish to the preview channel
+    type: update
+    # EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY come from the project's
+    # "preview" environment variables on expo.dev.
+    environment: preview
+    params:
+      channel: preview
+      platform: all

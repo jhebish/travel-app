@@ -4,6 +4,7 @@
     "slug": "pylos",
     "scheme": ["pylos", "tripplanner"],
     "version": "1.0.0",
+    "runtimeVersion": { "policy": "sdkVersion" },
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "icon": "./assets/icon.png",

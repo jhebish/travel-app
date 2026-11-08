@@ -1,7 +1,7 @@
 import { Linking } from "react-native";
 import { supabase } from "./supabase";
 
-const BASE = (process.env.EXPO_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+const BASE = (process.env.EXPO_PUBLIC_API_URL ?? "https://www.pylos.ai").replace(/\/$/, "");
 
 export class ApiError extends Error {
   constructor(

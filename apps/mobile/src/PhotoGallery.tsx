@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FONT } from "./theme";
 import { Text } from "./ui";
 
-const WEB = (process.env.EXPO_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+const WEB = (process.env.EXPO_PUBLIC_API_URL ?? "https://www.pylos.ai").replace(/\/$/, "");
 /** The site's photo route: redirects to Google's image and falls back when a photo name expires. */
 export const photoUri = (name: string, w: number) => `${WEB}/api/photo?ref=${encodeURIComponent(name)}&w=${w}`;
 

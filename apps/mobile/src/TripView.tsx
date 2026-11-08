@@ -36,7 +36,7 @@ import { PhotoGallery, PlacePhoto, type GalleryTarget } from "./PhotoGallery";
 import { FONT, useTheme } from "./theme";
 import { Button, Card, ChipRow, Loading, P, Status, styles, Text } from "./ui";
 
-const WEB = (process.env.EXPO_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+const WEB = (process.env.EXPO_PUBLIC_API_URL ?? "https://www.pylos.ai").replace(/\/$/, "");
 const open = (url?: string) => url && Linking.openURL(url).catch(() => {});
 const ratesUrl = (h: Hotel, city: string) => "https://www.google.com/travel/search?q=" + encodeURIComponent(`${h.name} ${h.neighborhood} ${city}`);
 
