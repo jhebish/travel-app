@@ -29,8 +29,8 @@ export const env = {
   typeformApi: () => clean(process.env.TYPEFORM_API_BASE) || "https://api.typeform.com",
   tripsPerHour: () => Number(clean(process.env.TRIPS_PER_HOUR) || 10),
   /**
-   * Google OAuth client ("Web application") for the one-time Google Calendar import.
-   * Authorized redirect URI: <site>/api/connect/google_calendar/callback
+   * Google OAuth client ("Web application") for the one-time Google Calendar and Gmail imports.
+   * Authorized redirect URIs: <site>/api/connect/google_calendar/callback, <site>/api/connect/gmail/callback
    */
   googleOAuth: () => ({ id: clean(process.env.GOOGLE_OAUTH_CLIENT_ID), secret: clean(process.env.GOOGLE_OAUTH_CLIENT_SECRET) }),
   /** Meta app (Facebook Login) for importing check-ins. Redirect URI: <site>/api/connect/facebook/callback */

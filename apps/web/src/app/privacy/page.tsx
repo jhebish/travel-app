@@ -38,7 +38,7 @@ export default function PrivacyPage() {
             <b>Community.</b> Your profile name, handle and photo if you add one, the people you follow, and any trips you choose to share or make public.
           </li>
           <li>
-            <b>Connected accounts, only if you connect them.</b> See <a href="#google">Google Calendar</a> below. In the phone app, if you allow it, your calendars and the
+            <b>Connected accounts, only if you connect them.</b> See <a href="#google">Google Calendar</a> and <a href="#gmail">Gmail</a> below. In the phone app, if you allow it, your calendars and the
             location data in your photos are read on your phone to find past trips; only the trips found (a place and dates) are sent to Pylos. Your photos never leave your phone.
           </li>
           <li>
@@ -80,6 +80,36 @@ export default function PrivacyPage() {
           Pylos&rsquo;s use and transfer to any other app of information received from Google APIs will adhere to the{" "}
           <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.
         </p>
+      </section>
+
+      <section id="gmail">
+        <h2>Gmail</h2>
+        <p>Connecting Gmail is optional. When you choose to connect it:</p>
+        <ul>
+          <li>
+            <b>What we access.</b> Read-only access to your email (the <code>gmail.readonly</code> permission), used once, at the moment you connect. We search for booking
+            confirmations from the past six years from hotels and booking sites, airlines and rail companies, restaurant booking sites and tour sites, and for at most a few hundred
+            of them we read only the subject, the sender, the date and Gmail&rsquo;s short preview of the text. We don&rsquo;t open the rest of those emails, their attachments
+            or any other email, and we never send, change or delete email.
+          </li>
+          <li>
+            <b>What we use it for.</b> Only to find hotel stays, flights, restaurant reservations and tours you&rsquo;ve booked, so we can learn your taste and plan trips you&rsquo;ll
+            like. To pick out the bookings, each email&rsquo;s subject, preview, date and the sender&rsquo;s domain are sent to our AI provider, with greetings, email
+            addresses, links, phone numbers and booking numbers taken out first.
+          </li>
+          <li>
+            <b>What we keep.</b> Only the bookings we find: a place name, city, date and the site it was booked with (for example, &ldquo;Booked with Resy&rdquo;). We do not store your
+            emails or their previews.
+          </li>
+          <li>
+            <b>How long we have access.</b> We give the access back to Google as soon as the read finishes, so Pylos has no ongoing access to your email. You can also see and remove
+            apps with access in your <a href="https://myaccount.google.com/permissions">Google Account settings</a>.
+          </li>
+          <li>
+            <b>Sharing and deleting.</b> Everything above under Google Calendar about sharing, AI training, people reading your data and deleting it applies to Gmail data too, and
+            so does our commitment to the Google API Services User Data Policy, including the Limited Use requirements.
+          </li>
+        </ul>
       </section>
 
       <section>

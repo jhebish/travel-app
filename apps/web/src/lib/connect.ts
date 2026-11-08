@@ -7,12 +7,12 @@ import { env } from "./env";
  * token, read what we need, turn it into taste signals, and give the access back (revoke).
  * Tokens are never stored. Each provider lights up once its OAuth app keys are set in env.
  */
-export const PROVIDERS = ["google_calendar", "facebook"] as const;
+export const PROVIDERS = ["google_calendar", "gmail", "facebook"] as const;
 export type Provider = (typeof PROVIDERS)[number];
 export const isProvider = (p: string): p is Provider => (PROVIDERS as readonly string[]).includes(p);
 
 export function configured(p: Provider): boolean {
-  const k = p === "google_calendar" ? env.googleOAuth() : env.meta();
+  const k = p === "facebook" ? env.meta() : env.googleOAuth();
   return !!(k.id && k.secret);
 }
 
@@ -25,7 +25,9 @@ export interface OAuthCookie {
 }
 
 const b64url = (b: Buffer) => b.toString("base64url");
-const redirectUri = (origin: string, p: Provider) => `${origin}/api/connect/${p}/callback`;
+export const redirectUri = (origin: string, p: Provider) => `${origin}/api/connect/${p}/callback`;
+/** Read-only Gmail: nothing can be sent, changed or deleted. A Google "restricted" scope (see README). */
+export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 
 /** Where to send the person to approve access, plus the state to remember in a cookie. */
 export function authorizeUrl(p: Provider, origin: string, userId: string): { url: string; cookie: OAuthCookie } {
@@ -33,13 +35,14 @@ export function authorizeUrl(p: Provider, origin: string, userId: string): { url
   const verifier = b64url(randomBytes(48));
   const challenge = b64url(createHash("sha256").update(verifier).digest());
   const cookie: OAuthCookie = { p, s: state, v: verifier, u: userId };
-  if (p === "google_calendar") {
+  if (p === "google_calendar" || p === "gmail") {
     const q = new URLSearchParams({
       client_id: env.googleOAuth().id,
       redirect_uri: redirectUri(origin, p),
       response_type: "code",
       // The narrowest scope that can read events: no calendar settings, sharing or other calendars' lists.
-      scope: "https://www.googleapis.com/auth/calendar.events.readonly",
+      // Gmail (lib/gmail.ts) opens only likely booking confirmations, and only their headers and preview.
+      scope: p === "gmail" ? GMAIL_SCOPE : "https://www.googleapis.com/auth/calendar.events.readonly",
       access_type: "online",
       prompt: "consent",
       state,

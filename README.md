@@ -224,16 +224,40 @@ directly: trips are now inserted and edited only by the server, which checks who
     type Web application, redirect URI `https://www.pylos.ai/api/connect/google_calendar/callback`,
     enable the Google Calendar API, scope `calendar.events.readonly`). Until Google verifies the app, only
     the test users you add on the consent screen can connect.
+  - Gmail (`lib/gmail.ts`; searches and parsing in `packages/core/src/imports/gmail.ts`): a one-time
+    read of booking confirmations from about the last six years: hotels and booking sites
+    (Booking.com, Airbnb, Expedia, Hotels.com, Vrbo, the big chains), airlines and rail, Resy,
+    OpenTable, Tock and SevenRooms, GetYourGuide and Viator, plus subjects like "reservation
+    confirmed". Pylos searches one year at a time and reads at most 250 emails, and of each only
+    the Subject and From headers, the date and Gmail's short preview, never the body. The access is
+    revoked as soon as that's read. The fast model gets the sender's domain, the date, and the
+    subject and preview with greetings, addresses, links, phone and booking numbers taken out; the
+    bookings it names become `taste_signals` (source `gmail`) and Places you've been (not in the
+    home city: the profile's, or where most flights leave from). No email is stored. Four reads an
+    hour at most (`rate_events` kind `gmail`).
+    Setup, with the same OAuth client as Calendar: in Google Cloud enable the **Gmail API**; on the
+    OAuth consent screen (Data access) add the scope `https://www.googleapis.com/auth/gmail.readonly`;
+    add the redirect URI `https://www.pylos.ai/api/connect/gmail/callback` (and
+    `http://localhost:3000/api/connect/gmail/callback` for local use); run
+    `supabase/migrations/20261108000000_community_loop.sql` (before it, the import stops before
+    reading anything and says it isn't set up). Gmail is offered on the profile as soon as the
+    OAuth client is set, so do this before deploying. `gmail.readonly` is a Google **restricted**
+    scope: until the app passes Google's verification (for restricted scopes that includes a
+    third-party security assessment, renewed yearly), only test users added on the consent screen
+    can connect, up to 100.
   - Facebook: check-ins and tagged places with `META_APP_ID` / `META_APP_SECRET` (redirect URI
     `/api/connect/facebook/callback`; `user_posts` and `user_tagged_places` need Meta app review).
-  - Both add the cities and years they find to Places you've been (`tripsFromSignals`).
+  - All of them add the cities and years they find to Places you've been (`tripsFromSignals`).
   - Access tokens are used once and revoked; none are stored (`connections` keeps only dates/counts).
   - In the phone app (You tab, `apps/mobile/src/deviceImports.ts`), with the person's permission:
     the calendars on the phone (iCloud, Google, Outlook; read on the phone with `calendarSignals`)
     and photo locations (days away from home become trips with `photoStays`; only rough centres
-    and dates are sent, and `/api/taste/photo-trips` names the places). Instagram doesn't let
+    and dates are sent, and `/api/taste/photo-trips` names the places). Both scans show the trips
+    they found for review first ("We found 12 trips since 2019", `apps/mobile/src/TripReview.tsx`);
+    only the ones kept are added, with `/api/community/places/bulk` (photos are named with
+    `preview: true`, which saves nothing). Instagram doesn't let
     apps read personal accounts any more, and Resy and OpenTable have no sign-in for other apps:
-    their bookings come in through the calendar.
+    their bookings come in through the calendar or Gmail.
 - **Photos.** Google Places photos are captured when places are verified and served through
   `/api/photo` (a cached redirect; author credited). Needs `GOOGLE_PLACES_API_KEY` with the Places
   API (New) enabled; each photo size is fetched from Google about once a week.

@@ -3,7 +3,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 
-type Provider = "google_calendar" | "facebook";
+type Provider = "google_calendar" | "gmail" | "facebook";
 interface Status {
   providers: Record<Provider, { configured: boolean; lastImportAt: string | null; found: number }>;
 }
@@ -15,6 +15,11 @@ const ROWS: { provider: Provider; name: string; what: string }[] = [
     name: "Google Calendar",
     what: "Past trips, hotel stays and dinner reservations, including the Resy and OpenTable bookings that land in your calendar.",
   },
+  {
+    provider: "gmail",
+    name: "Gmail",
+    what: "Hotel, flight, restaurant and tour confirmations from the last six years. Pylos reads only each one's sender, subject, date and preview, and keeps the places and dates, never your emails. Reading takes up to a minute.",
+  },
   { provider: "facebook", name: "Facebook", what: "Check-ins and places you were tagged at." },
 ];
 
@@ -24,6 +29,8 @@ const ERRORS: Record<string, string> = {
   expired: "That took too long or came from another session. Try connecting again.",
   failed: "We couldn't read your account just now. Try again in a minute.",
   unknown: "Unknown connection.",
+  rate_limited: "You've connected a few times this hour. Try again a little later.",
+  not_ready: "That connection isn't fully set up yet, so nothing was kept.",
 };
 
 /** Sign in to an account once; Pylos keeps only the places and trips it finds. */
@@ -51,7 +58,7 @@ export function ConnectCard({ onImported }: { onImported: () => void }) {
     if (connected) {
       const found = Number(params.get("found") ?? 0);
       const trips = Number(params.get("trips") ?? 0);
-      const name = connected === "google_calendar" ? "Google Calendar" : "Facebook";
+      const name = ROWS.find((r) => r.provider === connected)?.name ?? "your account";
       setMsg({
         text: found
           ? `Read ${name} once: ${found} ${found === 1 ? "place" : "places"}${trips ? ` and ${trips} past ${trips === 1 ? "trip" : "trips"}` : ""}. Access was handed straight back; we don't keep it.`
