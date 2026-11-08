@@ -19,6 +19,7 @@ import { TripCard } from "@/components/community";
 import { DaysSlider } from "@/components/DaysSlider";
 import { useDaysPlan } from "@/components/useDaysPlan";
 import { ItineraryPreview, previewFromItinerary } from "@/components/ItineraryPreview";
+import { HomeLoop } from "@/components/pages";
 import { useMe } from "@/components/useMe";
 import { api } from "@/lib/api";
 import { planHref } from "@/lib/links";
@@ -294,6 +295,9 @@ export default function Browse() {
           </Link>
         </section>
       ) : null}
+
+      {/* A trip from this month in an earlier year; from December, the year in travel. */}
+      <HomeLoop signedIn={!!me?.user} />
 
       <section className="stack" style={{ gap: 14 }}>
         <div className="head">

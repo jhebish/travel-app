@@ -38,6 +38,7 @@ import {
   IconUp,
   IconWalk,
 } from "./icons";
+import { ShareWhileAway } from "./pages";
 import { PhotoGallery, type GalleryTarget } from "./PhotoGallery";
 import { PlacePhoto } from "./PlacePhoto";
 import { TogetherSheet, WhoIsIn } from "./Together";
@@ -1151,6 +1152,7 @@ export function TripView({
               <span className="hint">
                 {VIS.find((v) => v.value === (trip.visibility ?? "private"))!.hint} Your personal details stay private, but stop descriptions may reflect what you told us.
               </span>
+              <ShareWhileAway trip={trip} onChange={(on) => apply({ ...trip, shareWhileAway: on })} />
               {visNote && (
                 <p className="status err" role="status">
                   {visNote.text}{" "}

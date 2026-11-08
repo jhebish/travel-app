@@ -53,6 +53,10 @@ export const PastTripInputSchema = z.object({
   rating: z.number().int().min(1).max(5).nullable().default(null),
   highlights: z.string().trim().max(500).default(""),
   tripId: z.string().uuid().nullable().default(null),
+  /** Who sees it. Left out: a new trip gets the owner's default, an edit keeps what it had. */
+  visibility: VisibilitySchema.optional(),
+  /** Others see the city and what you loved, not the year or month. Left out: unchanged (off for new trips). */
+  hideDates: z.boolean().optional(),
 });
 export type PastTripInput = z.infer<typeof PastTripInputSchema>;
 
@@ -86,6 +90,9 @@ export interface PastTrip {
   rating: number | null;
   highlights: string;
   tripId: string | null;
+  /** Who sees it (the server fills these in; see visiblePastTrips). */
+  visibility?: Visibility;
+  hideDates?: boolean;
 }
 
 

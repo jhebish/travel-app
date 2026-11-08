@@ -11,10 +11,10 @@ export interface Me {
 }
 
 /**
- * Browse (the home page), destination samples, shared and community trips, and public profiles
- * are for looking: visitors there don't get a guest account until they start planning.
+ * Browse (the home page), destination samples, shared and community trips, past trip pages and
+ * public profiles are for looking: visitors there don't get a guest account until they start planning.
  */
-const isPublicPage = (path: string) => path === "/" || /^\/(t|d|c|u|browse)(\/|$)/.test(path);
+const isPublicPage = (path: string) => path === "/" || /^\/(t|d|c|u|p|browse)(\/|$)/.test(path);
 
 // One lookup per page load, shared by every component that asks (the nav, the page, …).
 let snapshot: Me | undefined;

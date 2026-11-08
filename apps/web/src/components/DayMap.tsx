@@ -10,7 +10,18 @@ import { useEffect, useRef } from "react";
  * provider such as MapTiler or Stadia. The tiles are muted in CSS to match the app's look.
  * Stops without coordinates are skipped.
  */
-export function DayMap({ stops, onPick }: { stops: Stop[]; onPick?: (index: number) => void }) {
+export function DayMap({
+  stops,
+  onPick,
+  route = true,
+  label = "Map of this day's stops",
+}: {
+  stops: Stop[];
+  onPick?: (index: number) => void;
+  /** Join the stops with a line, in order (off for places that aren't a route). */
+  route?: boolean;
+  label?: string;
+}) {
   const el = useRef<HTMLDivElement>(null);
   const key = stops.map((s) => `${s.name}|${coordsOf(s)?.lat}|${s.locked}`).join(";");
 
@@ -33,7 +44,7 @@ export function DayMap({ stops, onPick }: { stops: Stop[]; onPick?: (index: numb
       }).addTo(map);
       const latlngs = pts.map((p) => [p.c.lat, p.c.lng] as [number, number]);
       const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#3f7472";
-      if (latlngs.length > 1) L.polyline(latlngs, { color: accent, weight: 3, opacity: 0.55, dashArray: "6 8" }).addTo(map);
+      if (route && latlngs.length > 1) L.polyline(latlngs, { color: accent, weight: 3, opacity: 0.55, dashArray: "6 8" }).addTo(map);
       pts.forEach((p) => {
         const icon = L.divIcon({
           className: "",
@@ -57,5 +68,5 @@ export function DayMap({ stops, onPick }: { stops: Stop[]; onPick?: (index: numb
 
   const hasCoords = stops.some((s) => coordsOf(s));
   if (!hasCoords) return null;
-  return <div ref={el} className="map" role="img" aria-label="Map of this day's stops" />;
+  return <div ref={el} className="map" role="img" aria-label={label} />;
 }

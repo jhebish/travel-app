@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { PlaceChip, PlaceForm, StatsRow, countryName } from "@/components/community";
 import { ConnectCard } from "@/components/connect";
+import { MemoryCard, PastTripControls, RecapLink, focusQuickLog } from "@/components/pages";
 import { QuickLog, type PresetTrip } from "@/components/QuickLog";
 import { TasteCard, kindFromName, useTaste } from "@/components/taste";
 import { canSubmitPicks, useMe } from "@/components/useMe";
@@ -111,6 +112,19 @@ function ProfileEditor() {
   }, [me?.user]);
 
   const stats = useMemo(() => travelStats(places), [places]);
+
+  /** Open a past trip's editor in the list (from a memory, or a ?edit= link from its page). */
+  const openEditor = (id: string) => {
+    setEditing(id);
+    setTimeout(() => document.getElementById(`place-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  };
+  const editParam = params.get("edit");
+  const openedEdit = useRef(false);
+  useEffect(() => {
+    if (!editParam || openedEdit.current || !places.some((p) => p.id === editParam)) return;
+    openedEdit.current = true;
+    openEditor(editParam);
+  }, [editParam, places]);
   const alreadyLogged = logTrip ? places.some((p) => p.tripId === logTrip) : false;
 
   async function saveProfile(e: React.FormEvent) {
@@ -171,7 +185,8 @@ function ProfileEditor() {
         </p>
       )}
 
-      <TasteCard data={taste.data} updating={taste.updating} />
+      <TasteCard data={taste.data} updating={taste.updating} trips={places.length} onLog={focusQuickLog} />
+      <MemoryCard places={places} onAdd={openEditor} />
 
       {/* ---------- places ---------- */}
       <section className="card stack">
@@ -185,6 +200,7 @@ function ProfileEditor() {
           </p>
         )}
         <StatsRow stats={stats} showNext />
+        {places.length > 0 && <RecapLink places={places} />}
 
         <QuickLog
           preset={alreadyLogged ? null : preset}
@@ -202,7 +218,7 @@ function ProfileEditor() {
           <ul className="placelist">
             {places.map((p) =>
               editing === p.id ? (
-                <li key={p.id}>
+                <li key={p.id} id={`place-${p.id}`}>
                   <PlaceForm
                     initial={{ id: p.id, value: { ...p } }}
                     onSaved={(np) => {
@@ -234,6 +250,7 @@ function ProfileEditor() {
                         ))}
                       </p>
                     )}
+                    <PastTripControls place={p} member={!!profile} onChange={(np) => setPlaces((ps) => ps.map((x) => (x.id === np.id ? np : x)))} />
                   </div>
                   <div className="row tight">
                     <button type="button" className="linkbtn" onClick={() => setEditing(p.id)}>
@@ -252,6 +269,7 @@ function ProfileEditor() {
         <details className="more">
           <summary>Add a trip with more detail</summary>
           <PlaceForm
+            defaultVisibility={profile?.placesPublic ? "public" : "followers"}
             onSaved={(p) => {
               setPlaces((ps) => [p, ...ps]);
               taste.reload();
@@ -334,8 +352,8 @@ function ProfileEditor() {
             </div>
             <label className="switch" htmlFor="cp-places">
               <div>
-                <b>Show my places to everyone</b>
-                <span>Off: only followers see where you&apos;ve been. Everyone sees your counts.</span>
+                <b>New places are for everyone</b>
+                <span>Off: new places you log are for followers. You can change who sees each one in your list. Everyone sees your counts.</span>
               </div>
               <input id="cp-places" type="checkbox" checked={form.placesPublic} onChange={(e) => setForm({ ...form, placesPublic: e.target.checked })} />
             </label>
