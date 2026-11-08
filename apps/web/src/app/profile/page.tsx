@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { PlaceChip, PlaceForm, StatsRow, countryName } from "@/components/community";
 import { ConnectCard } from "@/components/connect";
+import { PicksForFriendsSwitch, YourPicks } from "@/components/Friends";
 import { QuickLog, type PresetTrip } from "@/components/QuickLog";
 import { TasteCard, kindFromName, useTaste } from "@/components/taste";
 import { canSubmitPicks, useMe } from "@/components/useMe";
@@ -262,6 +263,8 @@ function ProfileEditor() {
 
       <ConnectCard onImported={taste.reload} />
 
+      {profile && <YourPicks />}
+
       {/* ---------- community profile ---------- */}
       {!off && (
       <section className="card stack">
@@ -339,6 +342,7 @@ function ProfileEditor() {
               </div>
               <input id="cp-places" type="checkbox" checked={form.placesPublic} onChange={(e) => setForm({ ...form, placesPublic: e.target.checked })} />
             </label>
+            {profile && <PicksForFriendsSwitch />}
             <button className="btn" type="submit" disabled={saving}>
               {saving ? "Saving…" : profile ? "Save profile" : "Create my profile"}
             </button>

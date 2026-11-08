@@ -1195,3 +1195,39 @@ dialog.gallery::backdrop { background: rgba(14, 10, 12, .82); }
   .tl-tools { gap: 8px; }
   .btn.small { min-height: 40px; }
 }
+
+/* ---- Friends ---- */
+/* Friends who've been: a source color, "Sara's pick" on stops, the Local badge, asking and answering. */
+:root { --s-friends: #4f79a8; }
+@media (prefers-color-scheme: dark) { :root { --s-friends: #9dbde0; } }
+.pill.local { align-self: auto; font-size: 12px; padding: 2px 8px; background: var(--ochre); color: var(--ink); }
+.friend-pick { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
+.nav a, .tabbar a { position: relative; }
+.ask-count {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: 6px;
+  border-radius: 999px; background: var(--accent); color: var(--accent-ink);
+  font: 600 11px/1 var(--font); letter-spacing: 0; text-transform: none; vertical-align: 2px;
+}
+.tabbar .ask-count { position: absolute; top: 4px; left: calc(50% + 6px); margin: 0; }
+.inspired { margin: 8px 0 0; font-style: italic; color: var(--muted); }
+.friends-been .been, .from-friends .answers, .asks .asklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.friends-been .been li, .from-friends .answers li, .asks .asklist li { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.friends-been .been li:last-child, .from-friends .answers li:last-child, .asks .asklist li:last-child { border-bottom: 0; }
+.been-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.been-top .person { flex: 1 1 auto; }
+.been-loved, .ask-q, .answer-text, .answer-who, .ask-who { margin: 0; }
+.been-loved small { font-family: var(--font-display); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-right: 6px; }
+.askbox, .answerbox { display: flex; flex-direction: column; gap: 10px; background: var(--sunk); border-radius: var(--r-ctl); padding: 12px 14px; }
+.answer-text { white-space: pre-line; }
+.answer-places { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.answer-places a { font-size: 14px; font-weight: 600; }
+.ask-who { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.asks .pill.new { align-self: auto; background: var(--olive); color: var(--olive-ink); font-size: 12px; padding: 2px 8px; }
+.asks .asklist li.focus { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); border-radius: var(--r-ctl); padding-inline: 10px; }
+.ask-answer { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.answerbox .chosen { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.answerbox .chosen li { display: flex; justify-content: space-between; gap: 10px; }
+.local-expert { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); }
+@media (max-width: 600px) {
+  .been-top { flex-wrap: wrap; }
+}

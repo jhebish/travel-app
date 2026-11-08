@@ -2,6 +2,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { Alert } from "react-native";
 import { api } from "../../src/api";
+import { AsksCard } from "../../src/AsksCard";
 import { useAuth } from "../../src/auth";
 import { scanCalendar, scanPhotos } from "../../src/deviceImports";
 import { supabase } from "../../src/supabase";
@@ -109,6 +110,7 @@ export default function You() {
       </Card>
       {progress ? <Loading text={progress} /> : null}
       <Status text={msg?.text} err={msg?.err} />
+      {email ? <AsksCard /> : null}
       <Card>
         <H2>Account</H2>
         {email ? (

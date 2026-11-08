@@ -20,6 +20,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { Chips, SingleChips } from "./Chips";
 import { DayMap } from "./DayMap";
+import { FriendTag } from "./FriendsBits";
 import {
   IconBookmark,
   IconCalendar,
@@ -51,7 +52,7 @@ function Source({ p }: { p: Stop | Hotel }) {
   return (
     <span className="src">
       <i style={{ background: srcColor(p.source) }} />
-      {srcName(p.source)}
+      {p.friend ? <FriendTag f={p.friend} /> : srcName(p.source)}
       {p.origin === "ai" && (
         <span className="ai" title={p.place ? "Suggested by the AI and confirmed on Google Maps" : "Suggested by the AI from its own knowledge"}>
           AI pick

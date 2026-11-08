@@ -2,6 +2,7 @@
 import Link from "next/link";
 import type { Together } from "@travel/core";
 import { useEffect, useState } from "react";
+import { TripFriends } from "@/components/Friends";
 import { TripView } from "@/components/TripView";
 import { api } from "@/lib/api";
 import type { Trip } from "@/lib/trips";
@@ -29,7 +30,10 @@ export default function TripPage({ params }: { params: { id: string } }) {
           <p className="status err">{error}</p>
         </div>
       ) : trip ? (
-        <TripView trip={trip} together={together} />
+        <>
+          <TripView trip={trip} together={together} />
+          {trip.role !== "member" && <TripFriends trip={trip} />}
+        </>
       ) : (
         <span className="thinking">
           <span className="dot" />

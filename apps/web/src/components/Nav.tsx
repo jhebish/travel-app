@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { IconGlobe, IconPeople, IconSuitcase, IconUser } from "./icons";
+import { AsksBadge } from "./FriendsBits";
 import { Mark } from "./Mark";
 import { canSubmitPicks, useMe } from "./useMe";
 
@@ -45,6 +46,7 @@ export function Nav() {
             {links.map((l) => (
               <Link key={l.href} href={l.href} aria-current={current(l.href) ? "page" : undefined}>
                 {l.label}
+                {l.href === "/friends" && <AsksBadge />}
               </Link>
             ))}
           </nav>
@@ -77,6 +79,7 @@ export function Nav() {
         {TABS.map(({ href, label, Icon }) => (
           <Link key={href} href={href} aria-current={current(href) ? "page" : undefined}>
             <Icon />
+            {href === "/friends" && <AsksBadge />}
             <span>{label}</span>
           </Link>
         ))}

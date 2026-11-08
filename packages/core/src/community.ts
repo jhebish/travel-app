@@ -184,14 +184,15 @@ export function publicItinerary(it: Itinerary, request?: { about?: readonly stri
   const about: readonly unknown[] = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
   const privateNotes = about.some((a) => (NOTES_REVEAL as readonly unknown[]).includes(a));
   // "For you" lines are about the owner's own trips and favorites: never shown to anyone else.
+  // Nor whose friend's pick a stop was: friends shared their places with the owner's planner, not the world.
   return {
     ...rest,
     summary: "",
     forYou: "",
     replaced: [],
     notes: privateNotes ? [] : rest.notes,
-    days: rest.days.map((d) => ({ ...d, stops: d.stops.map(({ locked: _l, candidateId: _c, forYou: _f, ...s }) => s) })),
-    hotels: (rest.hotels ?? []).map(({ candidateId: _c, expediaPropertyId: _e, liveRate: _r, forYou: _f, ...h }) => h),
+    days: rest.days.map((d) => ({ ...d, stops: d.stops.map(({ locked: _l, candidateId: _c, forYou: _f, friend: _fr, ...s }) => s) })),
+    hotels: (rest.hotels ?? []).map(({ candidateId: _c, expediaPropertyId: _e, liveRate: _r, forYou: _f, friend: _fr, ...h }) => h),
   };
 }
 
