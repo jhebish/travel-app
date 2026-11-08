@@ -1,19 +1,29 @@
 "use client";
 import {
+  AIRBNB_ICONS,
   SOURCE_BY_ID,
   STAY_PRICES,
   STAY_STYLES,
+  airbnbSearchUrl,
   buildIcs,
+  dateSpan,
+  fitText,
   googleMapsDayUrl,
+  guestsFor,
+  guestsText,
   isSourceId,
   legBetween,
   legLabel,
+  lengthFit,
+  rangeText,
+  stayWindows,
   type Hotel,
   type PlaceVerification,
   type StayPrefs,
   type Stop,
   type Together,
   type Trip,
+  type TripLength,
 } from "@travel/core";
 import Link from "next/link";
 import { Fragment, useEffect, useRef, useState } from "react";
@@ -68,6 +78,66 @@ const siteLabel = (url: string) => {
     return "Website";
   }
 };
+
+/** Airbnb's own icon, loaded from Airbnb; tries the next copy if one fails, and hides if none load. */
+function AirbnbIcon() {
+  const [n, setN] = useState(0);
+  if (n >= AIRBNB_ICONS.length) return null;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- a remote favicon, not a photo to optimize
+    <img src={AIRBNB_ICONS[n]} alt="" width={20} height={20} loading="lazy" referrerPolicy="no-referrer" onError={() => setN((i) => i + 1)} />
+  );
+}
+
+/** Airbnb's search for each place on the trip, with its dates and guests, in a new tab. */
+function Rentals({ trip, startDate, lead = "Rather rent a whole place?" }: { trip: Trip; startDate: string | null; lead?: string }) {
+  const windows = stayWindows(trip, { startDate });
+  const guests = guestsFor(trip.request);
+  const many = windows.length > 1;
+  return (
+    <div className="rentals">
+      <span className="rentals-label">{lead}</span>
+      <div className="rentals-row">
+        {windows.map((w, i) => {
+          const when = w.checkin && w.checkout ? dateSpan(w.checkin, w.checkout) : "Any dates";
+          return (
+            <a
+              key={`${w.place}-${i}`}
+              className="airbnb-btn"
+              href={airbnbSearchUrl(w, guests)}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Search Airbnb in ${w.city}, ${when}, ${guestsText(guests)} (opens in a new tab)`}
+            >
+              <AirbnbIcon />
+              <span className="airbnb-text">
+                <span className="airbnb-name">{many ? `Airbnb in ${w.city}` : "Search Airbnb"}</span>
+                <small>
+                  {when} · {guestsText(guests)}
+                </small>
+              </span>
+            </a>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** How long most people stay, against the days planned. */
+function IdealDays({ ideal, days, place }: { ideal: TripLength; days: number; place: string }) {
+  const fit = lengthFit(days, ideal);
+  return (
+    <p className={`ideal-days ${fit}`}>
+      <span className="ideal-head">
+        <b>Recommended</b>
+        <span className="ideal-range">{rangeText(ideal)}</span>
+        <span className="ideal-fit">{fitText(days, ideal, place)}</span>
+      </span>
+      {ideal.note && <span className="ideal-note">{ideal.note}</span>}
+    </p>
+  );
+}
 
 /** The place's own website and phone number, when Google Maps lists them. */
 function Contact({ place }: { place?: PlaceVerification }) {
@@ -320,6 +390,29 @@ export function TripView({
   const city = trip.destination;
   /** On a multi-city trip, a day's places belong to that day's city. */
   const dayCity = d.city ? `${d.city}, ${city}` : city;
+  // The dates for booking a stay: the trip's start date, or the one picked for the calendar.
+  const stayStart = trip.request.startDate ?? (/^\d{4}-\d{2}-\d{2}$/.test(calDate) ? calDate : null);
+
+  // How long most people stay. New trips carry it; older ones ask once (cached per destination).
+  const [ideal, setIdeal] = useState<TripLength | null>(it.idealDays ?? null);
+  const tripMode = it.mode ?? trip.request.mode ?? "single";
+  useEffect(() => {
+    if (it.idealDays) {
+      setIdeal(it.idealDays);
+      return;
+    }
+    setIdeal(null);
+    if (readOnly) return;
+    let gone = false;
+    api<{ idealDays: TripLength | null }>(`/api/trip-length?${new URLSearchParams({ destination: trip.destination, mode: tripMode })}`)
+      .then((r) => {
+        if (!gone) setIdeal(r.idealDays);
+      })
+      .catch(() => {});
+    return () => {
+      gone = true;
+    };
+  }, [trip.id, trip.destination, it.idealDays, tripMode, readOnly]);
 
   const pickDay = (i: number) => {
     setDay(i);
@@ -652,6 +745,7 @@ export function TripView({
           {it.route && it.route.length > 1 ? ` · ${it.route.length} stops` : ""} · {it.days.length} {it.days.length === 1 ? "day" : "days"}
         </span>
         <h1>{it.title}</h1>
+        {ideal && <IdealDays ideal={ideal} days={it.days.length} place={city} />}
         {/* Only when their own trips and ratings give a reason; never a general description. */}
         {isOwner && it.forYou ? (
           <p className="foryou-note trip-foryou">
@@ -944,99 +1038,101 @@ export function TripView({
       )}
 
       {/* ---------- stays ---------- */}
-      {(it.hotels?.length || !readOnly) && (
-        <section className="card">
-          <div className="head">
-            <h2>Where to stay</h2>
-            {it.stayLabel && <span className="hint">Matching {it.stayLabel.replace(" · ", ", ")}</span>}
-          </div>
-          {it.hotels?.length ? (
-            <>
-              <div className="hotels">
-                {it.hotels.map((h, i) => (
-                  <Fragment key={h.name + i}>
-                  {it.mode === "multi" && h.city && h.city !== it.hotels[i - 1]?.city && <h3 className="hotel-city">{h.city}</h3>}
-                  <div className="hotel">
-                    {!!h.place?.photos?.length && (
-                      <div className="hphotos">
-                        {h.place.photos.slice(0, 3).map((ph, n) => (
-                          <PlacePhoto
-                            key={ph.name}
-                            photo={ph}
-                            alt={h.name}
-                            className="pphoto hphoto"
-                            sizes="(max-width: 720px) 80vw, 260px"
-                            onOpen={() => openGallery(h.name, h.place, n)}
-                            count={n === 0 ? h.place?.photos?.length : undefined}
-                          />
-                        ))}
+      <section className="card">
+        <div className="head">
+          <h2>Where to stay</h2>
+          {it.stayLabel && <span className="hint">Matching {it.stayLabel.replace(" · ", ", ")}</span>}
+        </div>
+        {it.hotels?.length ? (
+          <>
+            <div className="hotels">
+              {it.hotels.map((h, i) => (
+                <Fragment key={h.name + i}>
+                {it.mode === "multi" && h.city && h.city !== it.hotels[i - 1]?.city && <h3 className="hotel-city">{h.city}</h3>}
+                <div className="hotel">
+                  {!!h.place?.photos?.length && (
+                    <div className="hphotos">
+                      {h.place.photos.slice(0, 3).map((ph, n) => (
+                        <PlacePhoto
+                          key={ph.name}
+                          photo={ph}
+                          alt={h.name}
+                          className="pphoto hphoto"
+                          sizes="(max-width: 720px) 80vw, 260px"
+                          onOpen={() => openGallery(h.name, h.place, n)}
+                          count={n === 0 ? h.place?.photos?.length : undefined}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  <div className="hotel-top">
+                    <h3>
+                      {h.name} <span className="hood" style={{ fontWeight: 450, color: "var(--muted)", fontSize: 15 }}>in {h.neighborhood}</span>
+                    </h3>
+                    <span className="price">
+                      {h.liveRate ? `$${h.liveRate.nightlyUsd} a night` : h.nightly}
+                      {h.liveRate ? <small>Live rate for your dates</small> : null}
+                    </span>
+                  </div>
+                  <div className="row" style={{ gap: 8 }}>
+                    {h.style && <span className="style-tag">{h.style}</span>}
+                    <Source p={h} />
+                  </div>
+                  <p className="tl-why">{h.why}</p>
+                  <ForYou p={h} />
+                  {h.localTip && (
+                    <p className="tip">
+                      <b>Local tip</b> {h.localTip}
+                    </p>
+                  )}
+                  <div className="tl-foot">
+                    <span className="links">
+                      <a href={ratesUrl(h, h.city ? `${h.city}, ${city}` : city)} target="_blank" rel="noopener noreferrer">
+                        Check rates
+                      </a>
+                      {h.place?.mapsUrl && (
+                        <a href={h.place.mapsUrl} target="_blank" rel="noopener noreferrer">
+                          Map
+                        </a>
+                      )}
+                      <Contact place={h.place} />
+                    </span>
+                    {!readOnly && (
+                      <div className="tl-tools">
+                        {togetherOn && <WhoIsIn people={tog!.people} by={tog!.reactions[`h-${i}`]} />}
+                        <button type="button" className="iconbtn up" aria-pressed={pressed(`h-${i}`, 1)} aria-label={`Good pick: ${h.name}`} onClick={() => thumb(`h-${i}`, 1)}>
+                          <IconUp />
+                        </button>
+                        <button type="button" className="iconbtn down" aria-pressed={pressed(`h-${i}`, -1)} aria-label={`Not for me: ${h.name}`} onClick={() => thumb(`h-${i}`, -1)}>
+                          <IconDown />
+                        </button>
                       </div>
                     )}
-                    <div className="hotel-top">
-                      <h3>
-                        {h.name} <span className="hood" style={{ fontWeight: 450, color: "var(--muted)", fontSize: 15 }}>in {h.neighborhood}</span>
-                      </h3>
-                      <span className="price">
-                        {h.liveRate ? `$${h.liveRate.nightlyUsd} a night` : h.nightly}
-                        {h.liveRate ? <small>Live rate for your dates</small> : null}
-                      </span>
-                    </div>
-                    <div className="row" style={{ gap: 8 }}>
-                      {h.style && <span className="style-tag">{h.style}</span>}
-                      <Source p={h} />
-                    </div>
-                    <p className="tl-why">{h.why}</p>
-                    <ForYou p={h} />
-                    {h.localTip && (
-                      <p className="tip">
-                        <b>Local tip</b> {h.localTip}
-                      </p>
-                    )}
-                    <div className="tl-foot">
-                      <span className="links">
-                        <a href={ratesUrl(h, h.city ? `${h.city}, ${city}` : city)} target="_blank" rel="noopener noreferrer">
-                          Check rates
-                        </a>
-                        {h.place?.mapsUrl && (
-                          <a href={h.place.mapsUrl} target="_blank" rel="noopener noreferrer">
-                            Map
-                          </a>
-                        )}
-                        <Contact place={h.place} />
-                      </span>
-                      {!readOnly && (
-                        <div className="tl-tools">
-                          {togetherOn && <WhoIsIn people={tog!.people} by={tog!.reactions[`h-${i}`]} />}
-                          <button type="button" className="iconbtn up" aria-pressed={pressed(`h-${i}`, 1)} aria-label={`Good pick: ${h.name}`} onClick={() => thumb(`h-${i}`, 1)}>
-                            <IconUp />
-                          </button>
-                          <button type="button" className="iconbtn down" aria-pressed={pressed(`h-${i}`, -1)} aria-label={`Not for me: ${h.name}`} onClick={() => thumb(`h-${i}`, -1)}>
-                            <IconDown />
-                          </button>
-                        </div>
-                      )}
-                    </div>
                   </div>
-                  </Fragment>
-                ))}
-              </div>
-              <p className="hint">
-                {it.hotels.some((h) => h.liveRate)
-                  ? "Live rates are for your dates and can change. Other prices are typical nightly estimates."
-                  : "Prices are typical nightly estimates. Add travel dates for live rates where available."}
-              </p>
-              {!readOnly && (
-                <details className="more">
-                  <summary>Change hotel style or price</summary>
-                  {stayControls}
-                </details>
-              )}
-            </>
-          ) : (
-            stayControls
-          )}
-        </section>
-      )}
+                </div>
+                </Fragment>
+              ))}
+            </div>
+            <p className="hint">
+              {it.hotels.some((h) => h.liveRate)
+                ? "Live rates are for your dates and can change. Other prices are typical nightly estimates."
+                : "Prices are typical nightly estimates. Add travel dates for live rates where available."}
+            </p>
+            <Rentals trip={trip} startDate={stayStart} />
+            {!readOnly && (
+              <details className="more">
+                <summary>Change hotel style or price</summary>
+                {stayControls}
+              </details>
+            )}
+          </>
+        ) : (
+          <>
+            {!readOnly && stayControls}
+            <Rentals trip={trip} startDate={stayStart} lead={readOnly ? "Find a place on Airbnb" : "Or rent a whole place"} />
+          </>
+        )}
+      </section>
 
       {/* ---------- notes + sources ---------- */}
       <section className="card">

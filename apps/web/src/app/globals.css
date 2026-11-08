@@ -1017,6 +1017,26 @@ dialog.gallery::backdrop { background: rgba(14, 10, 12, .82); }
 /* What a stop costs, and "Hot right now" with the sources that say so. */
 .cost { margin: 0; font-size: 16px; }
 .cost b { color: var(--olive-ink); font-family: var(--font-display); font-weight: 400; letter-spacing: .1em; text-transform: uppercase; font-size: 12.5px; margin-right: 4px; }
+/* Recommended trip length, at the top of a trip: green when the plan fits, ochre when it's short. */
+.ideal-days { align-self: flex-start; display: flex; flex-direction: column; gap: 2px; margin: 0; max-width: 62ch; padding: 8px 14px 9px; border-radius: 14px; background: var(--olive); color: var(--ink); font-size: 16.5px; line-height: 1.45; }
+.ideal-days.short { background: var(--ochre); }
+.ideal-days.long { background: var(--lavender); }
+.ideal-days .ideal-head { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; }
+.ideal-days b { font-family: var(--font-display); font-weight: 400; letter-spacing: .12em; text-transform: uppercase; font-size: 11.5px; }
+.ideal-days .ideal-range { font-weight: 650; }
+.ideal-days .ideal-note { color: var(--muted); font-size: 15.5px; }
+/* Rent a whole place instead: Airbnb's search for each stop, in a new tab. */
+.rentals { display: flex; flex-direction: column; gap: 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+.hotels + .hint + .rentals, .stack + .rentals { margin-top: 4px; }
+.rentals-label { font-size: 15.5px; color: var(--muted); }
+.rentals-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.airbnb-btn { display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 7px 16px 7px 12px; border-radius: 14px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); text-decoration: none; font: 600 15.5px var(--font); }
+.airbnb-btn img { width: 20px; height: 20px; flex: none; border-radius: 5px; }
+.airbnb-text { display: flex; flex-direction: column; line-height: 1.25; }
+.airbnb-name { white-space: nowrap; }
+.airbnb-btn small { color: var(--muted); font-weight: 500; font-size: 14px; white-space: nowrap; }
+@media (hover: hover) { .airbnb-btn:hover { border-color: var(--faint); } }
+.airbnb-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .hot-now { margin: 2px 0 4px; font-size: 15px; display: inline-flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; padding: 3px 12px 4px; border-radius: 14px; background: var(--clay); color: var(--ink); }
 .hot-now b { font-family: var(--font-display); font-weight: 400; letter-spacing: .12em; text-transform: uppercase; font-size: 11.5px; }
 .hot-now a { color: inherit; }

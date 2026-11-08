@@ -227,8 +227,19 @@ export const RouteLegSchema = z.object({
 });
 export type RouteLeg = z.infer<typeof RouteLegSchema>;
 
+/** The days most travelers find right for the destination (tripLength.ts). A reversed range is put right. */
+export const TripLengthSchema = z
+  .object({
+    min: z.preprocess(toInt, z.number().int().min(1).max(30)),
+    max: z.preprocess(toInt, z.number().int().min(1).max(45)),
+    note: clip(160).default(""),
+  })
+  .transform((t) => (t.max < t.min ? { ...t, min: t.max, max: t.min } : t));
+
 export const ItinerarySchema = z.object({
   title: clipReq(140),
+  /** How long most people stay: shown at the top of the trip against the days planned. */
+  idealDays: TripLengthSchema.optional().catch(undefined),
   /** Older trips: a general description. No longer written or shown. */
   summary: clip(600).default(""),
   /**
