@@ -25,3 +25,5 @@ export * from "./privacy";
 export * from "./recap";
 export * from "./rank";
 export * from "./friends";
+export * from "./stays";
+export * from "./tripLength";

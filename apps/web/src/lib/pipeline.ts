@@ -81,6 +81,7 @@ import { supabaseAdmin } from "./supabase/server";
 import { tasteBlock } from "./taste";
 import { addFriendsOnCreate, companionsFromHandles, editPeople } from "./together";
 import { rateLimit, updateTrip } from "./tripAccess";
+import { idealDays } from "./tripLength";
 import { toTrip, type TripRow } from "./trips";
 
 // ---------------------------------------------------------------------------
@@ -853,11 +854,16 @@ export async function generateTrip(ctx: Ctx, reqIn: TripRequest, opts: { ip: str
     loadHistory(ctx, req.destination, { companions }),
     defaultVisibility(ctx),
   ]);
+  // How long most people stay there, asked alongside the plan once the build is allowed
+  // (cached per destination; never throws). It finishes even if the build fails, for next time.
+  const lengthJob = idealDays(req.destination, req.mode);
+  waitUntil(lengthJob);
 
   const friends = friendSource(ctx.user!.id, { guest: isGuest(ctx), like: opts.like });
   const { itin, model } = await planItinerary(req, { eff, lists, history, friends }, emit);
   console.log(`[build] planned ${req.mode} ${req.days}d in ${Date.now() - t0}ms`);
-  await attachLiveRates(itin.hotels, req.startDate, req.days, adultsFor(req.party), opts.ip);
+  const [ideal] = await Promise.all([within(lengthJob, 3_000), attachLiveRates(itin.hotels, req.startDate, req.days, adultsFor(req.party), opts.ip)]);
+  if (ideal) itin.idealDays = ideal;
 
   emit({ type: "progress", pct: 96, label: "Saving your trip" });
   const row = {

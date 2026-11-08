@@ -1,19 +1,30 @@
 import {
+  AIRBNB_ICONS,
   SOURCE_BY_ID,
   STAY_PRICES,
   friendPickLabel,
   STAY_STYLES,
+  airbnbSearchUrl,
+  dateSpan,
+  fitText,
   googleMapsDayUrl,
+  guestsFor,
+  guestsText,
   isSourceId,
   legBetween,
   legLabel,
+  lengthFit,
+  rangeText,
+  stayWindows,
   type Hotel,
   type PlaceVerification,
   type StayPrefs,
   type Stop,
   type Trip,
+  type TripLength,
 } from "@travel/core";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { Image } from "expo-image";
 import { useEffect, useRef, useState } from "react";
 import { Linking, Pressable, ScrollView, Share, TextInput, View } from "react-native";
 import { api } from "./api";
@@ -33,6 +44,62 @@ function SourceTag({ p }: { p: Stop | Hotel }) {
       <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: t.sources[id] }} />
       <Text style={{ color: t.muted, fontSize: 13, fontWeight: "600" }}>{p.friend ? `${friendPickLabel(p.friend)}${p.friend.local ? " · Local" : ""}` : SOURCE_BY_ID[id].name}</Text>
       {p.origin === "ai" && <Text style={{ color: t.faint, fontSize: 12 }}>AI pick</Text>}
+    </View>
+  );
+}
+
+/** Airbnb's own icon, loaded from Airbnb; tries the next copy if one fails, and hides if none load. */
+function AirbnbIcon() {
+  const [n, setN] = useState(0);
+  if (n >= AIRBNB_ICONS.length) return null;
+  return <Image source={{ uri: AIRBNB_ICONS[n] }} style={{ width: 20, height: 20, borderRadius: 5 }} accessibilityIgnoresInvertColors onError={() => setN((i) => i + 1)} />;
+}
+
+/** Airbnb's search for each place on the trip, with its dates and guests, opened outside the app. */
+function Rentals({ trip, lead }: { trip: Trip; lead: string }) {
+  const t = useTheme();
+  const windows = stayWindows(trip);
+  const guests = guestsFor(trip.request);
+  return (
+    <View style={{ gap: 8, paddingTop: 14, borderTopWidth: 1, borderColor: t.line }}>
+      <Text style={{ color: t.muted, fontSize: 15 }}>{lead}</Text>
+      <View style={[styles.row, { flexWrap: "wrap", gap: 8 }]}>
+        {windows.map((w, i) => {
+          const when = w.checkin && w.checkout ? dateSpan(w.checkin, w.checkout) : "Any dates";
+          return (
+            <Pressable
+              key={`${w.place}-${i}`}
+              accessibilityRole="link"
+              accessibilityLabel={`Search Airbnb in ${w.city}, ${when}, ${guestsText(guests)}`}
+              onPress={() => open(airbnbSearchUrl(w, guests))}
+              style={{ flexDirection: "row", alignItems: "center", gap: 10, minHeight: 48, paddingVertical: 7, paddingLeft: 12, paddingRight: 16, borderRadius: 14, borderWidth: 1, borderColor: t.line, backgroundColor: t.surface }}
+            >
+              <AirbnbIcon />
+              <View>
+                <Text style={{ color: t.ink, fontWeight: "700", fontSize: 15 }}>{windows.length > 1 ? `Airbnb in ${w.city}` : "Search Airbnb"}</Text>
+                <Text style={{ color: t.muted, fontSize: 13.5 }}>
+                  {when} · {guestsText(guests)}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+/** How long most people stay, against the days planned. */
+function IdealDays({ ideal, days, place }: { ideal: TripLength; days: number; place: string }) {
+  const t = useTheme();
+  const fit = lengthFit(days, ideal);
+  return (
+    <View style={{ alignSelf: "flex-start", gap: 2, backgroundColor: fit === "short" ? t.ochre : fit === "long" ? t.lavender : t.hero, borderRadius: 14, paddingVertical: 7, paddingHorizontal: 13 }}>
+      <Text style={{ color: t.ink, fontSize: 16.5, lineHeight: 23 }}>
+        <Text style={{ fontFamily: FONT.display, fontSize: 11.5, letterSpacing: 1.6, textTransform: "uppercase" }}>Recommended </Text>
+        <Text style={{ fontWeight: "700" }}>{rangeText(ideal)}</Text> {fitText(days, ideal, place)}
+      </Text>
+      {!!ideal.note && <Text style={{ color: t.muted, fontSize: 15, lineHeight: 21 }}>{ideal.note}</Text>}
     </View>
   );
 }
@@ -155,6 +222,25 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
   const it = trip.itinerary;
   const dIdx = Math.min(day, it.days.length - 1);
   const d = it.days[dIdx]!;
+  // How long most people stay. New trips carry it; older ones ask once (cached per destination).
+  const [ideal, setIdeal] = useState<TripLength | null>(it.idealDays ?? null);
+  const tripMode = it.mode ?? trip.request.mode ?? "single";
+  useEffect(() => {
+    if (it.idealDays) {
+      setIdeal(it.idealDays);
+      return;
+    }
+    setIdeal(null);
+    let gone = false;
+    api<{ idealDays: TripLength | null }>(`/api/trip-length?destination=${encodeURIComponent(trip.destination)}&mode=${tripMode}`)
+      .then((r) => {
+        if (!gone) setIdeal(r.idealDays);
+      })
+      .catch(() => {});
+    return () => {
+      gone = true;
+    };
+  }, [trip.id, trip.destination, it.idealDays, tripMode]);
   const input = { backgroundColor: t.surface, borderColor: t.line, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: t.ink, flex: 1 };
 
   const apply = (next: Trip) => {
@@ -241,6 +327,7 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
           {trip.destination} · {it.days.length} {it.days.length === 1 ? "day" : "days"}
         </Text>
         <Text style={{ color: t.ink, fontSize: 32, fontWeight: "800", lineHeight: 38 }}>{it.title}</Text>
+        {ideal && <IdealDays ideal={ideal} days={it.days.length} place={trip.destination} />}
         {/* Only when their own trips and ratings give a reason; never a general description. */}
         {it.forYou ? (
           <View style={{ alignSelf: "flex-start", backgroundColor: t.ochre, borderRadius: 14, paddingVertical: 7, paddingHorizontal: 13 }}>
@@ -453,10 +540,14 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
               </View>
             ))}
             <P muted style={{ fontSize: 14 }}>Prices are typical nightly estimates unless marked live.</P>
+            <Rentals trip={trip} lead="Rather rent a whole place?" />
             {showStay ? stayControls : <Button ghost title="Change hotel style or price" onPress={() => setShowStay(true)} />}
           </>
         ) : (
-          stayControls
+          <>
+            {stayControls}
+            <Rentals trip={trip} lead="Or rent a whole place" />
+          </>
         )}
       </Card>
 
