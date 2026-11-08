@@ -97,6 +97,7 @@ const trip = (id: string, user_id: string, city: string, year: number, visibilit
   month: 5,
   visibility,
   hide_dates: false,
+  places_shared: true,
   ...extra,
 });
 const sig = (id: string, user_id: string, past_trip_id: string | null, name: string, extra: Row = {}) => ({
@@ -139,6 +140,7 @@ beforeEach(() => {
       trip("t8", "u-zed", "Lisbon", 2021),
       trip("t9", "u-zed", "Lisbon", 2020, "public"),
       trip("t10", "u-zed", "Porto", 2020),
+      trip("t11", "u-sara", "Lisbon", 2022, "followers", { places_shared: false }), // logged before sharing places existed
     ],
     taste_signals: [
       sig("s1", "u-sara", "t1", "Tasca do Chico"),
@@ -156,6 +158,7 @@ beforeEach(() => {
       sig("s13", "u-zed", "t8", "Ranked Low", { liked: null, rank_score: 15 }), // below the top third of Zed's ranking
       sig("s14", "u-zed", "t8", "Visit To Come", { visited_on: "2099-01-01" }),
       sig("s15", "u-lina", "t1", "Someone Else's Row On Sara's Trip"),
+      sig("s16", "u-sara", "t11", "Not Shared Yet"),
     ],
     asks: [
       { id: "a1", asker_id: ME, friend_id: "u-omar", city_key: "lisbon", status: "answered", answer_places: [{ name: "Omar's Answer", kind: "food", note: "", mapsUrl: null }] },
@@ -185,6 +188,8 @@ describe("friends' places for the planner", () => {
     // Omar doesn't share his places, but he answered my question about Lisbon.
     expect(by("Omar's Answer").friends![0]).toMatchObject({ userId: "u-omar", from: "ask" });
     expect(cands.every((c) => c.source === "friends" && c.origin === "friend")).toBe(true);
+    // A friend's own notes stay theirs.
+    expect(by("Tasca do Chico").note ?? "").toBe("");
   });
 
   it("returns nothing for guests, cities nobody's been to, or before the migration", async () => {
@@ -199,7 +204,9 @@ describe("friends' places for the planner", () => {
     const list = await friendsWhoveBeen(ctx, "Lisbon");
     expect(list.map((f) => f.person.displayName)).toEqual(["Zed Karam", "Sara Haddad"]);
     expect(list[0]).toMatchObject({ local: true, trips: [{ when: null }, { when: "May 2021" }, { when: "May 2020" }] });
-    expect(list[1]).toMatchObject({ local: false, trips: [{ when: "May 2024" }], loved: [{ name: "Tasca do Chico", kind: "food" }] });
+    // Her 2022 trip shows, but not the places she loved on it: she hasn't shared them yet.
+    expect(list[1]).toMatchObject({ local: false, trips: [{ when: "May 2024" }, { when: "May 2022" }] });
+    expect(list[1]!.loved).toEqual([{ name: "Tasca do Chico", kind: "food" }]);
     // A friend who lives there is listed even without a logged trip.
     expect((await friendsWhoveBeen(ctx, "Beirut")).map((f) => f.person.displayName)).toEqual(["Sara Haddad"]);
     expect(await friendsWhoveBeen({ user: { id: ME, is_anonymous: true }, db: null, role: "traveler" } as never, "Lisbon")).toEqual([]);

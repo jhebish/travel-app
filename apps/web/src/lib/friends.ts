@@ -131,8 +131,9 @@ interface PastRow {
   month: number | null;
   visibility: string;
   hide_dates: boolean;
+  places_shared: boolean;
 }
-const PAST_COLS = "id, user_id, city, city_key, country_code, year, month, visibility, hide_dates";
+const PAST_COLS = "id, user_id, city, city_key, country_code, year, month, visibility, hide_dates, places_shared";
 
 /** People's past trips in a city that their friends may see: not private, not dated in the future. Null before the migration. */
 async function visibleTripsIn(userIds: string[], key: string): Promise<PastRow[] | null> {
@@ -151,7 +152,6 @@ interface SignalRow {
   past_trip_id: string | null;
   kind: SignalKind;
   name: string;
-  note: string | null;
   lat: number | null;
   lng: number | null;
   visited_on: string | null;
@@ -159,7 +159,8 @@ interface SignalRow {
   liked: boolean | null;
   rank_score?: number | null;
 }
-const SIGNAL_COLS = "id, user_id, past_trip_id, kind, name, note, lat, lng, visited_on, rating, liked";
+// No notes: a friend's own notes are for them, not for other people's planners.
+const SIGNAL_COLS = "id, user_id, past_trip_id, kind, name, lat, lng, visited_on, rating, liked";
 
 /** Each person's "loved" bar for their own ranking (their top third), when the ranking is there. */
 async function rankThresholds(userIds: string[]): Promise<Map<string, number | null>> {
@@ -183,7 +184,9 @@ async function rankThresholds(userIds: string[]): Promise<Map<string, number | n
 async function lovedOn(trips: PastRow[]): Promise<Map<string, SignalRow[]>> {
   const out = new Map<string, SignalRow[]>();
   if (!trips.length) return out;
-  const owner = new Map(trips.map((t) => [t.id, t.user_id]));
+  // Only trips whose owner shares the places loved on them (older trips start hidden).
+  const owner = new Map(trips.filter((t) => t.places_shared).map((t) => [t.id, t.user_id]));
+  if (!owner.size) return out;
   const db = supabaseAdmin();
   const ids = [...owner.keys()];
   let { data, error }: { data: unknown[] | null; error: DbError } = await db.from("taste_signals").select(`${SIGNAL_COLS}, rank_score`).in("past_trip_id", ids).limit(3000);
@@ -296,6 +299,8 @@ async function resolveLike(viewerId: string | null, id: string): Promise<LikeRes
   }
   const t = data as PastRow;
   const mine = !!viewerId && viewerId === t.user_id;
+  // Nobody else sees a trip before it's over.
+  if (!mine && isFutureTrip(t)) return null;
   if (!mine) {
     const ok = t.visibility === "public" || (t.visibility === "followers" && !!viewerId && (await follows(viewerId, t.user_id)));
     if (!ok) return null;
@@ -384,7 +389,7 @@ export function friendSource(ownerId: string, opts: { guest?: boolean; like?: st
     const places: P[] = [];
     if (lk?.placesAllowed && lk.cityKey === key) {
       const credit: FriendCredit = { userId: lk.ownerId, name: lk.ownerName, local: lk.local, from: "like" };
-      for (const s of lk.loved) places.push({ credit, name: s.name, kind: s.kind, note: s.note, lng: s.lng, known: s.lng != null });
+      for (const s of lk.loved) places.push({ credit, name: s.name, kind: s.kind, note: null, lng: s.lng, known: s.lng != null });
     }
     for (const a of answers) {
       const name = nameOf(a.friend_id);
@@ -394,7 +399,7 @@ export function friendSource(ownerId: string, opts: { guest?: boolean; like?: st
     }
     for (const [u, list] of f.loved) {
       const credit: FriendCredit = { userId: u, name: nameOf(u), local: f.local(u), from: "loved" };
-      for (const s of list.slice(0, 20)) places.push({ credit, name: s.name, kind: s.kind, note: s.note, lng: s.lng, known: s.lng != null });
+      for (const s of list.slice(0, 20)) places.push({ credit, name: s.name, kind: s.kind, note: null, lng: s.lng, known: s.lng != null });
     }
     // Jerusalem trips use only Palestinian businesses in East Jerusalem and the Old City (region.ts):
     // a friend's place counts there only if it's known to be east of the line.
@@ -444,8 +449,13 @@ export function friendSource(ownerId: string, opts: { guest?: boolean; like?: st
   };
 }
 
-/** The friends source for edits to an existing trip: its owner's friends, and their answers. */
-export const friendsForTrip = (row: { user_id: string }) => friendSource(row.user_id);
+const NO_FRIENDS: FriendSource = { candidates: async () => [], credit: async (t) => t };
+/**
+ * The friends source for edits to an existing trip: its owner's friends, and their answers. Only
+ * when the owner is editing: people planning with them aren't those friends' friends.
+ */
+export const friendsForTrip = (row: { user_id: string }, ctx: { user: { id: string } | null }) =>
+  ctx.user?.id === row.user_id ? friendSource(row.user_id) : NO_FRIENDS;
 
 // ---------------------------------------------------------------------------
 // Profiles: local expert cities, credits, the setting

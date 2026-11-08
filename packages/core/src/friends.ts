@@ -5,6 +5,7 @@ import { hashString, nameKey } from "./imports/text";
 import { SIGNAL_KINDS, type SignalKind } from "./labels";
 import { MONTH_NAMES } from "./prompts";
 import type { Candidate, CandidateCategory } from "./ranking";
+import { pastTripIsOver } from "./privacy";
 import { cityKey } from "./stats";
 
 /**
@@ -18,11 +19,12 @@ import { cityKey } from "./stats";
 // Dates: nothing from trips that haven't happened yet
 // ---------------------------------------------------------------------------
 
-/** A past trip logged for a year (and month) that's still ahead. */
-export function isFutureTrip(t: { year?: number | null; month?: number | null }, now = new Date()): boolean {
-  if (!t.year) return false;
-  const y = now.getUTCFullYear();
-  return t.year > y || (t.year === y && t.month != null && t.month > now.getUTCMonth() + 1);
+/**
+ * A past trip that isn't over yet, by the same rule as everywhere others see past trips
+ * (privacy.ts): a trip this month may still be ahead, so it counts once the month has ended.
+ */
+export function isFutureTrip(t: { year?: number | null; month?: number | null }, now: Date | number = new Date()): boolean {
+  return !pastTripIsOver({ year: t.year ?? null, month: t.month ?? null }, now);
 }
 
 /** A visit dated after today (YYYY-MM-DD). */

@@ -16,6 +16,7 @@ import {
 import type { Ctx } from "./auth";
 import { HttpError, isUuid } from "./http";
 import { verifyPlace } from "./places";
+import { rateLimit } from "./tripAccess";
 import { supabaseAdmin } from "./supabase/server";
 import { getCachedProfile } from "./taste";
 
@@ -64,9 +65,10 @@ interface PastRow {
   visibility?: Visibility;
   hide_dates?: boolean;
   rank_score?: number | null;
+  places_shared?: boolean;
 }
 const PAST_COLS = "id, user_id, city, country_code, year, month, days, rating, highlights, trip_id";
-const pastCols = (loop: boolean): string => (loop ? `${PAST_COLS}, visibility, hide_dates, rank_score` : PAST_COLS);
+const pastCols = (loop: boolean): string => (loop ? `${PAST_COLS}, visibility, hide_dates, rank_score, places_shared` : PAST_COLS);
 const toPast = (r: PastRow): PastTrip => ({
   id: r.id,
   city: r.city,
@@ -82,6 +84,7 @@ const toPast = (r: PastRow): PastTrip => ({
 });
 
 interface SignalRow {
+  id: string;
   past_trip_id: string | null;
   kind: SignalKind;
   name: string;
@@ -93,7 +96,7 @@ interface SignalRow {
   liked: boolean | null;
   rank_score?: number | null;
 }
-const SIGNAL_COLS = "past_trip_id, kind, name, city, lat, lng, visited_on, rating, liked";
+const SIGNAL_COLS = "id, past_trip_id, kind, name, city, lat, lng, visited_on, rating, liked";
 const signalCols = (loop: boolean): string => (loop ? `${SIGNAL_COLS}, rank_score` : SIGNAL_COLS);
 
 async function personFor(userId: string): Promise<PersonDTO | null> {
@@ -157,8 +160,22 @@ export async function getPastTripPage(ctx: Ctx, id: string, opts: { lookups?: bo
     const viewerFollows = trip.visibility === "followers" && !!ctx.user && (await follows(ctx.user.id, row.user_id));
     if (!canSeePastTrip(trip, { isOwner: false, follows: viewerFollows })) return null;
   }
-  const loved = await lovedPlaces(row.user_id, row.id, row.city, opts.lookups !== false);
+  // The places loved on it: shared once the owner has chosen who sees this trip (older trips start
+  // hidden). Places are only looked up on the map for the owner, within their hourly limit.
+  const showLoved = isMe || row.places_shared === true;
+  const lookups = isMe && opts.lookups !== false && (await lookupAllowed(ctx));
+  const loved = showLoved ? await lovedPlaces(row.user_id, row.id, row.city, lookups) : [];
   return { trip: isMe ? trip : pastTripForOthers(trip), owner, loved, isMe };
+}
+
+/** Map lookups for your own trip pages: at most 30 pages an hour (each up to MAX_LOOKUPS places). */
+async function lookupAllowed(ctx: Ctx): Promise<boolean> {
+  try {
+    await rateLimit(ctx, "extract", 30, "lookups");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** The places they loved on this trip: liked, rated 4 or more, or among their top-ranked. Best first. */
@@ -197,6 +214,11 @@ async function lovedPlaces(userId: string, pastTripId: string, city: string, loo
       try {
         const v = await verifyPlace(s.name, "", where);
         if (!v) return base;
+        if (v.lat != null && v.lng != null) {
+          // Keep it, so this place is never looked up again.
+          const { error: saveErr } = await supabaseAdmin().from("taste_signals").update({ lat: v.lat, lng: v.lng }).eq("id", s.id).eq("user_id", userId);
+          if (saveErr) console.error("pages: saving a place's location failed", saveErr.code ?? "");
+        }
         return { ...base, lat: v.lat ?? null, lng: v.lng ?? null, mapsUrl: v.mapsUrl ?? base.mapsUrl };
       } catch (e) {
         console.error("pages: place lookup failed", (e as Error).message.slice(0, 80));
@@ -210,7 +232,8 @@ async function lovedPlaces(userId: string, pastTripId: string, city: string, loo
 export async function setPastTripPrivacy(ctx: Ctx, id: string, p: { visibility?: Visibility; hideDates?: boolean }): Promise<PastTrip> {
   if (!ctx.user) throw new HttpError(401, "Sign in to continue.", "unauthenticated");
   if (!isUuid(id)) throw new HttpError(404, "That place isn't in your list.");
-  const patch = { ...(p.visibility ? { visibility: p.visibility } : {}), ...(p.hideDates !== undefined ? { hide_dates: p.hideDates } : {}) };
+  // Choosing who sees the trip also shares the places loved on it with them.
+  const patch = { ...(p.visibility ? { visibility: p.visibility, places_shared: true } : {}), ...(p.hideDates !== undefined ? { hide_dates: p.hideDates } : {}) };
   if (!Object.keys(patch).length) throw new HttpError(400, "Some fields are invalid.", "invalid_request");
   const { data, error } = await ctx.db.from("past_trips").update(patch).eq("id", id).eq("user_id", ctx.user.id).select<string, PastRow>(pastCols(true)).maybeSingle();
   if (missingColumn(error)) throw new HttpError(503, "Choosing who sees each trip isn't set up yet. Run the community loop database migration in Supabase.", "community_off");

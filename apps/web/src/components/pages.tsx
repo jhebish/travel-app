@@ -31,8 +31,8 @@ const dayLabel = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateStrin
 
 const PAST_HINTS: Record<Visibility, string> = {
   private: "Just you. It still teaches Pylos your taste.",
-  followers: "People who follow you see it on your profile.",
-  public: "Anyone can see it on your profile and open its page.",
+  followers: "People who follow you see it and the places you loved there.",
+  public: "Anyone can see it and the places you loved there, on your profile and its own page.",
 };
 
 /** Bring the quick "log a trip" box on the You page into view. */

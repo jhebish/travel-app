@@ -104,7 +104,8 @@ const toPast = (r: PastRow): PastTrip => ({
 });
 /** The privacy columns to write: only the ones given (an edit that leaves them out keeps them). */
 const privacyCols = (p: Pick<PastTripInput, "visibility" | "hideDates">) => ({
-  ...(p.visibility ? { visibility: p.visibility } : {}),
+  // Choosing who sees the trip also shares the places loved on it with them.
+  ...(p.visibility ? { visibility: p.visibility, places_shared: true } : {}),
   ...(p.hideDates !== undefined ? { hide_dates: p.hideDates } : {}),
 });
 

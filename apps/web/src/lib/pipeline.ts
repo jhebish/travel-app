@@ -903,7 +903,7 @@ export async function generateHotels(ctx: Ctx, row: TripRow, stay: StayPrefs, op
   ]);
   const eff: EffectiveSources = { weights: row.weights, blocked: (row.blocked ?? []).filter(isSourceId), custom: row.custom_mix };
   const route = row.itinerary.mode === "multi" ? row.itinerary.route ?? [] : [];
-  const friends = friendsForTrip(row);
+  const friends = friendsForTrip(row, ctx);
   // One place: three hotels. Several stops: two per stop, each checked against its own city.
   const groups = route.length
     ? route.map((l) => ({ city: l.city, req: requestForCity(req, l.city), count: 2 }))
@@ -991,7 +991,7 @@ export async function swapStop(ctx: Ctx, row: TripRow, day: number, index: numbe
   await rateLimit(ctx, "edit", 60, "That's a lot of changes this hour. Try again a little later.");
   const { req: base, eff, inTrip } = editContext(row);
   const req = requestForCity(base, row.itinerary.days[day]?.city);
-  const friends = friendsForTrip(row);
+  const friends = friendsForTrip(row, ctx);
   const [{ lists }, gathered, history, pulse] = await Promise.all([
     loadSources(ctx),
     gatherCandidates(req, false, friends),
@@ -1025,7 +1025,7 @@ export async function regenerateDay(ctx: Ctx, row: TripRow, day: number, hint: s
   const otherDays = new Set(
     [...row.itinerary.days.flatMap((d, i) => (i === day ? [] : d.stops)), ...(row.itinerary.hotels ?? [])].map((p) => p.name.toLowerCase()),
   );
-  const friends = friendsForTrip(row);
+  const friends = friendsForTrip(row, ctx);
   const [{ lists }, gathered, history, pulse] = await Promise.all([
     loadSources(ctx),
     gatherCandidates(req, false, friends),
@@ -1140,7 +1140,7 @@ export async function swapCity(ctx: Ctx, row: TripRow, legIndex: number, cityIn:
   const elsewhere = new Set(
     [...it.days.filter((_, i) => !dayIdx.includes(i)).flatMap((d) => d.stops), ...(it.hotels ?? []).filter((h) => h.city !== old.city)].map((p) => p.name.toLowerCase()),
   );
-  const friends = friendsForTrip(row);
+  const friends = friendsForTrip(row, ctx);
   const cands = selectCandidates(await gatherCandidates(legReq, false, friends), eff, legReq).filter((c) => !elsewhere.has(c.name.toLowerCase()));
   const ids = cands.filter((c) => c.category !== "stay").map((c) => c.id);
   const outline: Outline = {

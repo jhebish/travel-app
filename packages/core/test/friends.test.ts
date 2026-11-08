@@ -87,7 +87,9 @@ describe("dates", () => {
   it("knows a past trip or a visit that hasn't happened yet", () => {
     expect(isFutureTrip({ year: 2027 }, NOW)).toBe(true);
     expect(isFutureTrip({ year: 2026, month: 12 }, NOW)).toBe(true);
-    expect(isFutureTrip({ year: 2026, month: 11 }, NOW)).toBe(false);
+    // This month may still be ahead: it counts once the month has ended.
+    expect(isFutureTrip({ year: 2026, month: 11 }, NOW)).toBe(true);
+    expect(isFutureTrip({ year: 2026, month: 10 }, NOW)).toBe(false);
     expect(isFutureTrip({ year: 2026 }, NOW)).toBe(false);
     expect(isFutureTrip({ year: null }, NOW)).toBe(false);
     expect(isFutureDay("2026-11-08", NOW)).toBe(true);

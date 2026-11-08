@@ -65,8 +65,9 @@ export function tripForRole(row: TripRow, role: TripRole): Trip {
     itinerary: {
       ...it,
       forYou: "",
-      days: it.days.map((d) => ({ ...d, stops: d.stops.map(({ forYou: _f, ...s }) => s) })),
-      hotels: (it.hotels ?? []).map(({ forYou: _f, ...h }) => h),
+      // Nor whose friend's pick a stop was: those friends shared their places with the owner.
+      days: it.days.map((d) => ({ ...d, stops: d.stops.map(({ forYou: _f, friend: _fr, ...s }) => s) })),
+      hotels: (it.hotels ?? []).map(({ forYou: _f, friend: _fr, ...h }) => h),
     },
     request: { ...t.request, about: [], extra: "", age: null, startDate: t.request.startDate ?? null },
     votes: {},

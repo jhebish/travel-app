@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { HttpError, handler, json, parseBody } from "@/lib/http";
+import { supabaseAdmin } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,10 +20,14 @@ export const POST = handler(async (req: Request) => {
     .from("push_tokens")
     .upsert({ token, platform, user_id: ctx.user.id, updated_at: new Date().toISOString() }, { onConflict: "token" });
   if (error) {
-    // A token registered to someone else on this phone before (they signed out, you signed in):
-    // RLS won't let us take over their row, so it stays with them until Expo drops it.
-    if (error.code === "42501") return json({ ok: false });
-    throw error;
+    // Someone else used Pylos on this phone before and their sign-out didn't reach us. Holding the
+    // token proves it's this phone, so it moves to whoever is signed in now; otherwise their
+    // notifications would keep arriving here.
+    if (error.code !== "42501") throw error;
+    const { error: moveErr } = await supabaseAdmin()
+      .from("push_tokens")
+      .upsert({ token, platform, user_id: ctx.user.id, updated_at: new Date().toISOString() }, { onConflict: "token" });
+    if (moveErr) throw moveErr;
   }
   return json({ ok: true });
 });

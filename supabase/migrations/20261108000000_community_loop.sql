@@ -38,6 +38,21 @@ alter table public.past_trips add column if not exists hide_dates boolean not nu
 -- Higher is better; worked out from rank_votes by the server. Null until it's been compared.
 alter table public.past_trips add column if not exists rank_score real;
 
+-- Whether others who may see the trip also see the places loved on it (its taste signals). Before
+-- this, nobody but their owner could see those, so existing trips start with them hidden until the
+-- owner sets that trip's visibility; trips logged from now on share them (default true).
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'past_trips' and column_name = 'places_shared'
+  ) then
+    alter table public.past_trips add column places_shared boolean not null default false;
+    alter table public.past_trips alter column places_shared set default true;
+  end if;
+end;
+$$;
+
 create index if not exists past_trips_city_idx on public.past_trips (city_key, user_id) where visibility <> 'private';
 
 -- ---------------------------------------------------------------------------
@@ -142,7 +157,7 @@ create policy "see own asks" on public.asks for select using (asker_id = auth.ui
 -- ---------------------------------------------------------------------------
 -- When someone's picks helped a friend: "Plan a trip like this" from their trip page, their picks
 -- used in a friend's itinerary, or an answer to an ask. One row per owner, friend, kind and thing.
--- Written by the app's server; the owner can read their own.
+-- Written and read only by the app's server, which returns counts (rows name the friend and their trip).
 -- ---------------------------------------------------------------------------
 create table if not exists public.pick_credits (
   owner_id        uuid not null references auth.users (id) on delete cascade,
@@ -157,7 +172,6 @@ create table if not exists public.pick_credits (
 create index if not exists pick_credits_owner_idx on public.pick_credits (owner_id, created_at desc);
 alter table public.pick_credits enable row level security;
 drop policy if exists "see own credits" on public.pick_credits;
-create policy "see own credits" on public.pick_credits for select using (owner_id = auth.uid());
 
 -- ---------------------------------------------------------------------------
 -- Phones to notify (Expo push tokens). Each person manages their own.
@@ -181,10 +195,21 @@ create policy "own push tokens" on public.push_tokens
 alter table public.trips add column if not exists share_while_away boolean not null default false;
 
 -- ---------------------------------------------------------------------------
--- Friends' planners may use your loved places (people who follow each other only). On by
--- default; turning it off keeps your places out of friends' itineraries and "Friends who've been".
+-- Friends' planners may use your loved places (people who follow each other only). On for people
+-- who join from now on; off for existing members until they turn it on, since nobody else could see
+-- their places before. Off keeps your places out of friends' itineraries and "Friends who've been".
 -- ---------------------------------------------------------------------------
-alter table public.community_profiles add column if not exists picks_for_friends boolean not null default true;
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'community_profiles' and column_name = 'picks_for_friends'
+  ) then
+    alter table public.community_profiles add column picks_for_friends boolean not null default false;
+    alter table public.community_profiles alter column picks_for_friends set default true;
+  end if;
+end;
+$$;
 
 -- ---------------------------------------------------------------------------
 -- Rate limits for the new actions
