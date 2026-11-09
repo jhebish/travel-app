@@ -20,6 +20,7 @@ import { useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, Switch, TextInput, View } from "react-native";
 import { api } from "../../src/api";
+import { DestinationInput } from "../../src/DestinationInput";
 import { useTheme } from "../../src/theme";
 import { TripView } from "../../src/TripView";
 import { BuildBar, Button, Card, Chip, ChipRow, H1, Label, Loading, P, Screen, Status, styles, Text } from "../../src/ui";
@@ -165,12 +166,20 @@ export default function Plan() {
         </View>
         <View style={styles.field}>
           <Label>{req.mode === "multi" ? "Country or region" : "Destination"}</Label>
-          <TextInput
+          <DestinationInput
             style={input}
             value={req.destination}
-            onChangeText={(v) => set("destination", v)}
+            mode={req.mode}
+            onChange={(v) => set("destination", v)}
+            // A country is a trip with several stops; the rest keep the kind of trip chosen.
+            onPick={(s) =>
+              setReq((r) =>
+                s.kind === "country" && r.mode !== "multi"
+                  ? { ...r, destination: s.label.slice(0, 120), mode: "multi", days: Math.max(r.days, 5) }
+                  : { ...r, destination: s.label.slice(0, 120) },
+              )
+            }
             placeholder={req.mode === "multi" ? "Egypt, Japan, the Amalfi Coast" : "City or region, e.g. Mexico City"}
-            placeholderTextColor={t.muted}
           />
         </View>
         <View style={styles.field}>

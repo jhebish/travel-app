@@ -38,10 +38,19 @@ export default function Globe({
   markers,
   selected,
   onSelect,
+  label = "Globe of trending destinations. Drag to turn it, pinch or use the buttons to zoom, or choose a destination.",
+  facing,
+  still = false,
 }: {
   markers: GlobeMarker[];
   selected: string | null;
   onSelect: (key: string) => void;
+  /** What screen readers hear for the globe as a whole. */
+  label?: string;
+  /** Where it faces first; over the Mediterranean unless given. */
+  facing?: { lat: number; lng: number } | null;
+  /** Starts without turning (the play button turns it). */
+  still?: boolean;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -49,15 +58,15 @@ export default function Globe({
   const [size, setSize] = useState(0);
   const [land, setLand] = useState<GeoPermissibleObjects | null>(null);
   const [zoomed, setZoomed] = useState(false);
-  const view = useRef<View>({ rot: [-18, -24, 0], zoom: 1 }); // start over the Mediterranean
+  const view = useRef<View>({ rot: facing ? [-facing.lng, clamp(-facing.lat, -75, 75), 0] : [-18, -24, 0], zoom: 1 });
   const anim = useRef<{ from: View; to: View; start: number; dur: number } | null>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef<Gesture | null>(null);
   const idleUntil = useRef(0);
   const hovering = useRef(false);
   const focused = useRef(false);
-  const [paused, setPaused] = useState(false);
-  const pausedRef = useRef(false);
+  const [paused, setPaused] = useState(still);
+  const pausedRef = useRef(still);
   pausedRef.current = paused;
   const onScreen = useRef(true);
   /** What each pin last showed, so a frame only touches what changed (position always does). */
@@ -358,7 +367,7 @@ export default function Globe({
       ref={wrap}
       className={`globe${zoomed ? " zoomed" : ""}`}
       role="group"
-      aria-label="Globe of trending destinations. Drag to turn it, pinch or use the buttons to zoom, or choose a destination."
+      aria-label={label}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

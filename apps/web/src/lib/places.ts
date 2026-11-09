@@ -1,4 +1,4 @@
-import { MAX_PLACE_PHOTOS, type Candidate, type CandidateCategory, type PlacePhoto, type PlaceVerification } from "@travel/core";
+import { MAX_PLACE_PHOTOS, countryName, type Candidate, type CandidateCategory, type PlacePhoto, type PlaceVerification } from "@travel/core";
 import { env } from "./env";
 import { supabaseAdmin } from "./supabase/server";
 
@@ -182,6 +182,64 @@ export function namesMatch(a: string, b: string): boolean {
   const wb = new Set(words(b));
   if (!wa.length || !wb.size) return a.trim().toLowerCase() === b.trim().toLowerCase();
   return wa.some((w) => wb.has(w));
+}
+
+const AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete";
+
+/** What the map search finds for a few typed letters: cities, regions and countries. */
+export interface PlaceGuess {
+  placeId: string;
+  main: string;
+  secondary: string;
+  types: string[];
+}
+
+/**
+ * Places that start with what someone typed (Google's autocomplete, regions only: cities, states,
+ * countries). Cached by the letters typed, so "lis" is asked once for everyone. Empty when
+ * Google can't be asked: the box still offers the instant suggestions.
+ */
+export async function guessPlaces(input: string): Promise<PlaceGuess[]> {
+  if (!placesEnabled()) return [];
+  const q = input.trim().toLowerCase().replace(/\s+/g, " ").slice(0, 60);
+  if (q.length < 2) return [];
+  return cached(`ac1:${q}`, async () => {
+    const res = await fetch(AUTOCOMPLETE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Goog-Api-Key": env.placesKey() },
+      body: JSON.stringify({ input: q, includedPrimaryTypes: ["(regions)"], languageCode: "en" }),
+    });
+    if (!res.ok) return failed(res, "autocomplete");
+    const body = (await res.json()) as {
+      suggestions?: { placePrediction?: { placeId: string; text?: { text: string }; structuredFormat?: { mainText?: { text: string }; secondaryText?: { text: string } }; types?: string[] } }[];
+    };
+    return (body.suggestions ?? [])
+      .map((x) => x.placePrediction)
+      .filter((p): p is NonNullable<typeof p> => !!p?.placeId)
+      .map((p) => ({ placeId: p.placeId, main: p.structuredFormat?.mainText?.text ?? p.text?.text ?? "", secondary: p.structuredFormat?.secondaryText?.text ?? "", types: p.types ?? [] }))
+      .filter((p) => p.main && !p.types.includes("postal_code"));
+  }).catch((e) => {
+    if (e instanceof PlacesError) return [] as PlaceGuess[];
+    throw e;
+  });
+}
+
+/**
+ * Where a city (or region) is, for the map of places someone has been: Google's answer for
+ * "City, Country". Null when Google has no such place; throws when it couldn't be asked.
+ */
+export async function locateCity(city: string, countryCode: string): Promise<{ lat: number; lng: number } | null> {
+  if (!placesEnabled()) throw new Error("Places search is off");
+  const res = await fetch(SEARCH_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Goog-Api-Key": env.placesKey(), "X-Goog-FieldMask": "places.id,places.location" },
+    body: JSON.stringify({ textQuery: `${city}, ${countryName(countryCode)}`, languageCode: "en", regionCode: countryCode.toLowerCase(), pageSize: 1 }),
+  });
+  // A failed request throws (try again later); null means Google has no such place.
+  if (!res.ok) throw new Error(`Places search failed (${res.status})`);
+  const body = (await res.json()) as { places?: GPlace[] };
+  const loc = body.places?.[0]?.location;
+  return loc ? { lat: loc.latitude, lng: loc.longitude } : null;
 }
 
 const NEARBY_URL = "https://places.googleapis.com/v1/places:searchNearby";

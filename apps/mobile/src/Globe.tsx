@@ -55,17 +55,20 @@ export function Globe({
   onSelect,
   onActive,
   size,
+  facing,
 }: {
   markers: GlobeMarker[];
   selected: string | null;
   onSelect: (key: string) => void;
   onActive?: (active: boolean) => void;
   size: number;
+  /** Where it faces first; over the Mediterranean unless given. */
+  facing?: { lat: number; lng: number } | null;
 }) {
   const t = useTheme();
   const dark = useColorScheme() === "dark";
   const colors = { ocean: t.accentSoft, land: t.hero, landLine: dark ? "#46553f" : "#b5c8a6", grid: t.surface, rim: t.line };
-  const [view, setView] = useState<View2>({ rot: [-18, -24], zoom: 1 }); // over the Mediterranean
+  const [view, setView] = useState<View2>(() => ({ rot: facing ? [-facing.lng, clamp(-facing.lat, -75, 75)] : [-18, -24], zoom: 1 }));
   const [moving, setMoving] = useState(false);
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -180,15 +183,17 @@ export function Globe({
       if (taken.has(p.m.key)) continue;
       taken.add(p.m.key);
       const members = [p.m];
-      for (const q of pts) {
-        if (!taken.has(q.m.key) && Math.hypot(p.x - q.x, p.y - q.y) < CLUSTER_PX) {
+      // The chosen pin stands alone, so it keeps its look and its name.
+      for (const q of p.m.key === selected ? [] : pts) {
+        if (!taken.has(q.m.key) && q.m.key !== selected && Math.hypot(p.x - q.x, p.y - q.y) < CLUSTER_PX) {
           taken.add(q.m.key);
           members.push(q.m);
         }
       }
       out.push({ ...p, members });
     }
-    return out;
+    // Drawn last, on top of any cluster beside it.
+    return out.sort((a, b) => Number(a.m.key === selected) - Number(b.m.key === selected));
     // `paths` changes with the projection, so pins follow the same view.
   }, [markers, selected, projection, paths, size, r0]); // eslint-disable-line react-hooks/exhaustive-deps
 

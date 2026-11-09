@@ -25,6 +25,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { Chips, SingleChips } from "@/components/Chips";
+import { DestinationField } from "@/components/DestinationField";
 import { FriendsWhoveBeen, InspiredBy, buildPath, useLikeTrip } from "@/components/Friends";
 import { useMe } from "@/components/useMe";
 import { api, streamEvents } from "@/lib/api";
@@ -324,12 +325,21 @@ function Planner() {
             <label htmlFor="dest">
               <h1>{req.mode === "multi" ? "Which country or region?" : "Where to?"}</h1>
             </label>
-            <input
+            <DestinationField
               id="dest"
-              type="text"
+              mode={req.mode}
+              signedIn={!!me?.user}
               placeholder={req.mode === "multi" ? "Egypt, Japan, the Amalfi Coast…" : "Lisbon, Oaxaca, Kyoto…"}
               value={req.destination}
-              onChange={(e) => set("destination", e.target.value)}
+              onChange={(v) => set("destination", v)}
+              // A country is a trip with several stops; the rest keep the kind of trip chosen.
+              onPick={(s) =>
+                setReq((r) =>
+                  s.kind === "country" && r.mode !== "multi"
+                    ? { ...r, destination: s.label.slice(0, 120), mode: "multi", days: Math.max(r.days, 5) }
+                    : { ...r, destination: s.label.slice(0, 120) },
+                )
+              }
             />
             <InspiredBy like={like} destination={req.destination} />
             {/* Ideas only while the box is empty: picking one fills it. */}

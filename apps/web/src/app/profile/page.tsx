@@ -10,6 +10,7 @@ import { PicksForFriendsSwitch, YourPicks } from "@/components/Friends";
 import { QuickLog, type PresetTrip } from "@/components/QuickLog";
 import { RankEntry } from "@/components/Rank";
 import { RankNudge } from "@/components/RankNudge";
+import { PlacesMap } from "@/components/PlacesMap";
 import { StaysList } from "@/components/Stays";
 import { TasteCard, kindFromName, useTaste } from "@/components/taste";
 import { canSubmitPicks, useMe } from "@/components/useMe";
@@ -207,6 +208,7 @@ function ProfileEditor() {
           </p>
         )}
         <StatsRow stats={stats} showNext />
+        <PlacesMap version={places.map((p) => p.id).join(",")} />
         {places.length > 0 && <RecapLink places={places} />}
 
         <QuickLog

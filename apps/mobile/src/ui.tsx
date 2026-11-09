@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text as RNText, View, type TextProps, type TextStyle, type ViewStyle } from "react-native";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text as RNText, View, type HostInstance, type ScrollViewInstance, type TextProps, type TextStyle, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FONT, useTheme } from "./theme";
 
@@ -29,18 +29,40 @@ export function Text({ style, ...rest }: TextProps) {
   return <RNText style={[others, { fontFamily, letterSpacing: spacing }]} {...rest} />;
 }
 
+type Reveal = (node: HostInstance | null) => void;
+const RevealContext = createContext<Reveal | null>(null);
+/**
+ * Scrolls the page so a view sits at the top of the screen: the destination box does this as
+ * it's typed in, so its suggestions show above the keyboard. Null outside a Screen.
+ */
+export const useRevealOnScreen = () => useContext(RevealContext);
+
 /** A scrolling page. `scrollEnabled` is off while something on it takes the drag (the globe). */
 export function Screen({ children, scrollEnabled = true }: { children: ReactNode; scrollEnabled?: boolean }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
+  const scroll = useRef<ScrollViewInstance>(null);
+  // A point at the top of the page's content, to measure other views from.
+  const top = useRef<HostInstance>(null);
+  const reveal = useCallback<Reveal>((node) => {
+    const anchor = top.current;
+    if (!node || !anchor) return;
+    anchor.measureInWindow((_x, from) =>
+      node.measureInWindow((_x2, y) => {
+        if (Number.isFinite(from) && Number.isFinite(y)) scroll.current?.scrollTo({ y: Math.max(0, y - from - 8), animated: true });
+      }),
+    );
+  }, []);
   return (
     <ScrollView
+      ref={scroll}
       scrollEnabled={scrollEnabled}
       style={{ flex: 1, backgroundColor: t.bg }}
       contentContainerStyle={{ padding: 16, paddingBottom: 48 + insets.bottom, gap: 16 }}
       keyboardShouldPersistTaps="handled"
     >
-      {children}
+      <View ref={top} pointerEvents="none" style={{ position: "absolute", top: 0, left: 0, width: 1, height: 1 }} />
+      <RevealContext.Provider value={reveal}>{children}</RevealContext.Provider>
     </ScrollView>
   );
 }

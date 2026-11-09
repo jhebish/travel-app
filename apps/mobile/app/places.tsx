@@ -1,10 +1,11 @@
-import { countryName, flag, travelStats, type PastTrip } from "@travel/core";
+import { countryName, flag, mapCentre, travelStats, type PastTrip, type PlacePoint } from "@travel/core";
 import { Stack } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, View } from "react-native";
+import { Alert, Pressable, View, useWindowDimensions } from "react-native";
 import { api } from "../src/api";
+import { Globe } from "../src/Globe";
 import { useTheme } from "../src/theme";
-import { Button, Card, H1, Label, Loading, P, Screen, Status, Text } from "../src/ui";
+import { Button, Card, H1, H2, Label, Loading, P, Screen, Status, Text } from "../src/ui";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -12,12 +13,18 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const detail = (p: PastTrip) => [countryName(p.countryCode), p.month ? MONTHS[p.month - 1] : null, p.days ? `${p.days} ${p.days === 1 ? "day" : "days"}` : null].filter(Boolean).join(" · ");
 
 /**
- * Places you've been, as on the site's profile: every trip you've logged or a scan found, by year,
- * with your rating (the trips you rate highest weigh most in your taste). Remove ones that aren't right.
+ * Places you've been, as on the site's profile: a globe with a pin for each city, then every trip
+ * you've logged or a scan found, by year, with your rating (the trips you rate highest weigh most
+ * in your taste). Remove ones that aren't right.
  */
 export default function PlacesScreen() {
   const t = useTheme();
+  const { width } = useWindowDimensions();
   const [places, setPlaces] = useState<PastTrip[] | null>(null);
+  const [points, setPoints] = useState<PlacePoint[]>([]);
+  const [pending, setPending] = useState(0);
+  const [pin, setPin] = useState<string | null>(null);
+  const [turning, setTurning] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -25,8 +32,24 @@ export default function PlacesScreen() {
     api<{ places: PastTrip[] }>("/api/community/places")
       .then((r) => setPlaces(r.places))
       .catch((e) => setErr((e as Error).message));
+    // The pins come separately: a city seen for the first time is looked up on the map.
+    api<{ points: PlacePoint[]; pending: number }>("/api/community/places/map")
+      .then((r) => {
+        setPoints(r.points);
+        setPending(r.pending);
+      })
+      .catch(() => {});
   }, []);
   useEffect(load, [load]);
+
+  // Pins grow with trips back; it faces the side of the world with most of them.
+  const most = Math.max(1, ...points.map((p) => p.trips));
+  const markers = useMemo(
+    () => points.map((p) => ({ key: p.key, name: p.city, sub: countryName(p.countryCode), lat: p.lat, lng: p.lng, heat: most > 1 ? (p.trips - 1) / (most - 1) : 0.4 })),
+    [points, most],
+  );
+  const facing = useMemo(() => mapCentre(points.map((p) => ({ lat: p.lat, lng: p.lng, weight: p.trips }))), [points]);
+  const chosen = points.find((p) => p.key === pin) ?? null;
 
   const stats = useMemo(() => (places ? travelStats(places) : null), [places]);
   const years = useMemo(() => {
@@ -77,7 +100,7 @@ export default function PlacesScreen() {
   }
 
   return (
-    <Screen>
+    <Screen scrollEnabled={!turning}>
       <Stack.Screen options={{ title: "Places you've been" }} />
       <View style={{ gap: 8 }}>
         <H1>Places you&apos;ve been</H1>
@@ -92,6 +115,30 @@ export default function PlacesScreen() {
           Rate the trips you loved most: they weigh most in your taste. Add the places you loved on each one on pylos.ai.
         </P>
       </View>
+      {points.length ? (
+        <View style={{ gap: 10 }}>
+          <Globe markers={markers} selected={pin} onSelect={setPin} onActive={setTurning} size={Math.min(width - 32, 420)} facing={facing} />
+          <Card>
+            {chosen ? (
+              <View style={{ gap: 4 }}>
+                <H2>
+                  {flag(chosen.countryCode)} {chosen.city}
+                </H2>
+                <P muted style={{ fontSize: 16 }}>
+                  {countryName(chosen.countryCode)} · {chosen.trips} {chosen.trips === 1 ? "trip" : "trips"}
+                  {chosen.years.length ? ` · ${chosen.years.join(", ")}` : ""}
+                </P>
+              </View>
+            ) : (
+              <P muted style={{ fontSize: 16 }}>
+                {points.length} {points.length === 1 ? "place" : "places"} on the map. Tap a pin to see when you went
+                {most > 1 ? "; bigger pins are places you've been back to." : "."}
+                {pending ? ` ${pending} more will show up next time you open this.` : ""}
+              </P>
+            )}
+          </Card>
+        </View>
+      ) : null}
       <Status text={err} err />
       {!places ? (
         <Loading text="Loading your places…" />

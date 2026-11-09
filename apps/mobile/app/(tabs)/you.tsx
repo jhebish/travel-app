@@ -221,7 +221,7 @@ export default function You() {
         <P muted>
           {trips ? `${trips} ${trips === 1 ? "trip" : "trips"} so far. Rate the ones you loved most: they weigh most in your taste.` : "Every trip you log or a scan finds, by year."}
         </P>
-        <Button ghost title={trips ? "See them all" : "Open"} onPress={() => router.push("/places")} />
+        <Button ghost title={trips ? "See them on the map" : "Open"} onPress={() => router.push("/places")} />
       </Card>
       {email ? <YourPicksCard /> : null}
       {email ? <AsksCard /> : null}

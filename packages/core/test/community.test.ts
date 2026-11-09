@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { publicItinerary, type Itinerary } from "../src";
+import { mapCentre, publicItinerary, type Itinerary } from "../src";
 
 const itinerary: Itinerary = {
   title: "Two days in Lisbon",
@@ -40,5 +40,30 @@ describe("publicItinerary and About-you answers", () => {
 
   it("still strips the owner's For you line", () => {
     expect(publicItinerary(itinerary, { about: ["LGBTQ+ traveler"] }).forYou).toBe("");
+  });
+});
+
+describe("where the map of places you've been faces first", () => {
+  it("faces the side of the world with most of the trips", () => {
+    expect(mapCentre([])).toBeNull();
+    // Europe four times over, Kyoto once: the globe faces Europe, Kyoto round the back.
+    const europe = mapCentre([
+      { lat: 38.72, lng: -9.14, weight: 2 },
+      { lat: 48.86, lng: 2.35 },
+      { lat: 43.32, lng: -1.98 },
+      { lat: 35.01, lng: 135.77 },
+    ])!;
+    expect(europe.lat).toBeGreaterThan(38);
+    expect(europe.lat).toBeLessThan(48);
+    expect(europe.lng).toBeGreaterThan(-9);
+    expect(europe.lng).toBeLessThan(3);
+    // One place: right on it.
+    expect(mapCentre([{ lat: -33.92, lng: 18.42 }])).toEqual({ lat: -33.92, lng: 18.42 });
+    // Either side of the date line stays in the Pacific.
+    const pacific = mapCentre([
+      { lat: -17.7, lng: 178.1 },
+      { lat: -13.8, lng: -171.8 },
+    ])!;
+    expect(Math.abs(pacific.lng)).toBeGreaterThan(170);
   });
 });

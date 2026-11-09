@@ -12,6 +12,36 @@ export function coordsOf(p: Stop | Hotel): (LatLng & { verified: boolean }) | nu
   return null;
 }
 
+/**
+ * Where a globe of someone's places should face first: the middle of the side of the world with
+ * the most of their trips on it, so as many pins as possible are in view (a world traveller's
+ * Europe, say, with the one trip to Japan round the back). Null when there are no places.
+ */
+export function mapCentre(points: (LatLng & { weight?: number })[]): LatLng | null {
+  if (!points.length) return null;
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const vs = points.map((p) => {
+    const la = rad(p.lat);
+    const lo = rad(p.lng);
+    return { x: Math.cos(la) * Math.cos(lo), y: Math.cos(la) * Math.sin(lo), z: Math.sin(la), w: Math.max(p.weight ?? 1, 0.01) };
+  });
+  // In view from a centre: within 70°, short of the globe's rim where pins get squeezed.
+  const near = Math.cos(rad(70));
+  const inView = (c: (typeof vs)[number]) => vs.filter((v) => v.x * c.x + v.y * c.y + v.z * c.z >= near);
+  let best = vs[0]!;
+  let bestScore = -1;
+  for (const c of vs) {
+    const score = inView(c).reduce((s, v) => s + v.w, 0);
+    if (score > bestScore) [best, bestScore] = [c, score];
+  }
+  // Then the weighted middle of what's in view from there.
+  const sum = inView(best).reduce((s, v) => ({ x: s.x + v.x * v.w, y: s.y + v.y * v.w, z: s.z + v.z * v.w }), { x: 0, y: 0, z: 0 });
+  const len = Math.hypot(sum.x, sum.y, sum.z) || 1;
+  const deg = (r: number) => (r * 180) / Math.PI;
+  const round = (n: number) => Math.round(n * 100) / 100;
+  return { lat: round(deg(Math.asin(Math.max(-1, Math.min(1, sum.z / len))))), lng: round(deg(Math.atan2(sum.y, sum.x))) };
+}
+
 /** Great-circle distance in km. */
 export function haversineKm(a: LatLng, b: LatLng): number {
   const R = 6371;

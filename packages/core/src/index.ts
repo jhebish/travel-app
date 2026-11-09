@@ -31,3 +31,4 @@ export * from "./stayPrice";
 export * from "./habits";
 export * from "./readOnly";
 export * from "./pastStays";
+export * from "./placeSuggest";

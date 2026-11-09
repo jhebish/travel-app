@@ -229,3 +229,16 @@ ${lines.join("\n")}${
       : ""
   }`;
 }
+
+/** A pin on the map of places someone has been (GET /api/community/places/map): one per city. */
+export interface PlacePoint {
+  /** "PT:lisbon" */
+  key: string;
+  city: string;
+  countryCode: string;
+  lat: number;
+  lng: number;
+  /** Trips logged there (a city in a year each), and their years, newest first. */
+  trips: number;
+  years: number[];
+}
