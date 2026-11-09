@@ -10,6 +10,7 @@ import { PicksForFriendsSwitch, YourPicks } from "@/components/Friends";
 import { QuickLog, type PresetTrip } from "@/components/QuickLog";
 import { RankEntry } from "@/components/Rank";
 import { RankNudge } from "@/components/RankNudge";
+import { StaysList } from "@/components/Stays";
 import { TasteCard, kindFromName, useTaste } from "@/components/taste";
 import { canSubmitPicks, useMe } from "@/components/useMe";
 import { api, ApiError } from "@/lib/api";
@@ -190,6 +191,7 @@ function ProfileEditor() {
       )}
 
       <TasteCard data={taste.data} updating={taste.updating} trips={places.length} onLog={focusQuickLog} />
+      <StaysList version={taste.data?.counts.total ?? 0} />
       <MemoryCard places={places} onAdd={openEditor} />
       <RankEntry places={taste.data?.signals.length ?? 0} trips={places.length} />
 

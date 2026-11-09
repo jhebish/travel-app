@@ -81,7 +81,7 @@ import { HttpError } from "./http";
 import { nightPulse, readPulse } from "./nightPulse";
 import { PlacesError, placeById, placesCandidates, placesEnabled, verifyPlace } from "./places";
 import { supabaseAdmin } from "./supabase/server";
-import { tasteBlock } from "./taste";
+import { staysBlock, tasteBlock } from "./taste";
 import { addFriendsOnCreate, companionsFromHandles, editPeople } from "./together";
 import { rateLimit, updateTrip } from "./tripAccess";
 import { idealDays } from "./tripLength";
@@ -488,6 +488,17 @@ async function defaultVisibility(ctx: Ctx): Promise<Visibility> {
 }
 
 const withHistory = (history: string, prompt: string) => (history ? `${history}\n\n${prompt}` : prompt);
+/** The history block for hotel prompts: the travel history plus where they've stayed. */
+const withStays = (history: string, stays?: string) => [history, stays].filter(Boolean).join("\n\n");
+
+/** Where the trip's owner has stayed, for the hotel prompts (pastStays.ts). Never fails a build. */
+async function loadStays(ctx: Ctx, destination: string, ownerId?: string): Promise<string> {
+  if (!ctx.user) return "";
+  return staysBlock(ownerId ?? ctx.user.id, destination).catch((e) => {
+    console.error("stays block failed", e);
+    return "";
+  });
+}
 
 /** The trip's personal line, only when there was history to draw on: never a general description. */
 const personalLine = (history: string, line: string) => (history ? line.trim() : "");
@@ -519,6 +530,8 @@ export interface PlanInputs {
   stayScale?: Promise<StayScale | null> | null;
   /** Friends' places as candidates (friends.ts). */
   friends?: FriendSource;
+  /** Where the owner has stayed (pastStays.ts), for the hotel prompts only. */
+  stays?: string;
 }
 
 type CuratorLists = { alwaysFeature: string; neverRecommend: string };
@@ -562,7 +575,7 @@ interface Planned {
   candsByCity: Map<string, Candidate[]>;
 }
 
-async function planSingle(req: TripRequest, { eff, lists, history, rebuildUntil, rebuildDeadline, stayScale: scaleJob, friends }: PlanInputs, emit: Emit): Promise<Planned> {
+async function planSingle(req: TripRequest, { eff, lists, history, rebuildUntil, rebuildDeadline, stayScale: scaleJob, friends, stays }: PlanInputs, emit: Emit): Promise<Planned> {
   const progress = (pct: number, label: string) => emit({ type: "progress", pct, label });
   progress(8, "Gathering local picks");
   // Nightlife: the bars and clubs that are hot now, if this city's pulse is ready in time.
@@ -621,7 +634,7 @@ async function planSingle(req: TripRequest, { eff, lists, history, rebuildUntil,
     return day;
   });
   const hotelJob = req.stay.on
-    ? planHotels(req, eff, lists, history, o.days.map((d) => d.area).filter(Boolean), cands.filter((c) => c.category === "stay"), 3, emit, tick, undefined, scaleJob)
+    ? planHotels(req, eff, lists, withStays(history, stays), o.days.map((d) => d.area).filter(Boolean), cands.filter((c) => c.category === "stay"), 3, emit, tick, undefined, scaleJob)
     : Promise.resolve([] as Hotel[]);
 
   const [days, hotels] = await Promise.all([Promise.all(dayJobs), hotelJob]);
@@ -670,7 +683,7 @@ const RouteSchema = z.object({
   legs: salvage(RouteLegSchema, 1, 8),
 });
 
-async function planMulti(req: TripRequest, { eff, lists, history, rebuildUntil, rebuildDeadline, stayScale: scaleJob, friends }: PlanInputs, emit: Emit): Promise<Planned> {
+async function planMulti(req: TripRequest, { eff, lists, history, rebuildUntil, rebuildDeadline, stayScale: scaleJob, friends, stays }: PlanInputs, emit: Emit): Promise<Planned> {
   const progress = (pct: number, label: string) => emit({ type: "progress", pct, label });
   progress(8, `Mapping a route through ${req.destination}`);
   const { data: route, model } = await step(
@@ -798,7 +811,7 @@ async function planMulti(req: TripRequest, { eff, lists, history, rebuildUntil, 
           legReqs[li]!,
           eff,
           lists,
-          history,
+          withStays(history, stays),
           l.dayThemes.map((t) => t.area).filter(Boolean),
           legCands[li]!.filter((c) => c.category === "stay"),
           2,
@@ -859,11 +872,12 @@ export async function generateTrip(ctx: Ctx, reqIn: TripRequest, opts: { ip: str
   emit({ type: "progress", pct: 3, label: "Reading your request" });
   // Planning with friends: blend their taste in from the start.
   const companions = await companionsFromHandles(ctx, req.with ?? []);
-  const [, { eff, lists }, history, visibility] = await Promise.all([
+  const [, { eff, lists }, history, visibility, stays] = await Promise.all([
     checkRateLimit(ctx, opts.tripsPerHour, opts.counted),
     loadSources(ctx),
     loadHistory(ctx, req.destination, { companions }),
     defaultVisibility(ctx),
+    req.stay.on ? loadStays(ctx, req.destination) : Promise.resolve(""),
   ]);
   // How long most people stay there, asked alongside the plan once the build is allowed
   // (cached per destination; never throws). It finishes even if the build fails, for next time.
@@ -876,7 +890,7 @@ export async function generateTrip(ctx: Ctx, reqIn: TripRequest, opts: { ip: str
   if (!isStayTier(req.stay.price)) req = { ...req, stay: { ...req.stay, price: stayTier(req.stay.price, await within(scaleJob, 8_000)) } };
 
   const friends = friendSource(ctx.user!.id, { guest: isGuest(ctx), like: opts.like });
-  const { itin, model } = await planItinerary(req, { eff, lists, history, stayScale: scaleJob, friends }, emit);
+  const { itin, model } = await planItinerary(req, { eff, lists, history, stayScale: scaleJob, friends, stays }, emit);
   console.log(`[build] planned ${req.mode} ${req.days}d in ${Date.now() - t0}ms`);
   const [ideal] = await Promise.all([within(lengthJob, 3_000), attachLiveRates(itin.hotels, req.startDate, req.days, adultsFor(req.party), opts.ip)]);
   if (ideal) itin.idealDays = ideal;
@@ -912,11 +926,12 @@ export async function generateHotels(ctx: Ctx, row: TripRow, stay: StayPrefs, op
   // Whoever asks (the owner or a friend planning with them), the hotels are for everyone on the
   // trip: the owner's taste plus their friends', as for edits.
   const { companions } = await editPeople(row);
-  const [{ lists }, history, scale] = await Promise.all([
+  const [{ lists }, history, scale, stays] = await Promise.all([
     loadSources(ctx),
     loadHistory(ctx, row.request.destination, { ownerId: row.user_id, companions }),
     // What hotels cost there: the tier's local meaning, and an older trip's dollar band as a tier.
     stayScale(row.request.destination, Date.now() + 10_000),
+    loadStays(ctx, row.request.destination, row.user_id),
   ]);
   const req: TripRequest = { ...row.request, stay: { ...stay, on: true, price: stayTier(stay.price, scale) } };
   const eff: EffectiveSources = { weights: row.weights, blocked: (row.blocked ?? []).filter(isSourceId), custom: row.custom_mix };
@@ -939,7 +954,7 @@ export async function generateHotels(ctx: Ctx, row: TripRow, stay: StayPrefs, op
       ].slice(0, 12);
       const { data } = await step(
         `hotels${g.city ? ` ${g.city}` : ""}`,
-        (attempt) => callTool(withHistory(history, buildHotelPromptForAreas(g.req, eff, lists, areas, cands, g.count, scale)), HOTELS_TOOL, 3000, fastThenMain(attempt)),
+        (attempt) => callTool(withHistory(withStays(history, stays), buildHotelPromptForAreas(g.req, eff, lists, areas, cands, g.count, scale)), HOTELS_TOOL, 3000, fastThenMain(attempt)),
         z.object({ hotels: salvage(HotelSchema, 1, 5) }),
       );
       const hotels = data.hotels.slice(0, g.count).map((h) => (g.city ? { ...h, city: g.city } : h));
@@ -1131,9 +1146,11 @@ export async function swapCity(ctx: Ctx, row: TripRow, legIndex: number, cityIn:
 
   const { req: base, eff } = editContext(row);
   const n = dayIdx.length;
-  const [{ lists }, history] = await Promise.all([
+  const [{ lists }, history, stays] = await Promise.all([
     loadSources(ctx),
     loadHistory(ctx, base.destination, { ownerId: row.user_id, companions: people.companions }),
+    // For the new stop's hotels, if the trip has hotels (one quick query either way).
+    loadStays(ctx, base.destination, row.user_id),
   ]);
 
   // 1. The new stop: a theme per day, how to get there and on, and swaps of its own.
@@ -1187,7 +1204,7 @@ export async function swapCity(ctx: Ctx, row: TripRow, legIndex: number, cityIn:
     };
   });
   const hotelJob = oldHotels.length
-    ? planHotels(legReq, eff, lists, history, themes.map((t) => t.area).filter(Boolean), cands.filter((c) => c.category === "stay"), Math.min(2, oldHotels.length), () => {}, () => {}, city, readStayScale(row.request.destination).catch(() => null))
+    ? planHotels(legReq, eff, lists, withStays(history, stays), themes.map((t) => t.area).filter(Boolean), cands.filter((c) => c.category === "stay"), Math.min(2, oldHotels.length), () => {}, () => {}, city, readStayScale(row.request.destination).catch(() => null))
     : Promise.resolve([] as Hotel[]);
   const [days, hotels] = await Promise.all([Promise.all(dayJobs), hotelJob]);
 

@@ -26,11 +26,17 @@ export const POST = handler(async (req: Request) => {
   }
   const rows = signals.map((s) => signalRow(ctx.user.id, s, body.pastTripId ?? null));
   let added = 0;
+  const save = (batch: typeof rows) =>
+    ctx.db.from("taste_signals").upsert(batch, { onConflict: "user_id,source,ref", ignoreDuplicates: true }).select("id");
   for (let i = 0; i < rows.length; i += 500) {
-    const { data, error } = await ctx.db
-      .from("taste_signals")
-      .upsert(rows.slice(i, i + 500), { onConflict: "user_id,source,ref", ignoreDuplicates: true })
-      .select("id");
+    let batch = rows.slice(i, i + 500);
+    let { data, error } = await save(batch);
+    // Before the photo_stays migration the table doesn't take "photos" as a source: keep the
+    // hotels anyway, as places they added (they reviewed each one before saving).
+    if (error?.code === "23514" && batch.some((r) => r.source === "photos")) {
+      batch = batch.map((r) => (r.source === "photos" ? { ...r, source: "manual" as const } : r));
+      ({ data, error } = await save(batch));
+    }
     if (error) {
       if (error.code === "42P01") throw new HttpError(503, "Taste isn't switched on yet. Try again soon.", "taste_off");
       throw error;

@@ -19,14 +19,20 @@ export default function Trips() {
   const isGuest = !!session?.user.is_anonymous;
   const [filter, setFilter] = useState<Filter>("all");
   const [trips, setTrips] = useState<TripSummary[] | null>(null);
+  // Trips friends are planning with you (Plan together), as on the site.
+  const [shared, setShared] = useState<(TripSummary & { owner: string })[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       let alive = true;
-      api<{ trips: TripSummary[] }>(`/api/trips${filter === "all" ? "" : `?filter=${filter}`}`)
-        .then((r) => alive && setTrips(r.trips))
+      api<{ trips: TripSummary[]; shared?: (TripSummary & { owner: string })[] }>(`/api/trips${filter === "all" ? "" : `?filter=${filter}`}`)
+        .then((r) => {
+          if (!alive) return;
+          setTrips(r.trips);
+          if (filter === "all") setShared(r.shared ?? []);
+        })
         .catch((e) => alive && setErr((e as Error).message));
       return () => {
         alive = false;
@@ -60,7 +66,7 @@ export default function Trips() {
         {!trips ? (
           <Loading text="Loading your trips…" />
         ) : !trips.length ? (
-          <P muted>{filter === "all" ? "No trips yet. Build one on the Plan tab." : "Nothing here yet."}</P>
+          <P muted>{filter === "all" ? "No trips yet. Build one on the Plan tab, or start from a place on Browse." : "Nothing here yet."}</P>
         ) : (
           trips.map((trip, i) => (
             <View key={trip.id} style={{ gap: 8, paddingTop: i ? 14 : 0, borderTopWidth: i ? 1 : 0, borderColor: t.line }}>
@@ -77,13 +83,29 @@ export default function Trips() {
               </Pressable>
               <View style={styles.row}>
                 <Button ghost title="Open" onPress={() => router.push(`/trip/${trip.id}`)} />
-                <Button ghost title="Plan again" onPress={() => router.push({ pathname: "/", params: { from: trip.id } })} />
+                <Button ghost title="Plan again" onPress={() => router.push({ pathname: "/plan", params: { from: trip.id } })} />
                 <Button ghost danger={confirm === trip.id} title={confirm === trip.id ? "Confirm remove" : "Remove"} onPress={() => remove(trip.id)} />
               </View>
             </View>
           ))
         )}
       </Card>
+      {shared.length > 0 && (
+        <Card>
+          <Text style={{ color: t.ink, fontSize: 22, fontWeight: "800" }}>Planning with friends</Text>
+          <P muted style={{ fontSize: 16 }}>
+            Trips friends added you to. Say which stops you&apos;re in for, swap stops and rebuild days.
+          </P>
+          {shared.map((trip, i) => (
+            <Pressable key={trip.id} onPress={() => router.push(`/trip/${trip.id}`)} style={{ gap: 2, paddingTop: i ? 14 : 0, borderTopWidth: i ? 1 : 0, borderColor: t.line }}>
+              <Text style={{ color: t.ink, fontWeight: "700", fontSize: 16 }}>{trip.title}</Text>
+              <Text style={{ color: t.muted, fontSize: 13 }}>
+                {trip.destination} · {trip.days} {trip.days === 1 ? "day" : "days"} · with {trip.owner}
+              </Text>
+            </Pressable>
+          ))}
+        </Card>
+      )}
       {isGuest ? (
         <Button ghost title="Sign in to keep trips across devices" onPress={() => router.push("/login")} />
       ) : (

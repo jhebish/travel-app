@@ -184,6 +184,70 @@ export function namesMatch(a: string, b: string): boolean {
   return wa.some((w) => wb.has(w));
 }
 
+const NEARBY_URL = "https://places.googleapis.com/v1/places:searchNearby";
+/** Few fields, so a lookup stays in Nearby Search's base tier. */
+const LODGING_FIELDS = ["places.id", "places.displayName", "places.location", "places.businessStatus", "places.googleMapsUri"].join(",");
+const metersBetween = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const h = Math.sin(rad(b.lat - a.lat) / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(rad(b.lng - a.lng) / 2) ** 2;
+  return 2 * 6_371_000 * Math.asin(Math.min(1, Math.sqrt(h)));
+};
+
+export interface NearbyLodging {
+  placeId: string;
+  name: string;
+  lat: number;
+  lng: number;
+  mapsUrl?: string;
+  /** How far it is from the spot asked about. */
+  meters: number;
+}
+
+/**
+ * The hotel (or hostel, guesthouse…) nearest a spot, within `radius` meters: for the photo scan,
+ * where someone took photos at night on a trip. Null when there's none that close, or when Google
+ * couldn't be asked (a missed hotel, not an error). Never cached: the spot is where someone slept,
+ * and the app promises it's looked up and discarded.
+ */
+export async function nearbyLodging(lat: number, lng: number, radius = 90): Promise<NearbyLodging | null> {
+  if (!placesEnabled()) return null;
+  const at = { lat: Math.round(lat * 1e4) / 1e4, lng: Math.round(lng * 1e4) / 1e4 };
+  const lookup = async (): Promise<GPlace[]> => {
+    const res = await fetch(NEARBY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Goog-Api-Key": env.placesKey(), "X-Goog-FieldMask": LODGING_FIELDS },
+      body: JSON.stringify({
+        includedTypes: ["lodging"],
+        maxResultCount: 5,
+        rankPreference: "DISTANCE",
+        locationRestriction: { circle: { center: { latitude: at.lat, longitude: at.lng }, radius } },
+        languageCode: "en",
+      }),
+    });
+    if (!res.ok) return failed(res, "nearby");
+    const body = (await res.json()) as { places?: GPlace[] };
+    return body.places ?? [];
+  };
+  const places = await lookup().catch((e) => {
+    if (e instanceof PlacesError) return [] as GPlace[];
+    throw e;
+  });
+  const best = places
+    .filter((p) => p.businessStatus !== "CLOSED_PERMANENTLY" && p.displayName?.text && p.location)
+    .map((p) => ({ p, meters: metersBetween(at, { lat: p.location!.latitude, lng: p.location!.longitude }) }))
+    .filter((x) => x.meters <= radius)
+    .sort((a, b) => a.meters - b.meters)[0];
+  if (!best) return null;
+  return {
+    placeId: best.p.id,
+    name: best.p.displayName!.text!,
+    lat: best.p.location!.latitude,
+    lng: best.p.location!.longitude,
+    mapsUrl: best.p.googleMapsUri,
+    meters: Math.round(best.meters),
+  };
+}
+
 /**
  * Look up one named place. Returns null when Google has no such place, and throws PlacesError
  * when Google couldn't be asked: callers keep the pick unverified rather than dropping it.

@@ -67,6 +67,7 @@ export const SIGNAL_SOURCES = [
   "swarm", // earlier imports only
   "paste", // earlier imports only
   "gmail", // signed-in Gmail (hotel, flight, restaurant and tour confirmations)
+  "photos", // the phone's photo scan: hotels where night-time photos on trips were taken, kept after review
 ] as const;
 export type SignalSource = (typeof SIGNAL_SOURCES)[number];
 export const SIGNAL_SOURCE_LABELS: Record<SignalSource, string> = {
@@ -79,6 +80,7 @@ export const SIGNAL_SOURCE_LABELS: Record<SignalSource, string> = {
   swarm: "Swarm",
   paste: "Pasted list",
   gmail: "Gmail",
+  photos: "Your photos",
 };
 
 /**

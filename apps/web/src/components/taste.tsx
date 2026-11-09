@@ -113,6 +113,8 @@ export interface TasteResponse {
   evidence: number;
   counts: { total: number; bySource: Record<SignalSource, number>; pastTrips: number; thumbs: number };
   signals: TasteSignalDTO[];
+  /** How you travel, counted from your trips ("24 trips since 2020, about 4 a year."). */
+  habits?: string[];
 }
 
 /** Load your taste; when it's out of date, rebuild it in the background. Call `reload` after changes. */
@@ -205,6 +207,16 @@ export function TasteCard({ data, updating, trips, onLog }: { data: TasteRespons
           </p>
         )}
       </div>
+      {!!(data?.habits?.length || p?.style?.length) && (
+        <div>
+          <span className="label">How you travel</span>
+          <ul className="notes">
+            {[...(data?.habits ?? []), ...(p?.style ?? [])].map((l) => (
+              <li key={l}>{l}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {p && (
         <div className="taste-grid">
           {!!(p.stays.styles.length || p.stays.likes.length) && (
@@ -229,6 +241,12 @@ export function TasteCard({ data, updating, trips, onLog }: { data: TasteRespons
             <div>
               <span className="label">Not for you</span>
               <p>{[...p.stays.avoid, ...p.food.avoid].join(" · ")}</p>
+            </div>
+          )}
+          {!!p.next?.length && (
+            <div>
+              <span className="label">What you&apos;d love next</span>
+              <p>{p.next.join(" · ")}</p>
             </div>
           )}
         </div>

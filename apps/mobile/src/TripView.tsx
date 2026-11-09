@@ -6,6 +6,7 @@ import {
   STAY_TIERS,
   airbnbSearchUrl,
   dateSpan,
+  dayAfterTrip,
   fitText,
   googleMapsDayUrl,
   guestsFor,
@@ -18,21 +19,26 @@ import {
   stayTier,
   stayWindows,
   tierLabel,
+  tripIsOver,
   type Hotel,
+  type PersonDTO,
   type PlaceVerification,
   type StayPrefs,
   type Stop,
   type StayScale,
   type StayTier,
+  type Together,
   type Trip,
   type TripLength,
 } from "@travel/core";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Image } from "expo-image";
+import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Linking, Pressable, ScrollView, Share, TextInput, View } from "react-native";
-import { api } from "./api";
+import { Linking, Pressable, ScrollView, Share, Switch, TextInput, View } from "react-native";
+import { ApiError, api } from "./api";
 import { PhotoGallery, PlacePhoto, type GalleryTarget } from "./PhotoGallery";
+import { TogetherPanel, WhoIsIn } from "./Together";
 import { FONT, useTheme } from "./theme";
 import { Button, Card, ChipRow, Loading, P, Status, styles, Text } from "./ui";
 
@@ -60,12 +66,12 @@ function AirbnbIcon() {
 }
 
 /** Airbnb's search for each place on the trip, with its dates and guests, opened outside the app. */
-function Rentals({ trip, lead }: { trip: Trip; lead: string }) {
+function Rentals({ trip, lead, alone }: { trip: Trip; lead: string; alone?: boolean }) {
   const t = useTheme();
   const windows = stayWindows(trip);
   const guests = guestsFor(trip.request);
   return (
-    <View style={{ gap: 8, paddingTop: 14, borderTopWidth: 1, borderColor: t.line }}>
+    <View style={{ gap: 8, paddingTop: alone ? 0 : 14, borderTopWidth: alone ? 0 : 1, borderColor: t.line }}>
       <Text style={{ color: t.muted, fontSize: 15 }}>{lead}</Text>
       <View style={[styles.row, { flexWrap: "wrap", gap: 8 }]}>
         {windows.map((w, i) => {
@@ -132,7 +138,194 @@ function ContactLinks({ place }: { place?: PlaceVerification }) {
   );
 }
 
-/** Shown when a pick matches what they've loved before (from their taste profile). */
+type Vis = NonNullable<Trip["visibility"]>;
+const VIS: { value: Vis; label: string; hint: string }[] = [
+  { value: "private", label: "Only me", hint: "Hidden from the community." },
+  { value: "followers", label: "Followers", hint: "People who follow you see it in their feed and on your profile." },
+  { value: "public", label: "Everyone", hint: "Shown on your profile and can rank in the top trips for this city." },
+];
+const VIS_LABELS = Object.fromEntries(VIS.map((v) => [v.value, v.label])) as Record<Vis, string>;
+const dayLabel = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+
+/** Sharing, as on the site: the public link on or off, who sees it in the community, and (for a dated trip) whether it shows while you're away. */
+function ShareOptions({
+  trip,
+  busy,
+  note,
+  onShared,
+  onSend,
+  onVisibility,
+}: {
+  trip: Trip;
+  busy: string | null;
+  note: string | null;
+  onShared: (on: boolean) => void;
+  onSend: () => void;
+  onVisibility: (patch: { visibility?: Vis; shareWhileAway?: boolean }) => void;
+}) {
+  const t = useTheme();
+  const vis = trip.visibility ?? "private";
+  const after = dayAfterTrip(trip.request?.startDate, trip.request?.days);
+  const away = !!after && !tripIsOver(trip.request) && vis !== "private";
+  const row = { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 } as const;
+  return (
+    <View style={{ backgroundColor: t.sunk, borderRadius: 16, padding: 14, gap: 12 }}>
+      <View style={row}>
+        <View style={{ flexShrink: 1 }}>
+          <Text style={{ color: t.ink, fontWeight: "700", fontSize: 16 }}>Public link</Text>
+          <Text style={{ color: t.muted, fontSize: 14 }}>{trip.shareToken ? "On: the link works for anyone" : "Off: only you can see this trip"}</Text>
+        </View>
+        <Switch accessibilityLabel="Public link" value={!!trip.shareToken} disabled={!!busy} onValueChange={onShared} />
+      </View>
+      {trip.shareToken ? <Button title="Send the link" onPress={onSend} /> : null}
+      <Text style={{ color: t.muted, fontSize: 14 }}>Anyone with the link can see the plan. Your ratings and the personal details you entered stay private.</Text>
+      <View style={{ gap: 8 }}>
+        <Text style={{ color: t.ink, fontWeight: "700", fontSize: 16 }}>In the community</Text>
+        <ChipRow options={VIS.map((v) => v.value)} labels={VIS_LABELS} value={[vis]} single onChange={([v]) => v && v !== vis && !busy && onVisibility({ visibility: v })} />
+        <Text style={{ color: t.muted, fontSize: 14 }}>{VIS.find((v) => v.value === vis)!.hint}</Text>
+      </View>
+      {away ? (
+        <View style={row}>
+          <View style={{ flexShrink: 1 }}>
+            <Text style={{ color: t.ink, fontWeight: "700", fontSize: 16 }}>Share while I&apos;m away</Text>
+            <Text style={{ color: t.muted, fontSize: 14 }}>
+              {trip.shareWhileAway ? "On: people can see it now, while you're there." : `Off: others see it from ${dayLabel(after!)}, once you're home, so nobody knows you're away.`}
+            </Text>
+          </View>
+          <Switch accessibilityLabel="Share while I'm away" value={!!trip.shareWhileAway} disabled={!!busy} onValueChange={(on) => onVisibility({ shareWhileAway: on })} />
+        </View>
+      ) : null}
+      {note ? <Status text={note} err /> : null}
+    </View>
+  );
+}
+
+/** A trip with several stops: the route, with how to get from one stop to the next, and other towns to swap in. */
+function RouteCard({
+  route,
+  readOnly,
+  busy,
+  onSwap,
+}: {
+  route: NonNullable<Trip["itinerary"]["route"]>;
+  readOnly?: boolean;
+  busy: string | null;
+  onSwap: (leg: number, city: string) => void;
+}) {
+  const t = useTheme();
+  const [open, setOpen] = useState<number | null>(null);
+  return (
+    <Card>
+      <Text style={{ color: t.ink, fontSize: 22, fontWeight: "800" }}>The route</Text>
+      {route.map((l, i) => (
+        <View key={`${l.city}-${i}`} style={{ gap: 6, borderTopWidth: i ? 1 : 0, borderColor: t.line, paddingTop: i ? 14 : 0 }}>
+          {i > 0 && l.transfer && (l.transfer.mode || l.transfer.duration) ? (
+            <Text style={{ color: t.faint, fontSize: 14 }}>
+              {[l.transfer.mode, l.transfer.duration].filter(Boolean).join(" · ")}
+              {l.transfer.note ? ` · ${l.transfer.note}` : ""}
+            </Text>
+          ) : null}
+          <View style={{ flexDirection: "row", alignItems: "baseline", gap: 10 }}>
+            <Text style={{ color: t.accent, fontWeight: "800", fontSize: 18 }}>{i + 1}</Text>
+            <Text style={{ color: t.ink, fontWeight: "800", fontSize: 19, flexShrink: 1 }}>
+              {l.city}
+              <Text style={{ color: t.muted, fontWeight: "500", fontSize: 15 }}>
+                {" "}
+                · {l.days} {l.days === 1 ? "day" : "days"}
+              </Text>
+            </Text>
+          </View>
+          {!!l.why && <P style={{ fontSize: 16 }}>{l.why}</P>}
+          {!!l.season && <Text style={{ color: t.muted, fontSize: 14.5 }}>{l.season}</Text>}
+          {!readOnly && !!l.alternatives?.length && (
+            <>
+              <Pressable onPress={() => setOpen(open === i ? null : i)} hitSlop={6}>
+                <Text style={{ color: t.accent, fontWeight: "600", fontSize: 15 }}>{open === i ? "Keep this stop" : "Swap this stop"}</Text>
+              </Pressable>
+              {open === i &&
+                (busy === `city-${i}` ? (
+                  <Loading text="Planning the new stop…" />
+                ) : (
+                  <View style={{ gap: 8 }}>
+                    {l.alternatives.map((a) => (
+                      <Pressable
+                        key={a.city}
+                        accessibilityRole="button"
+                        disabled={!!busy}
+                        onPress={() => onSwap(i, a.city)}
+                        style={{ backgroundColor: t.sunk, borderRadius: 14, padding: 12, gap: 2, opacity: busy ? 0.5 : 1 }}
+                      >
+                        <Text style={{ color: t.ink, fontWeight: "700", fontSize: 16 }}>{a.city}</Text>
+                        {!!a.why && <Text style={{ color: t.muted, fontSize: 14.5 }}>{a.why}</Text>}
+                      </Pressable>
+                    ))}
+                  </View>
+                ))}
+            </>
+          )}
+        </View>
+      ))}
+    </Card>
+  );
+}
+
+interface PulseView {
+  city: string;
+  updated: string;
+  /** Earlier lists exist, so "new" means new this month. */
+  hasHistory: boolean;
+  spots: { name: string; neighborhood: string; type: "bar" | "club"; style: string; when: string; door: string; why: string; hot: Stop["hot"] | null; mapsUrl?: string; since: string }[];
+}
+
+/** Going out: the city's bars and clubs of the moment (the night pulse), beyond the one or two in the plan. */
+function GoingOut({ city, clubsFirst }: { city: string; clubsFirst: boolean }) {
+  const t = useTheme();
+  const [pulse, setPulse] = useState<PulseView | null>(null);
+  const [tab, setTab] = useState<"bar" | "club">(clubsFirst ? "club" : "bar");
+  useEffect(() => {
+    let alive = true;
+    api<{ pulse: PulseView | null }>(`/api/nightlife?city=${encodeURIComponent(city)}`)
+      .then((r) => alive && setPulse(r.pulse))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [city]);
+  if (!pulse?.spots.length) return null;
+  const bars = pulse.spots.filter((s) => s.type === "bar");
+  const clubs = pulse.spots.filter((s) => s.type === "club");
+  const list = (tab === "club" && clubs.length) || !bars.length ? clubs : bars;
+  const recent = (since: string) => pulse.hasHistory && Date.now() - Date.parse(since) <= 40 * 864e5;
+  return (
+    <Card>
+      <View style={{ gap: 4 }}>
+        <Text style={{ color: t.ink, fontSize: 24, fontWeight: "800" }}>Going out in {pulse.city}</Text>
+        <Text style={{ color: t.muted, fontSize: 14.5 }}>Where people go now, from recent coverage. Updated {monthYear(pulse.updated) || "this month"}.</Text>
+      </View>
+      {bars.length > 0 && clubs.length > 0 && (
+        <ChipRow options={["bar", "club"] as const} labels={{ bar: "Drinks", club: "Dancing" }} value={[list === clubs ? "club" : "bar"]} single onChange={([v]) => v && setTab(v)} />
+      )}
+      {list.slice(0, 8).map((s, i) => (
+        <View key={s.name} style={{ gap: 5, borderTopWidth: i ? 1 : 0, borderColor: t.line, paddingTop: i ? 12 : 0 }}>
+          <Text style={{ color: t.ink, fontWeight: "800", fontSize: 17 }}>
+            {s.name}
+            {!!s.neighborhood && <Text style={{ color: t.muted, fontWeight: "500", fontSize: 14 }}> in {s.neighborhood}</Text>}
+            {recent(s.since) ? <Text style={{ color: t.accent, fontSize: 13, fontWeight: "700" }}>  NEW</Text> : null}
+          </Text>
+          <HotNow hot={s.hot} />
+          {!!s.why && <P style={{ fontSize: 16 }}>{s.why}</P>}
+          {!!(s.style || s.when || s.door) && <Text style={{ color: t.muted, fontSize: 14 }}>{[s.style, s.when, s.door].filter(Boolean).join(" · ")}</Text>}
+          {!!s.mapsUrl && (
+            <Pressable onPress={() => open(s.mapsUrl)} hitSlop={6}>
+              <Text style={{ color: t.accent, fontSize: 14, fontWeight: "600" }}>Map</Text>
+            </Pressable>
+          )}
+        </View>
+      ))}
+    </Card>
+  );
+}
+
 /** What a stop costs, roughly ("EGP 500 a boat for an hour (~$10)", "Free"). */
 function Cost({ text }: { text?: string }) {
   const t = useTheme();
@@ -152,9 +345,9 @@ const monthYear = (d?: string) => {
 };
 
 /** A bar or club that recent sources call one of the places to go now, with those sources. */
-function HotNow({ p }: { p: Stop }) {
+function HotNow({ hot }: { hot?: Stop["hot"] | null }) {
   const t = useTheme();
-  const sources = p.hot?.sources ?? [];
+  const sources = hot?.sources ?? [];
   if (!sources.length) return null;
   return (
     <View style={{ alignSelf: "flex-start", backgroundColor: t.clay, borderRadius: 14, paddingVertical: 4, paddingHorizontal: 12, flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "baseline" }}>
@@ -174,6 +367,7 @@ function HotNow({ p }: { p: Stop }) {
   );
 }
 
+/** Shown when a pick matches what they've loved before (from their taste profile). */
 function ForYou({ text }: { text?: string }) {
   const t = useTheme();
   if (!text) return null;
@@ -205,7 +399,11 @@ function IconBtn({ label, icon, on, onColor, onPress, disabled }: { label: strin
   );
 }
 
-export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (t: Trip) => void }) {
+/**
+ * A trip, as on the site. `readOnly` is a plan that isn't yours (a destination's itinerary on
+ * Browse, a traveler's trip): no saving, rating, swapping, rebuilding or hotel search.
+ */
+export function TripView({ trip: initial, onChange, readOnly }: { trip: Trip; onChange?: (t: Trip) => void; readOnly?: boolean }) {
   const t = useTheme();
   const [trip, setTrip] = useState(initial);
   const [day, setDay] = useState(0);
@@ -224,6 +422,7 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
   // price in dollars becomes the tier it buys there.
   const [scale, setScale] = useState<StayScale | null>(null);
   useEffect(() => {
+    if (readOnly) return;
     let gone = false;
     api<{ scale: StayScale | null }>(`/api/stay-scale?destination=${encodeURIComponent(initial.destination)}`)
       .then((r) => {
@@ -236,11 +435,34 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
     return () => {
       gone = true;
     };
-  }, [initial.id, initial.destination]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [initial.id, initial.destination, readOnly]); // eslint-disable-line react-hooks/exhaustive-deps
   const [showStay, setShowStay] = useState(false);
   const [gallery, setGallery] = useState<GalleryTarget | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => setTrip(initial), [initial]);
+  const router = useRouter();
+
+  // Planning together: who's on this trip and who's in for each stop (as on the site).
+  const isMember = trip.role === "member";
+  const [tog, setTog] = useState<Together | null>(null);
+  const [togFriends, setTogFriends] = useState<PersonDTO[]>([]);
+  const [togOpen, setTogOpen] = useState(false);
+  useEffect(() => {
+    if (readOnly || !initial.id) return;
+    let gone = false;
+    api<{ together: Together; friends: PersonDTO[] }>(`/api/trips/${initial.id}/together`)
+      .then((r) => {
+        if (gone) return;
+        setTog(r.together);
+        setTogFriends(r.friends ?? []);
+      })
+      .catch(() => {});
+    return () => {
+      gone = true;
+    };
+  }, [initial.id, readOnly]);
+  const togetherOn = (tog?.people.length ?? 0) > 1;
+  const me = tog?.people.find((p) => p.me);
 
   const it = trip.itinerary;
   const dIdx = Math.min(day, it.days.length - 1);
@@ -293,6 +515,32 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
       setHint("");
     }
   };
+  const myReaction = (k: string): 1 | -1 | 0 => (me ? (tog?.reactions[k]?.[me.userId] ?? 0) : 0);
+  async function react(k: string, v: 1 | -1) {
+    if (!tog || !me) return;
+    const value = myReaction(k) === v ? 0 : v;
+    const next: Together = { ...tog, reactions: { ...tog.reactions, [k]: { ...(tog.reactions[k] ?? {}) } } };
+    if (value) next.reactions[k]![me.userId] = value;
+    else delete next.reactions[k]![me.userId];
+    setTog(next);
+    if (value === -1 && !k.startsWith("h-")) {
+      setSwapOpen(k);
+      setHint("");
+    }
+    try {
+      const r = await api<{ together: Together }>(`/api/trips/${trip.id}/together/react`, { method: "POST", json: { item: k, value } });
+      setTog(r.together);
+    } catch (e) {
+      fail(e);
+    }
+  }
+  /** Thumbs: your own feedback, and on a shared trip also what you tell your friends. */
+  const thumb = (k: string, v: 1 | -1) => {
+    if (togetherOn) void react(k, v);
+    if (!isMember) vote(k, v);
+  };
+  const pressed = (k: string, v: 1 | -1) => (togetherOn && isMember ? myReaction(k) === v : trip.votes[k] === v);
+
   async function edit(body: Record<string, unknown>, key: string) {
     setBusy(key);
     setMsg(null);
@@ -307,17 +555,39 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
       setBusy(null);
     }
   }
-  async function share() {
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareNote, setShareNote] = useState<string | null>(null);
+  /** Turn the public link on or off. */
+  async function setShared(enabled: boolean) {
+    setBusy("share");
+    setShareNote(null);
     try {
-      let token = trip.shareToken;
-      if (!token) {
-        const { trip: next } = await api<{ trip: Trip }>(`/api/trips/${trip.id}/share`, { method: "POST", json: { enabled: true } });
-        apply(next);
-        token = next.shareToken;
-      }
-      if (token) await Share.share({ message: `${it.title}: ${WEB}/t/${token}`, url: `${WEB}/t/${token}` });
+      const { trip: next } = await api<{ trip: Trip }>(`/api/trips/${trip.id}/share`, { method: "POST", json: { enabled } });
+      apply(next);
     } catch (e) {
-      fail(e);
+      setShareNote((e as Error).message || "Couldn't change the link. Try again.");
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function sendLink() {
+    const token = trip.shareToken;
+    if (token) await Share.share({ message: `${it.title}: ${WEB}/t/${token}`, url: `${WEB}/t/${token}` }).catch(() => {});
+  }
+  /** Who sees it in the community, and whether a dated trip shows before it's over. */
+  async function setVisibility(patch: { visibility?: Vis; shareWhileAway?: boolean }) {
+    setBusy("visibility");
+    setShareNote(null);
+    try {
+      await api(`/api/trips/${trip.id}/visibility`, { method: "PUT", json: patch });
+      apply({ ...trip, ...patch });
+    } catch (e) {
+      const code = e instanceof ApiError ? e.code : undefined;
+      setShareNote(
+        `${(e as Error).message}${code === "needs_email" ? " Sign in on the You tab first." : code === "needs_profile" ? " Create your community profile on pylos.ai first." : ""}`,
+      );
+    } finally {
+      setBusy(null);
     }
   }
   async function findHotels() {
@@ -366,19 +636,47 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
             </Text>
           </View>
         ) : null}
-        <View style={[styles.row, { marginTop: 4 }]}>
-          <Button ghost title={trip.saved ? "Saved" : "Save"} onPress={() => update({ saved: !trip.saved })} />
-          <Button ghost title="Share" onPress={share} />
-        </View>
+        {!readOnly && (
+          <View style={[styles.row, { marginTop: 4 }]}>
+            {!isMember && <Button ghost title={trip.saved ? "Saved" : "Save"} onPress={() => update({ saved: !trip.saved })} />}
+            {/* Each opens its options below, and closes them again. */}
+            {!isMember && <Button ghost title="Share" onPress={() => setShareOpen(!shareOpen)} />}
+            <Button ghost title={togetherOn ? `Planning with ${tog!.people.length - 1}` : "Plan together"} onPress={() => setTogOpen(!togOpen)} />
+          </View>
+        )}
+        {!readOnly && togOpen && (
+          <TogetherPanel
+            tripId={trip.id}
+            isOwner={!isMember}
+            together={tog}
+            friends={togFriends}
+            onChange={setTog}
+            onLeft={() => (router.canGoBack() ? router.back() : router.replace("/trips"))}
+          />
+        )}
+        {!readOnly && shareOpen && (
+          <ShareOptions trip={trip} busy={busy} note={shareNote} onShared={setShared} onSend={sendLink} onVisibility={setVisibility} />
+        )}
       </View>
 
-      <View style={{ flexDirection: "row", gap: 4 }} accessibilityLabel="Rate this trip">
-        {[1, 2, 3, 4, 5].map((n) => (
-          <Pressable key={n} accessibilityRole="button" accessibilityLabel={`Rate ${n} of 5`} onPress={() => update({ rating: trip.rating === n ? 0 : n })} hitSlop={6}>
-            <Text style={{ fontSize: 30, color: n <= trip.rating ? t.saffron : t.line }}>★</Text>
-          </Pressable>
-        ))}
-      </View>
+      {it.mode === "multi" && !!it.route?.length && (
+        <RouteCard
+          route={it.route}
+          readOnly={readOnly}
+          busy={busy}
+          onSwap={(leg, city) => edit({ action: "swap_city", leg, city }, `city-${leg}`)}
+        />
+      )}
+
+      {!readOnly && !isMember && (
+        <View style={{ flexDirection: "row", gap: 4 }} accessibilityLabel="Rate this trip">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <Pressable key={n} accessibilityRole="button" accessibilityLabel={`Rate ${n} of 5`} onPress={() => update({ rating: trip.rating === n ? 0 : n })} hitSlop={6}>
+              <Text style={{ fontSize: 30, color: n <= trip.rating ? t.saffron : t.line }}>★</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
 
       {/* day tabs */}
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4, backgroundColor: t.sunk, borderRadius: 999, padding: 4, alignSelf: "flex-start" }}>
@@ -400,12 +698,16 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
       </View>
 
       <Card>
+        {it.mode === "multi" && !!d.city && (
+          <Text style={{ color: t.muted, fontFamily: FONT.display, fontSize: 12.5, letterSpacing: 2, textTransform: "uppercase" }}>{d.city}</Text>
+        )}
         <Text style={{ color: t.ink, fontSize: 24, fontWeight: "800", letterSpacing: -0.6, lineHeight: 28 }}>{d.theme}</Text>
+        {!!d.arrival && <Text style={{ color: t.muted, fontSize: 15.5, fontStyle: "italic" }}>{d.arrival}</Text>}
         <View style={styles.row}>
           <Button ghost title="Open in Google Maps" onPress={() => open(googleMapsDayUrl(d.stops, trip.destination))} />
-          <Button ghost title="Rebuild day" disabled={!!busy} onPress={() => setRebuildOpen(!rebuildOpen)} />
+          {!readOnly && <Button ghost title="Rebuild day" disabled={!!busy} onPress={() => setRebuildOpen(!rebuildOpen)} />}
         </View>
-        {rebuildOpen && (
+        {!readOnly && rebuildOpen && (
           <View style={{ backgroundColor: t.sunk, borderRadius: 16, padding: 14, gap: 10 }}>
             <P muted style={{ fontSize: 14 }}>
               {d.stops.some((s) => s.locked) ? "Locked stops stay put. Everything else gets replaced." : "Tip: lock the stops you love first. They'll stay put."}
@@ -456,7 +758,7 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
                     {s.name}
                     {!!s.neighborhood && <Text style={{ color: t.muted, fontWeight: "500", fontSize: 14 }}> in {s.neighborhood}</Text>}
                   </Text>
-                  <HotNow p={s} />
+                  <HotNow hot={s.hot} />
                   <P>{s.why}</P>
                   <Cost text={s.cost} />
                   <ForYou text={s.forYou} />
@@ -475,13 +777,14 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
                     )}
                     <ContactLinks place={s.place} />
                   </View>
-                  <View style={{ flexDirection: "row", gap: 6 }}>
+                  {!readOnly && <View style={{ flexDirection: "row", gap: 6 }}>
                     <IconBtn label={s.locked ? `Unlock ${s.name}` : `Lock ${s.name}`} icon={s.locked ? "lock-closed" : "lock-open-outline"} on={!!s.locked} onPress={() => edit({ action: "lock", day: dIdx, index: si, locked: !s.locked }, `lock-${k}`)} />
                     <IconBtn label={`Swap ${s.name}`} icon="swap-horizontal" disabled={!!busy} onPress={() => setSwapOpen(swapOpen === k ? null : k)} />
-                    <IconBtn label={`Good pick: ${s.name}`} icon="thumbs-up-outline" on={v === 1} onColor={t.good} onPress={() => vote(k, 1)} />
-                    <IconBtn label={`Not for me: ${s.name}`} icon="thumbs-down-outline" on={v === -1} onColor={t.bad} onPress={() => vote(k, -1)} />
-                  </View>
-                  {swapOpen === k && (
+                    <IconBtn label={togetherOn ? `I'm in: ${s.name}` : `Good pick: ${s.name}`} icon="thumbs-up-outline" on={pressed(k, 1)} onColor={t.good} onPress={() => thumb(k, 1)} />
+                    <IconBtn label={togetherOn ? `Pass: ${s.name}` : `Not for me: ${s.name}`} icon="thumbs-down-outline" on={pressed(k, -1)} onColor={t.bad} onPress={() => thumb(k, -1)} />
+                  </View>}
+                  {togetherOn && <WhoIsIn people={tog!.people} by={tog!.reactions[k]} />}
+                  {!readOnly && swapOpen === k && (
                     <View style={{ backgroundColor: t.sunk, borderRadius: 16, padding: 14, gap: 10 }}>
                       {busy === `swap-${k}` ? (
                         <Loading text="Finding another option for this slot" />
@@ -561,18 +864,21 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
                   )}
                   <ContactLinks place={h.place} />
                 </View>
-                <View style={[styles.row, { justifyContent: "flex-end" }]}>
+                {!readOnly && <View style={[styles.row, { justifyContent: "flex-end" }]}>
                   <View style={{ flexDirection: "row", gap: 6 }}>
-                    <IconBtn label={`Good pick: ${h.name}`} icon="thumbs-up-outline" on={trip.votes[`h-${i}`] === 1} onColor={t.good} onPress={() => vote(`h-${i}`, 1)} />
-                    <IconBtn label={`Not for me: ${h.name}`} icon="thumbs-down-outline" on={trip.votes[`h-${i}`] === -1} onColor={t.bad} onPress={() => vote(`h-${i}`, -1)} />
+                    <IconBtn label={togetherOn ? `I'm in: ${h.name}` : `Good pick: ${h.name}`} icon="thumbs-up-outline" on={pressed(`h-${i}`, 1)} onColor={t.good} onPress={() => thumb(`h-${i}`, 1)} />
+                    <IconBtn label={togetherOn ? `Pass: ${h.name}` : `Not for me: ${h.name}`} icon="thumbs-down-outline" on={pressed(`h-${i}`, -1)} onColor={t.bad} onPress={() => thumb(`h-${i}`, -1)} />
                   </View>
-                </View>
+                </View>}
+                {!readOnly && togetherOn && <WhoIsIn people={tog!.people} by={tog!.reactions[`h-${i}`]} />}
               </View>
             ))}
             <P muted style={{ fontSize: 14 }}>Prices are typical nightly estimates unless marked live.</P>
             <Rentals trip={trip} lead="Rather rent a whole place?" />
-            {showStay ? stayControls : <Button ghost title="Change hotel style or price" onPress={() => setShowStay(true)} />}
+            {readOnly ? null : showStay ? stayControls : <Button ghost title="Change hotel style or price" onPress={() => setShowStay(true)} />}
           </>
+        ) : readOnly ? (
+          <Rentals trip={trip} lead="Find a place on Airbnb" alone />
         ) : (
           <>
             {stayControls}
@@ -580,6 +886,11 @@ export function TripView({ trip: initial, onChange }: { trip: Trip; onChange?: (
           </>
         )}
       </Card>
+
+      {/* Trips that asked for nightlife: the city's bars and clubs of the moment. */}
+      {!readOnly && it.mode !== "multi" && (trip.request.interests?.includes("Nightlife") || trip.request.clubs) && (
+        <GoingOut city={trip.request.destination || trip.destination} clubsFirst={!!trip.request.clubs} />
+      )}
 
       {!!it.notes?.length && (
         <Card>

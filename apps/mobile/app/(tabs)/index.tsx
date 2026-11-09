@@ -1,259 +1,230 @@
-import {
-  ABOUT_OPTIONS,
-  AGE_BANDS,
-  BUDGETS,
-  INTERESTS,
-  MAX_DAYS,
-  PACES,
-  PARTIES,
-  STAY_STYLES,
-  STAY_TIERS,
-  stayTier,
-  tierLabel,
-  type StayScale,
-  type Trip,
-  type TripRequest,
-} from "@travel/core";
-import { useLocalSearchParams } from "expo-router";
-import { useEffect, useRef, useState } from "react";
-import { Pressable, Switch, TextInput, View } from "react-native";
+import { DESTINATION_BY_KEY, DESTINATION_TAGS, flag, monthsLabel, type BrowseDestination, type DestinationTag, type ForYouPick } from "@travel/core";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import { api } from "../../src/api";
-import { useTheme } from "../../src/theme";
-import { TripView } from "../../src/TripView";
-import { BuildBar, Button, Card, ChipRow, H1, Label, Loading, P, Screen, Status, styles, Text } from "../../src/ui";
+import { useAuth } from "../../src/auth";
+import { Globe } from "../../src/Globe";
+import { FONT, useTheme } from "../../src/theme";
+import { Badge, Button, Card, Chip, Eyebrow, H1, H2, Loading, P, Screen, Status, Text } from "../../src/ui";
 
-const ABOUT_LABELS = {
-  "LGBTQ+ traveler": "LGBTQ+",
-  "Eats halal": "Halal",
-  Vegetarian: "Vegetarian",
-  "Doesn't drink alcohol": "Sober",
-  "Needs step-free access": "Step-free",
-  "First time visiting": "First visit",
-  "Has been before": "Been before",
-} as const;
-const PARTY_LABELS = { Solo: "Solo", Couple: "Couple", "Family with kids": "Family", "Group of friends": "Friends" } as const;
-const BUDGET_LABELS = { Budget: "$", "Mid-range": "$$", Splurge: "$$$" } as const;
-const MODES = ["single", "multi"] as const;
-const MODE_LABELS = { single: "One place", multi: "Several stops" } as const;
+interface ForYou {
+  picks: ForYouPick[];
+  placesLogged: number;
+  needMore: boolean;
+  member: boolean;
+  signedIn: boolean;
+}
 
-const blank: TripRequest = {
-  mode: "single",
-  destination: "",
-  days: 3,
-  startDate: null,
-  party: "Couple",
-  age: "25–34",
-  about: [],
-  budget: "Mid-range",
-  interests: ["Food"],
-  clubs: false,
-  pace: "Balanced",
-  extra: "",
-  stay: { on: true, styles: ["Boutique"], price: "$$" },
-  with: [],
-};
+const where = (d: Pick<BrowseDestination, "kind" | "country">) => (d.kind === "region" ? `Several stops · ${d.country}` : d.country);
 
-export default function Plan() {
+/** The site's home page, for the phone: a globe of this season's places, picks for you, and what's trending. */
+export default function Browse() {
   const t = useTheme();
-  const params = useLocalSearchParams<{ from?: string }>();
-  const [req, setReq] = useState<TripRequest>(blank);
-  const [more, setMore] = useState(false);
-  const [dateText, setDateText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ text: string; err?: boolean } | null>(null);
-  const [trip, setTrip] = useState<Trip | null>(null);
-  const set = <K extends keyof TripRequest>(k: K, v: TripRequest[K]) => setReq((r) => ({ ...r, [k]: v }));
-  const input = { backgroundColor: t.bg, borderColor: t.line, borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 16, color: t.ink };
+  const router = useRouter();
+  const { session } = useAuth();
+  const { width } = useWindowDimensions();
+  const [dests, setDests] = useState<BrowseDestination[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [tag, setTag] = useState<DestinationTag | "All">("All");
+  const [selected, setSelected] = useState<string | null>(null);
+  const [forYou, setForYou] = useState<ForYou | null>(null);
+  // A finger is turning the globe: the page holds still meanwhile.
+  const [turning, setTurning] = useState(false);
 
-  useEffect(() => {
-    if (!params.from) return;
-    api<{ trip: Trip }>(`/api/trips/${params.from}`)
-      .then(({ trip }) => {
-        setReq({ ...blank, ...trip.request, stay: { ...trip.request.stay, price: stayTier(trip.request.stay?.price) }, startDate: null });
-        setTrip(null);
-        setMsg({ text: "Loaded your earlier request. Adjust anything, then build." });
-      })
-      .catch(() => {});
-  }, [params.from]);
+  const load = useCallback(() => {
+    setErr(null);
+    api<{ destinations: BrowseDestination[] }>("/api/browse")
+      .then((r) => setDests(r.destinations))
+      .catch((e) => setErr((e as Error).message));
+  }, []);
+  useEffect(load, [load]);
 
-  // Nightlife: get the city's bars and clubs of the moment ready while they finish the form.
-  const warmed = useRef(new Set<string>());
-  useEffect(() => {
-    const dest = req.destination.trim();
-    if (req.mode !== "single" || dest.length < 3 || !req.interests.includes("Nightlife")) return;
-    const key = dest.toLowerCase();
-    if (warmed.current.has(key)) return;
-    const t = setTimeout(() => {
-      warmed.current.add(key);
-      api("/api/nightlife", { method: "POST", json: { destination: dest } }).catch(() => {});
-    }, 2000);
-    return () => clearTimeout(t);
-  }, [req.mode, req.destination, req.interests]);
-
-  // What hotels cost where they're going, so $ to $$$$ can show local prices (cached per place).
-  const [scale, setScale] = useState<{ dest: string; scale: StayScale | null } | null>(null);
-  useEffect(() => {
-    const dest = req.destination.trim();
-    if (!req.stay.on || dest.length < 3) return;
-    const t = setTimeout(() => {
-      api<{ scale: StayScale | null }>(`/api/stay-scale?destination=${encodeURIComponent(dest)}`)
-        .then((r) => setScale({ dest, scale: r.scale }))
+  // Picks follow the places logged, so look again on coming back (after a photo scan, say).
+  const userId = session?.user.id;
+  useFocusEffect(
+    useCallback(() => {
+      if (!userId) return;
+      api<ForYou>("/api/browse/foryou")
+        .then(setForYou)
         .catch(() => {});
-    }, 900);
-    return () => clearTimeout(t);
-  }, [req.destination, req.stay.on]);
-  const localScale = scale && scale.dest.toLowerCase() === req.destination.trim().toLowerCase() ? scale.scale : null;
+    }, [userId]),
+  );
 
-  async function build() {
-    if (req.destination.trim().length < 2) return setMsg({ text: "Add a destination first.", err: true });
-    setBusy(true);
-    setMsg(null);
-    try {
-      const { trip } = await api<{ trip: Trip }>("/api/trips", { method: "POST", json: req });
-      setTrip(trip);
-    } catch (e) {
-      setMsg({ text: (e as Error).message, err: true });
-    } finally {
-      setBusy(false);
-    }
-  }
+  const shown = useMemo(() => (dests ?? []).filter((d) => tag === "All" || d.tags.includes(tag)), [dests, tag]);
+  const markers = useMemo(() => {
+    const max = Math.max(1, ...shown.map((d) => d.score));
+    return shown.map((d) => ({ key: d.key, name: d.name, sub: d.country, lat: d.lat, lng: d.lng, heat: d.score / max }));
+  }, [shown]);
+  const current = dests?.find((d) => d.key === selected) ?? null;
+  const guest = !session || !!session.user.is_anonymous;
+  const member = !!forYou?.member;
+  const open = (key: string) => router.push(`/d/${key}`);
+  const planHere = (d: BrowseDestination) =>
+    router.push({ pathname: "/plan", params: { destination: d.kind === "region" ? d.name : `${d.name}, ${d.country}`, days: String(d.sampleDays), mode: d.kind === "region" ? "multi" : "single", at: String(Date.now()) } });
+  // Two cards a row: the page's 16 padding each side and 12 between them.
+  const cardWidth = Math.floor((width - 44) / 2);
 
   return (
-    <Screen>
+    <Screen scrollEnabled={!turning}>
+      <View style={{ gap: 8, paddingTop: 4 }}>
+        <Eyebrow>Trips planned the local way</Eyebrow>
+        <H1>Where to next?</H1>
+        <P muted>Turn the globe and tap a pin for an itinerary you can fit to your days, and the best-rated trips there. Pins are this season&apos;s trending places.</P>
+      </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16, flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}>
+        {(["All", ...DESTINATION_TAGS] as const).map((x) => (
+          <Chip key={x} label={x} on={tag === x} onPress={() => setTag(x)} />
+        ))}
+      </ScrollView>
+
+      {err ? (
+        <View style={{ gap: 10 }}>
+          <Status text={err} err />
+          {!dests ? <Button ghost title="Try again" onPress={load} /> : null}
+        </View>
+      ) : !dests ? (
+        <Loading text="Finding this season's places…" />
+      ) : null}
+
+      <Globe markers={markers} selected={selected} onSelect={setSelected} onActive={setTurning} size={Math.min(width - 32, 420)} />
+
       <Card>
-        <H1>Where are you headed?</H1>
-        <P muted>Tell us a little about you. We&apos;ll build a trip around what locals actually do.</P>
-        <View style={styles.field}>
-          <Label>Kind of trip</Label>
-          <ChipRow
-            options={MODES}
-            labels={MODE_LABELS}
-            value={[req.mode]}
-            single
-            onChange={([m]) =>
-              m && setReq((r) => ({ ...r, mode: m, days: m === "multi" ? Math.max(r.days, 5) : Math.min(r.days, MAX_DAYS.single) }))
-            }
-          />
-        </View>
-        <View style={styles.field}>
-          <Label>{req.mode === "multi" ? "Country or region" : "Destination"}</Label>
-          <TextInput
-            style={input}
-            value={req.destination}
-            onChangeText={(v) => set("destination", v)}
-            placeholder={req.mode === "multi" ? "Egypt, Japan, the Amalfi Coast" : "City or region, e.g. Mexico City"}
-            placeholderTextColor={t.muted}
-          />
-        </View>
-        <View style={styles.field}>
-          <Label>Days</Label>
-          <View style={[styles.row, { borderWidth: 1, borderColor: t.line, borderRadius: 999, alignSelf: "flex-start", backgroundColor: t.bg }]}>
-            <Pressable accessibilityLabel="Fewer days" onPress={() => set("days", Math.max(1, req.days - 1))} style={{ padding: 10, paddingHorizontal: 16 }}>
-              <Text style={{ color: t.ink, fontSize: 18 }}>−</Text>
-            </Pressable>
-            <Text style={{ color: t.ink, fontWeight: "600", minWidth: 56, textAlign: "center" }}>
-              {req.days} {req.days === 1 ? "day" : "days"}
-            </Text>
-            <Pressable accessibilityLabel="More days" onPress={() => set("days", Math.min(MAX_DAYS[req.mode], req.days + 1))} style={{ padding: 10, paddingHorizontal: 16 }}>
-              <Text style={{ color: t.ink, fontSize: 18 }}>+</Text>
-            </Pressable>
-          </View>
-        </View>
-        <View style={styles.field}>
-          <Label>Start date (optional, YYYY-MM-DD, for live hotel rates)</Label>
-          <TextInput
-            style={input}
-            value={dateText}
-            onChangeText={(v) => {
-              setDateText(v);
-              set("startDate", /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
-            }}
-            placeholder="2026-12-01"
-            placeholderTextColor={t.muted}
-            keyboardType="numbers-and-punctuation"
-            maxLength={10}
-          />
-          {!!dateText && !req.startDate && <Status text="Use the format YYYY-MM-DD, or leave it blank." err />}
-        </View>
-        <View style={styles.field}>
-          <Label>Who&apos;s going</Label>
-          <ChipRow options={PARTIES} labels={PARTY_LABELS} value={[req.party]} single onChange={([v]) => v && set("party", v)} />
-        </View>
-        <View style={styles.field}>
-          <Label>Age</Label>
-          <ChipRow options={AGE_BANDS} value={req.age ? [req.age] : []} single onChange={([v]) => v && set("age", v)} />
-        </View>
-        <View style={styles.field}>
-          <Label>Budget</Label>
-          <ChipRow options={BUDGETS} labels={BUDGET_LABELS} value={[req.budget]} single onChange={([v]) => v && set("budget", v)} />
-        </View>
-        <View style={styles.field}>
-          <Label>About you (optional, private to you)</Label>
-          <ChipRow options={ABOUT_OPTIONS} labels={ABOUT_LABELS} value={req.about} onChange={(v) => set("about", v)} />
-        </View>
-        <View style={[styles.row, { justifyContent: "space-between", backgroundColor: t.bg, borderRadius: 12, padding: 12 }]}>
-          <View style={{ flexShrink: 1 }}>
-            <Text style={{ color: t.ink, fontWeight: "700" }}>Suggest places to stay</Text>
-            <Text style={{ color: t.muted, fontSize: 13 }}>Three hotel options that fit the trip.</Text>
-          </View>
-          <Switch value={req.stay.on} onValueChange={(on) => set("stay", { ...req.stay, on })} />
-        </View>
-        {req.stay.on && (
+        {current ? (
           <>
-            <View style={styles.field}>
-              <Label>Style</Label>
-              <ChipRow options={STAY_STYLES} value={req.stay.styles} onChange={(styles) => set("stay", { ...req.stay, styles })} />
+            <View style={{ gap: 6 }}>
+              <Eyebrow>
+                {flag(current.countryCode)} {where(current)}
+              </Eyebrow>
+              <H2>{current.name}</H2>
+              <Badges d={current} />
             </View>
-            <View style={styles.field}>
-              <Label>Per night</Label>
-              <ChipRow
-                options={STAY_TIERS}
-                labels={Object.fromEntries(STAY_TIERS.map((x) => [x, tierLabel(x, localScale)]))}
-                value={[stayTier(req.stay.price)]}
-                single
-                onChange={([price]) => price && set("stay", { ...req.stay, price })}
-              />
-              <Text style={{ color: t.muted, fontSize: 13 }}>{localScale ? `What a night for two costs in ${req.destination.trim()}.` : "Judged by local prices."}</Text>
+            <P>{current.blurb}</P>
+            <P muted style={{ fontSize: 15.5 }}>
+              Best months: {monthsLabel(current.bestMonths)}
+            </P>
+            <View style={{ gap: 10 }}>
+              <Button title={`See ${current.sampleDays} days in ${current.name}`} onPress={() => open(current.key)} />
+              <Button ghost title="Plan my own trip here" onPress={() => planHere(current)} />
             </View>
           </>
+        ) : (
+          <View style={{ gap: 8 }}>
+            <H2>Pick a place to start</H2>
+            <P muted>Tap a pin on the globe, or choose one of the places trending now, below.</P>
+          </View>
         )}
-        <Pressable onPress={() => setMore(!more)}>
-          <Text style={{ color: t.accent, fontWeight: "600" }}>{more ? "Fewer preferences" : "More preferences"}</Text>
-        </Pressable>
-        {more && (
-          <>
-            <View style={styles.field}>
-              <Label>Into</Label>
-              <ChipRow
-                options={INTERESTS}
-                value={req.interests}
-                onChange={(v) => setReq((r) => ({ ...r, interests: v, clubs: v.includes("Nightlife") ? r.clubs : false }))}
-              />
-            </View>
-            {/* A night out is drinks; dancing until late is its own ask. */}
-            {req.interests.includes("Nightlife") && req.party !== "Family with kids" && (
-              <View style={[styles.row, { justifyContent: "space-between", backgroundColor: t.bg, borderRadius: 12, padding: 12 }]}>
-                <View style={{ flexShrink: 1 }}>
-                  <Text style={{ color: t.ink, fontWeight: "700" }}>Clubs and dancing too</Text>
-                  <Text style={{ color: t.muted, fontSize: 13 }}>Out late at the clubs locals go to. Otherwise nights are drinks at good bars.</Text>
-                </View>
-                <Switch accessibilityLabel="Clubs and dancing too" value={req.clubs} onValueChange={(clubs) => set("clubs", clubs)} />
-              </View>
-            )}
-            <View style={styles.field}>
-              <Label>Pace</Label>
-              <ChipRow options={PACES} value={[req.pace]} single onChange={([v]) => v && set("pace", v)} />
-            </View>
-            <View style={styles.field}>
-              <Label>Anything else</Label>
-              <TextInput style={[input, { minHeight: 70 }]} multiline maxLength={500} value={req.extra} onChangeText={(v) => set("extra", v)} placeholder="Anniversary trip, hate crowds…" placeholderTextColor={t.muted} />
-            </View>
-          </>
-        )}
-        <Button title={busy ? "Building…" : "Build my trip"} disabled={busy} onPress={build} />
-        {busy ? <BuildBar days={req.days} /> : <Status text={msg?.text} err={msg?.err} />}
       </Card>
-      {trip && <TripView trip={trip} />}
+
+      {/* For you: predictions from logged places, or (with an account) an invitation to log them. */}
+      {member && forYou && forYou.picks.length > 0 ? (
+        <Card>
+          <View style={{ gap: 6 }}>
+            <Eyebrow>Picked for you</Eyebrow>
+            <H2>Where you&apos;ll probably love next</H2>
+            <P muted style={{ fontSize: 15.5 }}>
+              Based on the {forYou.placesLogged} places you&apos;ve logged.
+            </P>
+          </View>
+          <View style={{ gap: 10 }}>
+            {forYou.picks.map((p) => {
+              const d = DESTINATION_BY_KEY[p.key];
+              if (!d) return null;
+              return (
+                <Pressable
+                  key={p.key}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${d.name}, ${d.country}. ${p.why}`}
+                  onPress={() => open(p.key)}
+                  style={({ pressed }) => ({ backgroundColor: t.sunk, borderRadius: 16, padding: 14, gap: 4, opacity: pressed ? 0.85 : 1 })}
+                >
+                  <Eyebrow>
+                    {flag(d.countryCode)} {d.country}
+                  </Eyebrow>
+                  <Text style={{ color: t.ink, fontFamily: FONT.display, fontSize: 20 }}>{d.name}</Text>
+                  <Text style={{ color: t.ink, fontSize: 16, lineHeight: 22 }}>{p.why}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </Card>
+      ) : forYou?.signedIn && forYou.needMore && !guest ? (
+        <Card style={{ backgroundColor: t.ochre, borderColor: t.ochre }}>
+          <View style={{ gap: 6 }}>
+            <Text style={{ color: t.ink, fontSize: 18, fontWeight: "700" }}>Get destinations picked for you</Text>
+            <P style={{ fontSize: 16 }}>
+              Add {Math.max(1, 2 - forYou.placesLogged)} more {2 - forYou.placesLogged === 1 ? "place" : "places"} you&apos;ve been and Pylos will predict where you&apos;ll love next. Your
+              photos can find them for you.
+            </P>
+          </View>
+          <Button ghost title="Find my trips" onPress={() => router.push("/you")} />
+        </Card>
+      ) : null}
+
+      {dests && shown.length > 0 ? (
+        <View style={{ gap: 14 }}>
+          <View style={{ gap: 6 }}>
+            <H2>Trending now</H2>
+            <P muted style={{ fontSize: 15.5 }}>
+              In season this month, named on 2026 trend lists, or popular on Pylos.
+            </P>
+          </View>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+            {shown.map((d) => (
+              <Pressable
+                key={d.key}
+                accessibilityRole="button"
+                accessibilityLabel={`${d.name}, ${where(d)}. ${d.blurb}`}
+                onPress={() => open(d.key)}
+                style={({ pressed }) => ({
+                  width: cardWidth,
+                  backgroundColor: t.surface,
+                  borderColor: d.key === selected ? t.ink : t.line,
+                  borderWidth: 1,
+                  borderRadius: 18,
+                  padding: 14,
+                  gap: 6,
+                  opacity: pressed ? 0.85 : 1,
+                })}
+              >
+                <Text numberOfLines={1} style={{ color: t.muted, fontFamily: FONT.display, fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase" }}>
+                  {flag(d.countryCode)} {d.kind === "region" ? `${d.country} · stops` : d.country}
+                </Text>
+                <Text numberOfLines={2} style={{ color: t.ink, fontFamily: FONT.display, fontSize: 19, lineHeight: 23 }}>
+                  {d.name}
+                </Text>
+                <Text numberOfLines={3} style={{ color: t.muted, fontSize: 15, lineHeight: 20 }}>
+                  {d.blurb}
+                </Text>
+                <View style={{ marginTop: "auto", paddingTop: 4 }}>
+                  {d.inSeason ? <Badge text="In season" tone="season" /> : <Text style={{ color: t.muted, fontSize: 14 }}>Best {monthsLabel(d.bestMonths)}</Text>}
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {guest && !member ? (
+        <Card style={{ backgroundColor: t.hero, borderColor: t.hero }}>
+          <Eyebrow>Free account</Eyebrow>
+          <H2>Let your past trips plan the next one</H2>
+          <P>Log the places you&apos;ve been and what you loved. Pylos learns your taste, predicts where you&apos;ll love next, and plans it in seconds, with the places locals actually go.</P>
+          <Button title="Sign in" onPress={() => router.push("/login")} />
+        </Card>
+      ) : null}
     </Screen>
+  );
+}
+
+function Badges({ d }: { d: BrowseDestination }) {
+  if (!d.inSeason && !d.trend && !d.publicTrips) return null;
+  return (
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+      {d.inSeason ? <Badge text="In season now" tone="season" /> : null}
+      {d.trend ? <Badge text={d.trend} tone="trend" /> : null}
+      {d.publicTrips > 0 ? <Badge text={`${d.publicTrips} ${d.publicTrips === 1 ? "trip" : "trips"} on Pylos`} /> : null}
+    </View>
   );
 }

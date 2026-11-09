@@ -29,11 +29,13 @@ export function Text({ style, ...rest }: TextProps) {
   return <RNText style={[others, { fontFamily, letterSpacing: spacing }]} {...rest} />;
 }
 
-export function Screen({ children }: { children: ReactNode }) {
+/** A scrolling page. `scrollEnabled` is off while something on it takes the drag (the globe). */
+export function Screen({ children, scrollEnabled = true }: { children: ReactNode; scrollEnabled?: boolean }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   return (
     <ScrollView
+      scrollEnabled={scrollEnabled}
       style={{ flex: 1, backgroundColor: t.bg }}
       contentContainerStyle={{ padding: 16, paddingBottom: 48 + insets.bottom, gap: 16 }}
       keyboardShouldPersistTaps="handled"
@@ -64,6 +66,23 @@ export function P({ children, muted, style }: { children: ReactNode; muted?: boo
 export function Label({ children }: { children: ReactNode }) {
   const t = useTheme();
   return <Text style={{ color: t.ink, fontFamily: FONT.display, fontSize: 13, letterSpacing: 1.6, textTransform: "uppercase" }}>{children}</Text>;
+}
+
+/** The site's eyebrow: small tracked capitals above a heading ("PICKED FOR YOU"). */
+export function Eyebrow({ children }: { children: ReactNode }) {
+  const t = useTheme();
+  return <Text style={{ color: t.muted, fontFamily: FONT.display, fontSize: 12.5, letterSpacing: 2, textTransform: "uppercase" }}>{children}</Text>;
+}
+
+/** A small pill: "In season now" (season), a trend list (trend), or a plain fact. */
+export function Badge({ text, tone = "plain" }: { text: string; tone?: "season" | "trend" | "plain" }) {
+  const t = useTheme();
+  const bg = tone === "season" ? t.hero : tone === "trend" ? t.lavender : t.sunk;
+  return (
+    <View style={{ backgroundColor: bg, borderRadius: 999, paddingVertical: 3, paddingHorizontal: 11, alignSelf: "flex-start" }}>
+      <Text style={{ color: t.ink, fontSize: 14, fontWeight: "500" }}>{text}</Text>
+    </View>
+  );
 }
 
 export function Button({ title, onPress, disabled, ghost, danger }: { title: string; onPress: () => void; disabled?: boolean; ghost?: boolean; danger?: boolean }) {

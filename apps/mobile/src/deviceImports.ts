@@ -1,4 +1,4 @@
-import { calendarSignals, dedupeSignals, photoStays, tripsFromSignals, type CalendarEventLike, type PhotoPoint } from "@travel/core";
+import { calendarSignals, dedupeSignals, nightOf, photoStays, sleepSpots, tripsFromSignals, type CalendarEventLike, type NightPoint, type PhotoPoint } from "@travel/core";
 // The /legacy entry points keep the function-style APIs. From SDK 58 the main entry points are
 // the new object APIs, and the old function names there throw at runtime.
 import * as Calendar from "expo-calendar/legacy";
@@ -19,6 +19,38 @@ export interface FoundTrip {
   year: number | null;
   month: number | null;
   days: number | null;
+}
+
+/** A hotel the photo scan thinks you stayed at (photos taken there at night), waiting for review. */
+export interface FoundHotel {
+  name: string;
+  city: string | null;
+  countryCode: string | null;
+  /** The first night there (YYYY-MM-DD). */
+  date: string;
+  nights: number;
+  placeId: string;
+  lat: number;
+  lng: number;
+}
+
+/** Add the hotels kept after review to Places you've stayed (taste signals; re-saving one is a no-op). */
+export async function saveHotels(hotels: FoundHotel[]): Promise<{ added: number }> {
+  if (!hotels.length) return { added: 0 };
+  const signals = hotels.map((h) => ({
+    source: "photos",
+    ref: `photos:${h.placeId}:${h.date.slice(0, 7)}`,
+    kind: "stay",
+    name: h.name,
+    city: h.city,
+    countryCode: h.countryCode,
+    lat: h.lat,
+    lng: h.lng,
+    date: h.date,
+    note: `${h.nights} ${h.nights === 1 ? "night" : "nights"}, from your photos`,
+  }));
+  const r = await api<{ added: number }>("/api/taste/signals", { method: "POST", json: { signals } });
+  return { added: r.added };
 }
 
 /**
@@ -109,8 +141,67 @@ export async function scanCalendar(progress: Progress): Promise<{ places: number
 // ---------------------------------------------------------------------------
 // Photos: where and when they were taken shows the trips you've been on
 // ---------------------------------------------------------------------------
-/** The trips your photos show, named by the server but not saved: they come back for review (`saveTrips`). */
-export async function scanPhotos(progress: Progress): Promise<{ trips: FoundTrip[]; limited: boolean }> {
+/**
+ * Where you slept on each trip: the spots where photos were taken late in the evening and early in
+ * the morning, read only for the days of trips already found. `i` is the stay's index.
+ */
+async function nightSpotsFor(stays: { lat: number; lng: number; start: string; end: string }[], progress: Progress) {
+  const spots: { i: number; lat: number; lng: number; first: string; nights: number }[] = [];
+  let done = 0;
+  // The 80 most recent trips, newest first: a long history would otherwise take minutes to read.
+  const order = stays
+    .map((s, i) => ({ s, i }))
+    .reverse()
+    .slice(0, 80);
+  await pool(order, 4, async ({ s, i }) => {
+    if (spots.length >= 60) return;
+    // Phone days can be a day off the place's own dates, so look a little either side.
+    const from = Date.parse(`${s.start}T00:00:00Z`) - 36 * 36e5;
+    const to = Date.parse(`${s.end}T00:00:00Z`) + 60 * 36e5;
+    const nights = new Map<string, { a: MediaLibrary.Asset; when: "evening" | "morning"; at: number }[]>();
+    let after: string | undefined;
+    for (let page = 0; page < 4; page++) {
+      const r = await MediaLibrary.getAssetsAsync({ first: 200, after, mediaType: MediaLibrary.MediaType.photo, sortBy: [[MediaLibrary.SortBy.creationTime, true]], createdAfter: from, createdBefore: to }).catch(() => null);
+      if (!r) break;
+      for (const a of r.assets) {
+        if (a.mediaSubtypes?.includes("screenshot")) continue;
+        const n = nightOf(a.creationTime, s.lng);
+        if (!n || n.night < addDay(s.start, -1) || n.night > s.end) continue;
+        nights.set(n.night, [...(nights.get(n.night) ?? []), { a, when: n.when, at: a.creationTime }]);
+      }
+      if (!r.hasNextPage) break;
+      after = r.endCursor;
+    }
+    // Each night: the latest evening photos and the earliest morning ones, until two have a location.
+    const points: NightPoint[] = [];
+    for (const [night, list] of nights) {
+      const evening = list.filter((x) => x.when === "evening").sort((a, b) => b.at - a.at).slice(0, 2);
+      const morning = list.filter((x) => x.when === "morning").sort((a, b) => a.at - b.at).slice(0, 2);
+      let located = 0;
+      for (const x of [...evening, ...morning]) {
+        if (located >= 2) break;
+        const info = await MediaLibrary.getAssetInfoAsync(x.a, { shouldDownloadFromNetwork: false }).catch(() => null);
+        const loc = info?.location;
+        if (loc && Number.isFinite(loc.latitude) && Number.isFinite(loc.longitude) && (loc.latitude !== 0 || loc.longitude !== 0)) {
+          points.push({ night, lat: loc.latitude, lng: loc.longitude, when: x.when });
+          located++;
+        }
+      }
+    }
+    for (const sp of sleepSpots(points)) if (spots.length < 60) spots.push({ i, ...sp });
+    done++;
+    if (done % 5 === 0) progress(`Finding the hotels you stayed at… ${Math.round((done / order.length) * 100)}%`);
+  });
+  return spots;
+}
+const addDay = (day: string, n: number) => new Date(Date.parse(`${day}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
+
+/**
+ * The trips your photos show, named by the server but not saved: they come back for review
+ * (`saveTrips`). With `hotels`, also the hotels where you took photos at night on those trips
+ * (`saveHotels`): those spots are looked up on Google Maps by the server and not kept.
+ */
+export async function scanPhotos(progress: Progress, opts: { hotels?: boolean } = {}): Promise<{ trips: FoundTrip[]; hotels: FoundHotel[]; limited: boolean }> {
   const perm = await MediaLibrary.requestPermissionsAsync(false, ["photo"]);
   if (!perm.granted) throw new Error("Photo access is off. Turn it on for Pylos in Settings to scan.");
   const limited = perm.accessPrivileges === "limited";
@@ -156,12 +247,13 @@ export async function scanPhotos(progress: Progress): Promise<{ trips: FoundTrip
     done++;
     if (done % 40 === 0) progress(`Finding where you were… ${Math.round((done / days.length) * 100)}%`);
   });
-  if (points.length < 3) return { trips: [], limited };
+  if (points.length < 3) return { trips: [], hotels: [], limited };
 
   const stays = photoStays(points).slice(-300);
-  if (!stays.length) return { trips: [], limited };
+  if (!stays.length) return { trips: [], hotels: [], limited };
+  const spots = opts.hotels ? await nightSpotsFor(stays, progress) : [];
   progress(`Naming ${stays.length} places…`);
-  // Still only rough centres and dates; `preview` names them without saving anything.
-  const r = await api<{ trips: FoundTrip[] }>("/api/taste/photo-trips", { method: "POST", json: { stays, preview: true } });
-  return { trips: r.trips, limited };
+  // Rough centres and dates, and (for hotels) the night-time spots; `preview` saves nothing.
+  const r = await api<{ trips: FoundTrip[]; hotels?: FoundHotel[] }>("/api/taste/photo-trips", { method: "POST", json: { stays, preview: true, ...(spots.length ? { spots } : {}) } });
+  return { trips: r.trips, hotels: r.hotels ?? [], limited };
 }

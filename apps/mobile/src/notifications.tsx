@@ -157,7 +157,7 @@ export async function signOut(): Promise<void> {
 // ---------------------------------------------------------------------------
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
-/** The app's screen for a web path ("/rank?plan=…", "/trips/<id>"), or null when there isn't one. */
+/** The app's screen for a web path ("/rank?plan=…", "/trips/<id>", "/d/kyoto"), or null when there isn't one. */
 export function appRoute(path: string): string | null {
   if (!path.startsWith("/") || path.startsWith("//")) return null;
   const [pathname = "", search = ""] = path.split("#")[0]!.split("?", 2);
@@ -166,8 +166,19 @@ export function appRoute(path: string): string | null {
   const trip = new RegExp(`^/trips/(${UUID})$`, "i").exec(pathname);
   if (trip) return q.get("rank") ? `/rank?plan=${trip[1]}` : `/trip/${trip[1]}`;
   if (pathname === "/trips") return "/trips";
+  // A friend's question: the app's inbox, opened at it.
+  if (pathname === "/friends") {
+    const ask = q.get("ask");
+    return ask && new RegExp(`^${UUID}$`, "i").test(ask) ? `/friends?ask=${ask}` : "/friends";
+  }
   if (pathname === "/profile") return "/you";
-  if (pathname === "/" || pathname === "/plan") return "/";
+  // Browse: the home page, a place on it (/?d=kyoto), or its own page (/d/kyoto).
+  const dest = /^\/d\/([a-z0-9-]{1,60})$/.exec(pathname)?.[1] ?? (pathname === "/" ? q.get("d") : null);
+  if (dest && /^[a-z0-9-]{1,60}$/.test(dest)) return `/d/${dest}`;
+  if (pathname === "/") return "/";
+  if (pathname === "/plan") return "/plan";
+  const community = new RegExp(`^/c/(${UUID})$`, "i").exec(pathname);
+  if (community) return `/c/${community[1]}`;
   return null;
 }
 

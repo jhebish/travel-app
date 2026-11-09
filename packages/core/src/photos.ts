@@ -78,3 +78,52 @@ export function photoStays(points: PhotoPoint[]) {
     days: Math.min(365, daysBetween(r.start, r.end) + 1),
   }));
 }
+
+// ---------------------------------------------------------------------------
+// Where someone slept on a trip: the photos taken late at night and early in the morning
+// ---------------------------------------------------------------------------
+export interface NightPoint {
+  /** The night it belongs to (YYYY-MM-DD): a morning photo belongs to the night before. */
+  night: string;
+  lat: number;
+  lng: number;
+  when: "evening" | "morning";
+}
+
+const HOUR_MS = 36e5;
+
+/**
+ * Which night a photo belongs to, if it was taken late in the evening (from 9:30pm) or early in
+ * the morning (before 9am) where it was taken. Phones keep photo times in UTC without the place's
+ * time zone, so the hour there comes from its longitude (solar time): close enough for this.
+ */
+export function nightOf(ms: number, lng: number): { night: string; when: "evening" | "morning" } | null {
+  const local = new Date(ms + Math.round(lng / 15) * HOUR_MS); // its UTC fields read as the hour there
+  const h = local.getUTCHours() + local.getUTCMinutes() / 60;
+  if (h >= 21.5) return { night: local.toISOString().slice(0, 10), when: "evening" };
+  if (h < 9) return { night: new Date(local.getTime() - DAY_MS).toISOString().slice(0, 10), when: "morning" };
+  return null;
+}
+
+/**
+ * The likeliest places someone slept on a stay: spots (photos within about 120 m of each other)
+ * seen on two or more nights, or on an evening and a morning. Up to two per stay, for someone who
+ * moved hotels, most nights first. The spot is what gets looked up for a hotel name; it isn't kept.
+ */
+export function sleepSpots(points: NightPoint[]): { lat: number; lng: number; first: string; nights: number }[] {
+  const clusters: { lat: number; lng: number; pts: NightPoint[] }[] = [];
+  for (const p of [...points].sort((a, b) => a.night.localeCompare(b.night))) {
+    const c = clusters.find((x) => km(x, p) <= 0.12);
+    if (c) {
+      c.pts.push(p);
+      c.lat = c.pts.reduce((s, q) => s + q.lat, 0) / c.pts.length;
+      c.lng = c.pts.reduce((s, q) => s + q.lng, 0) / c.pts.length;
+    } else clusters.push({ lat: p.lat, lng: p.lng, pts: [p] });
+  }
+  return clusters
+    .map((c) => ({ c, nights: new Set(c.pts.map((p) => p.night)).size, both: c.pts.some((p) => p.when === "evening") && c.pts.some((p) => p.when === "morning") }))
+    .filter((x) => x.nights >= 2 || x.both)
+    .sort((a, b) => b.nights - a.nights || b.c.pts.length - a.c.pts.length)
+    .slice(0, 2)
+    .map(({ c, nights }) => ({ lat: Math.round(c.lat * 1e4) / 1e4, lng: Math.round(c.lng * 1e4) / 1e4, first: c.pts[0]!.night, nights }));
+}

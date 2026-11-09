@@ -26,7 +26,9 @@ export default function TabsLayout() {
         tabBarLabelStyle: { fontFamily: FONT.display, fontSize: 10.5, letterSpacing: 1, textTransform: "uppercase" },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: "Plan", tabBarIcon: icon("compass-outline") }} />
+      {/* Browse first and where the app opens, as the site's home page. */}
+      <Tabs.Screen name="index" options={{ title: "Browse", tabBarIcon: icon("globe-outline") }} />
+      <Tabs.Screen name="plan" options={{ title: "Plan", tabBarIcon: icon("compass-outline") }} />
       <Tabs.Screen name="trips" options={{ title: "My trips", tabBarIcon: icon("briefcase-outline") }} />
       <Tabs.Screen name="sources" options={{ title: "My mix", tabBarIcon: icon("options-outline") }} />
       <Tabs.Screen name="you" options={{ title: "You", tabBarIcon: icon("person-circle-outline") }} />

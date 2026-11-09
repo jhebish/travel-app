@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { habitLines, travelHabits } from "./habits";
 import { SIGNAL_KINDS, SIGNAL_KIND_LABELS, SIGNAL_SOURCES, SIGNAL_SOURCE_LABELS, type SignalKind, type SignalSource } from "./labels";
 import { RANK_GROUPS, RANK_GROUP_LABELS, TOP_RANK_SCORE, topRanked } from "./rank";
 export { SIGNAL_KINDS, SIGNAL_KIND_LABELS, SIGNAL_SOURCES, SIGNAL_SOURCE_LABELS, type SignalKind, type SignalSource } from "./labels";
@@ -86,6 +87,13 @@ export const TasteProfileSchema = z.object({
   stays: z.object({ styles: words(40, 6), price: text(40), likes: words(80, 6), avoid: words(80, 4) }).catch({ styles: [], price: "", likes: [], avoid: [] }),
   food: z.object({ cuisines: words(40, 8), vibes: words(60, 6), price: text(40), avoid: words(80, 4) }).catch({ cuisines: [], vibes: [], price: "", avoid: [] }),
   activities: words(60, 8),
+  /**
+   * How they travel, read from where, when and for how long they've gone: "You pick coastal towns
+   * over big capitals." Missing from profiles built before it was asked for.
+   */
+  style: words(140, 4).optional(),
+  /** The trips they'd probably want next, from those patterns: "A slow week on a Greek island you haven't tried." */
+  next: words(140, 3).optional(),
 });
 export type TasteProfileCore = z.infer<typeof TasteProfileSchema>;
 export interface TasteProfile extends TasteProfileCore {
@@ -105,7 +113,7 @@ export const TASTE_TOOL = {
         type: "object",
         properties: {
           styles: { type: "array", items: { type: "string" }, description: "e.g. Boutique, Design, Historic, Guesthouse" },
-          price: { type: "string", description: "Typical nightly band they choose, e.g. '$150–300', or empty." },
+          price: { type: "string", description: "The price tier they usually choose, judged by local prices: '$' to '$$$$', or empty." },
           likes: { type: "array", items: { type: "string" }, description: "Concrete traits, e.g. 'courtyards', 'rooftop breakfast'." },
           avoid: { type: "array", items: { type: "string" } },
         },
@@ -122,15 +130,32 @@ export const TASTE_TOOL = {
         required: ["cuisines", "vibes", "price", "avoid"],
       },
       activities: { type: "array", items: { type: "string" }, description: "What they like doing: e.g. 'markets', 'long walks', 'architecture'." },
+      style: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Up to 4 short lines in the second person on how they travel, read from the past trips' places, months and lengths and from HOW THEY TRAVEL: the kinds of places they choose (big cities, coast, islands, mountains, small towns), the regions they favour, when and for how long they go, whether they go back to favourites or always somewhere new. Don't repeat the counts. E.g. 'You pick coastal towns over big capitals.'",
+      },
+      next: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "1–3 trips they'd probably want next, following those patterns, each a short line in the second person, e.g. 'A slow week on a Greek island you haven't tried.' Kinds of trips or regions, not one of the places they've already been.",
+      },
     },
-    required: ["summary", "stays", "food", "activities"],
+    required: ["summary", "stays", "food", "activities", "style", "next"],
   },
 } as const;
 
 export interface TastePastTrip {
   city: string;
   country: string;
+  /** ISO 3166-1 alpha-2, for counting how they travel (HOW THEY TRAVEL in the prompt). */
+  countryCode?: string;
   year?: number | null;
+  /** 1–12 */
+  month?: number | null;
+  days?: number | null;
   rating?: number | null;
   highlights?: string;
 }
@@ -198,6 +223,20 @@ const sigLine = (s: Pick<TasteSignal, "kind" | "name" | "city" | "rating" | "lik
     s.liked === true ? " · loved" : s.liked === false ? " · didn't like" : ""
   }${s.note ? ` · "${s.note.replace(/\s+/g, " ").slice(0, 120)}"` : ""}`;
 
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** " (May 2025, 5 days)", " (2024)", or nothing. */
+function tripWhen(t: TastePastTrip): string {
+  const when = [t.month && t.month >= 1 && t.month <= 12 ? MONTHS_SHORT[t.month - 1] : null, t.year].filter(Boolean).join(" ");
+  const parts = [when, t.days ? `${t.days} ${t.days === 1 ? "day" : "days"}` : ""].filter(Boolean);
+  return parts.length ? ` (${parts.join(", ")})` : "";
+}
+
+/** The 40 that say most: ones with notes or a rating first, then the most recent. */
+const pastTripsForPrompt = (trips: TastePastTrip[]) =>
+  [...trips]
+    .sort((a, b) => (b.highlights ? 2 : 0) + (b.rating ? 1 : 0) - ((a.highlights ? 2 : 0) + (a.rating ? 1 : 0)) || (b.year ?? 0) - (a.year ?? 0) || (b.month ?? 0) - (a.month ?? 0))
+    .slice(0, 40);
+
 /** The prompt that turns someone's places into a taste profile. */
 export function buildTastePrompt(input: { pastTrips: TastePastTrip[]; signals: TasteSignal[]; feedback: TasteFeedback; ranking?: TasteRanking }): string {
   const sigs = rankSignals(input.signals.filter((s) => s.kind !== "city")).slice(0, 160);
@@ -209,12 +248,20 @@ export function buildTastePrompt(input: { pastTrips: TastePastTrip[]; signals: T
           r.trips.length ? `Trips: ${r.trips.join(" > ")}\n` : ""
         }${r.places.join("\n")}${r.places.length ? "\n" : ""}`
       : "";
-  return `Read this traveler's taste from the places they've been and how they felt about them. The app uses your profile to choose hotels and restaurants they will love on future trips.
+  // Counted, not guessed: the model reads the patterns from these instead of doing arithmetic.
+  const habits = habitLines(
+    travelHabits(
+      input.pastTrips
+        .filter((t) => t.countryCode)
+        .map((t) => ({ city: t.city, countryCode: t.countryCode!, year: t.year ?? null, month: t.month ?? null, days: t.days ?? null })),
+    ),
+  );
+  return `Read this traveler's taste from the places they've been and how they felt about them. The app uses your profile to choose hotels and restaurants they will love on future trips, and shows it to them: how they travel, and the trips they'd enjoy next.
 Use only the evidence below. Prefer concrete traits (e.g. "courtyard riads", "natural wine bars", "counter seating") over generic words. Leave a field empty rather than guess.
 
 PAST TRIPS
-${input.pastTrips.length ? input.pastTrips.slice(0, 40).map((t) => `- ${t.city}, ${t.country}${t.year ? ` (${t.year})` : ""}${t.rating ? ` ★${t.rating}` : ""}${t.highlights ? `: ${t.highlights.replace(/\s+/g, " ").slice(0, 200)}` : ""}`).join("\n") : "(none)"}
-
+${input.pastTrips.length ? pastTripsForPrompt(input.pastTrips).map((t) => `- ${t.city}, ${t.country}${tripWhen(t)}${t.rating ? ` ★${t.rating}` : ""}${t.highlights ? `: ${t.highlights.replace(/\s+/g, " ").slice(0, 200)}` : ""}`).join("\n") : "(none)"}
+${habits.length ? `\nHOW THEY TRAVEL (counted from all their trips)\n${habits.map((l) => `- ${l}`).join("\n")}\n` : ""}
 PLACES (strongest evidence first)
 ${sigs.length ? sigs.map(sigLine).join("\n") : "(none)"}
 ${cities.length ? `\nCITIES VISITED\n${cities.map((c) => `- ${c.name}${c.date ? ` (${c.date.slice(0, 4)})` : ""}`).join("\n")}\n` : ""}${ranking}

@@ -5,8 +5,11 @@ import {
   buildTastePrompt,
   cityKey,
   countryName,
+  groupStays,
   rankSignals,
+  staysForPrompt,
   tasteForPrompt,
+  type PastStay,
   type SignalKind,
   type SignalSource,
   type TasteFeedback,
@@ -81,8 +84,11 @@ export const signalRow = (userId: string, s: TasteSignal, pastTripId: string | n
   url: s.url ?? null,
 });
 
-export async function loadSignals(db: SupabaseClient, userId: string, limit = 2000): Promise<StoredSignal[]> {
-  const run = (cols: string) => db.from("taste_signals").select(cols).eq("user_id", userId).order("created_at", { ascending: false }).limit(limit);
+export async function loadSignals(db: SupabaseClient, userId: string, limit = 2000, kind?: SignalKind): Promise<StoredSignal[]> {
+  const run = (cols: string) => {
+    const q = db.from("taste_signals").select(cols).eq("user_id", userId);
+    return (kind ? q.eq("kind", kind) : q).order("created_at", { ascending: false }).limit(limit);
+  };
   let { data, error } = await run(rankColumns() ? `${SIGNAL_COLS}, rank_score` : SIGNAL_COLS);
   if (rankColumnsFailed(error)) ({ data, error } = await run(SIGNAL_COLS));
   if (error) {
@@ -116,14 +122,17 @@ async function loadFeedback(db: SupabaseClient, userId: string): Promise<TasteFe
 }
 
 async function loadPastTrips(db: SupabaseClient, userId: string) {
-  const cols = "city, country_code, year, rating, highlights";
+  const cols = "city, country_code, year, month, days, rating, highlights";
   const run = (c: string) => db.from("past_trips").select(c).eq("user_id", userId).limit(200);
   let { data, error } = await run(rankColumns() ? `${cols}, rank_score` : cols);
   if (rankColumnsFailed(error)) ({ data } = await run(cols));
   return ((data ?? []) as unknown as Record<string, unknown>[]).map((r) => ({
     city: r.city as string,
     country: countryName(r.country_code as string),
+    countryCode: String(r.country_code ?? "").toUpperCase(),
     year: r.year as number | null,
+    month: (r.month as number | null) ?? null,
+    days: (r.days as number | null) ?? null,
     rating: r.rating as number | null,
     highlights: (r.highlights as string) ?? "",
     rankScore: (r.rank_score as number | null | undefined) ?? null,
@@ -169,6 +178,16 @@ export async function refreshTaste(ctx: Ctx & { user: { id: string } }): Promise
   const { error } = await supabaseAdmin().from("taste_profiles").upsert({ user_id: ctx.user.id, inputs_hash: inputs.hash, profile, updated_at: profile.updatedAt });
   if (error) console.error("taste profile save failed", error.code);
   return profile;
+}
+
+/** Everywhere they've stayed: their stay signals (imports, photos, added by hand) as one list. */
+export async function pastStays(db: SupabaseClient, userId: string): Promise<PastStay[]> {
+  return groupStays(await loadSignals(db, userId, 1000, "stay"));
+}
+
+/** The hotel prompts' block on where the trip's owner has stayed (no model call; empty without stays). */
+export async function staysBlock(userId: string, destination: string): Promise<string> {
+  return staysForPrompt(await pastStays(supabaseAdmin(), userId), destination);
 }
 
 /**

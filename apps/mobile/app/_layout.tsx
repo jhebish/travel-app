@@ -39,6 +39,10 @@ function Gate() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ title: "Sign in" }} />
       <Stack.Screen name="trip/[id]" options={{ title: "Trip" }} />
+      <Stack.Screen name="d/[key]" options={{ title: "" }} />
+      <Stack.Screen name="c/[id]" options={{ title: "Trip" }} />
+      <Stack.Screen name="stays" options={{ title: "Places you've stayed" }} />
+      <Stack.Screen name="places" options={{ title: "Places you've been" }} />
       <Stack.Screen name="auth-callback" options={{ title: "Signing in", headerBackVisible: false }} />
       <Stack.Screen name="rank" options={{ title: "Rank" }} />
     </Stack>
