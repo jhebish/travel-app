@@ -1,5 +1,16 @@
 "use client";
-import { SIGNAL_KIND_LABELS, SIGNAL_SOURCE_LABELS, tasteUnlock, type SignalKind, type SignalSource, type TasteProfile } from "@travel/core";
+import {
+  DESTINATION_BY_KEY,
+  SIGNAL_KIND_LABELS,
+  SIGNAL_SOURCE_LABELS,
+  flag,
+  tasteUnlock,
+  type ForYouPick,
+  type SignalKind,
+  type SignalSource,
+  type TasteProfile,
+} from "@travel/core";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { IconDown, IconUp } from "./icons";
@@ -160,14 +171,28 @@ export function kindFromName(name: string): SignalKind {
 }
 
 /**
- * What Pylos has learned about your taste. Until a few trips are logged (`trips`, or the count from
- * the taste data), how close the profile is to unlocking, with a way to log the next trip.
+ * What Pylos has learned about your taste: the summary, how you travel, what you like and skip as
+ * tags, and where you'd love next (your For you picks, linking to each place). Until a few trips
+ * are logged (`trips`, or the count from the taste data), how close the profile is to unlocking,
+ * with a way to log the next trip.
  */
-export function TasteCard({ data, updating, trips, onLog }: { data: TasteResponse | null; updating: boolean; trips?: number; onLog?: () => void }) {
+export function TasteCard({
+  data,
+  updating,
+  trips,
+  onLog,
+  picks = [],
+}: {
+  data: TasteResponse | null;
+  updating: boolean;
+  trips?: number;
+  onLog?: () => void;
+  picks?: ForYouPick[];
+}) {
   const unlock = tasteUnlock(Math.max(trips ?? 0, data?.counts.pastTrips ?? 0));
   if (!unlock.unlocked) {
     return (
-      <section className="card stack taste-card taste-locked">
+      <section className="card stack taste-card taste-locked" id="taste">
         <div className="head">
           <span className="eyebrow">Your taste</span>
           <h2>
@@ -192,78 +217,127 @@ export function TasteCard({ data, updating, trips, onLog }: { data: TasteRespons
     );
   }
   const p = data?.profile;
-  const sources = data ? (Object.entries(data.counts.bySource) as [SignalSource, number][]).filter(([, n]) => n > 0) : [];
+  const facts = data?.habits ?? [];
+  const groups = p
+    ? [
+        { label: "Stays", tags: [...p.stays.styles, ...p.stays.likes] },
+        { label: "Food and drink", tags: [...p.food.cuisines, ...p.food.vibes] },
+        { label: "Likes doing", tags: p.activities },
+      ].filter((g) => g.tags.length)
+    : [];
+  const avoid = p ? [...p.stays.avoid, ...p.food.avoid] : [];
+  const next = picks.map((pk) => ({ pick: pk, d: DESTINATION_BY_KEY[pk.key] })).filter((x) => !!x.d).slice(0, 3);
   return (
-    <section className="card stack taste-card" aria-busy={updating}>
+    <section className="card taste-card" id="taste" aria-busy={updating}>
       <div className="head">
-        <span className="eyebrow">Your taste</span>
-        <h2>{p ? "What Pylos has learned" : "Teach Pylos your taste"}</h2>
+        <span className="eyebrow">What Pylos has learned</span>
         {p?.summary ? (
-          <p className="lede">{p.summary}</p>
+          <p className="taste-summary">{p.summary}</p>
         ) : (
-          <p className="hint">
-            Log a few past trips with where you stayed and ate, or connect an account below. Pylos uses it to predict the hotels and restaurants you&apos;ll love, and marks
-            them &quot;For you&quot; in your plans.
-          </p>
+          <>
+            <h2>Teach Pylos your taste</h2>
+            <p className="hint">
+              Log a few past trips with where you stayed and ate, or connect an account. Pylos uses it to predict the hotels and restaurants you&apos;ll love, and marks them
+              &quot;For you&quot; in your plans.
+            </p>
+          </>
         )}
       </div>
-      {!!(data?.habits?.length || p?.style?.length) && (
-        <div>
+      {!!(facts.length || p?.style?.length) && (
+        <div className="taste-block">
           <span className="label">How you travel</span>
-          <ul className="notes">
-            {[...(data?.habits ?? []), ...(p?.style ?? [])].map((l) => (
-              <li key={l}>{l}</li>
-            ))}
-          </ul>
+          {facts.length > 0 && (
+            <ul className="taste-facts">
+              {facts.map((f) => (
+                <li key={f}>{f.replace(/\.$/, "")}</li>
+              ))}
+            </ul>
+          )}
+          {!!p?.style?.length && (
+            <ul className="notes">
+              {p.style.map((l) => (
+                <li key={l}>{l}</li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
-      {p && (
-        <div className="taste-grid">
-          {!!(p.stays.styles.length || p.stays.likes.length) && (
-            <div>
-              <span className="label">Stays</span>
-              <p>{[...p.stays.styles, ...p.stays.likes].join(" · ")}</p>
+      {(groups.length > 0 || avoid.length > 0) && (
+        <div className="taste-groups">
+          {groups.map((g) => (
+            <div key={g.label} className="taste-block">
+              <span className="label">{g.label}</span>
+              <ul className="tags">
+                {g.tags.map((t) => (
+                  <li key={t}>{t}</li>
+                ))}
+              </ul>
             </div>
-          )}
-          {!!(p.food.cuisines.length || p.food.vibes.length) && (
-            <div>
-              <span className="label">Food and drink</span>
-              <p>{[...p.food.cuisines, ...p.food.vibes].join(" · ")}</p>
-            </div>
-          )}
-          {!!p.activities.length && (
-            <div>
-              <span className="label">Likes doing</span>
-              <p>{p.activities.join(" · ")}</p>
-            </div>
-          )}
-          {!!(p.stays.avoid.length || p.food.avoid.length) && (
-            <div>
+          ))}
+          {avoid.length > 0 && (
+            <div className="taste-block">
               <span className="label">Not for you</span>
-              <p>{[...p.stays.avoid, ...p.food.avoid].join(" · ")}</p>
-            </div>
-          )}
-          {!!p.next?.length && (
-            <div>
-              <span className="label">What you&apos;d love next</span>
-              <p>{p.next.join(" · ")}</p>
+              <ul className="tags avoid">
+                {avoid.map((t) => (
+                  <li key={t}>{t}</li>
+                ))}
+              </ul>
             </div>
           )}
         </div>
       )}
-      {data && (
-        <p className="hint">
-          {updating
-            ? "Updating with your latest places…"
-            : `Learned from ${[
-                data.counts.pastTrips ? `${data.counts.pastTrips} ${data.counts.pastTrips === 1 ? "trip" : "trips"}` : "",
-                data.counts.total ? `${data.counts.total} ${data.counts.total === 1 ? "place" : "places"}` : "",
-                data.counts.thumbs ? `${data.counts.thumbs} thumbs on Pylos plans` : "",
-              ]
-                .filter(Boolean)
-                .join(", ") || "nothing yet"}${sources.length ? ` (${sources.map(([s, n]) => `${SIGNAL_SOURCE_LABELS[s]} ${n}`).join(", ")})` : ""}.`}
-        </p>
+      {(next.length > 0 || !!p?.next?.length) && (
+        <div className="taste-block">
+          <span className="label">Where you&apos;d love next</span>
+          {next.length ? (
+            <div className="next-grid">
+              {next.map(({ pick, d }) => (
+                <Link key={pick.key} className="next-card" href={`/?d=${pick.key}`}>
+                  <span className="eyebrow">
+                    <span aria-hidden="true">{flag(d!.countryCode)}</span> {d!.country}
+                  </span>
+                  <b>{d!.name}</b>
+                  <span>{pick.why}</span>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <ul className="notes">
+              {p!.next!.map((l) => (
+                <li key={l}>{l}</li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
+      {data && <TasteSources data={data} updating={updating} />}
     </section>
+  );
+}
+
+/** "Learned from 8 trips, 46 places and 6 thumbs", then where they came from, with counts. */
+function TasteSources({ data, updating }: { data: TasteResponse; updating: boolean }) {
+  if (updating) return <p className="hint">Updating with your latest places…</p>;
+  const parts = [
+    data.counts.pastTrips ? `${data.counts.pastTrips} ${data.counts.pastTrips === 1 ? "trip" : "trips"}` : "",
+    data.counts.total ? `${data.counts.total} ${data.counts.total === 1 ? "place" : "places"}` : "",
+    data.counts.thumbs ? `${data.counts.thumbs} thumbs on Pylos plans` : "",
+  ].filter(Boolean);
+  const sources = (Object.entries(data.counts.bySource) as [SignalSource, number][]).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+  return (
+    <div className="taste-from">
+      <p className="hint">
+        Learned from {parts.length ? parts.slice(0, -1).join(", ") + (parts.length > 1 ? " and " : "") + parts[parts.length - 1] : "nothing yet"}.
+      </p>
+      {sources.length > 0 && (
+        <ul className="taste-sources" aria-label="Where it came from">
+          {sources.map(([s, n]) => (
+            <li key={s}>
+              {SIGNAL_SOURCE_LABELS[s]} <b className="tabnum">{n}</b>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

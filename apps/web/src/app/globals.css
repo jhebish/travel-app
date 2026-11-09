@@ -1083,9 +1083,23 @@ dialog.gallery::backdrop { background: rgba(14, 10, 12, .82); }
 .placeitems { margin: 4px 0 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 15.5px; color: var(--muted); }
 .placeitems small { font-family: var(--font-display); text-transform: uppercase; letter-spacing: .1em; font-size: 11px; margin-right: 2px; }
 
-/* Your taste */
-.taste-card .lede { margin: 4px 0 0; }
-.taste-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px 18px; }
+/* Your taste: the summary, how you travel, what you like as tags, and where you'd love next */
+.taste-card { gap: 24px; }
+.taste-summary { margin: 2px 0 0; font: italic 400 clamp(20px, 2.4vw, 23px)/1.4 var(--font); color: var(--ink); text-wrap: pretty; }
+.taste-block { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.taste-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px 26px; }
+.taste-facts, .tags, .taste-sources { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.taste-facts li { background: var(--olive); color: var(--olive-ink); border-radius: 999px; padding: 5px 13px 6px; font-size: 15.5px; line-height: 1.3; }
+.tags li { border: 1px solid var(--line); background: var(--bg); border-radius: 999px; padding: 4px 12px 5px; font-size: 15.5px; line-height: 1.3; }
+.tags.avoid li { background: transparent; border-style: dashed; color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 55%, transparent); }
+.next-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.next-card { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: 16px; background: var(--clay); color: var(--ink); text-decoration: none; border: 1px solid transparent; transition: border-color .15s; }
+.next-card b { font: 400 20px/1.2 var(--font-display); }
+.next-card > span:last-child { font-size: 15px; color: color-mix(in srgb, var(--ink) 78%, var(--clay)); }
+@media (hover: hover) { .next-card:hover { border-color: var(--clay-line); } }
+.taste-from { display: flex; flex-direction: column; gap: 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+.taste-sources li { font-size: 14px; color: var(--muted); background: var(--sunk); border-radius: 999px; padding: 3px 11px 4px; }
+.taste-sources b { color: var(--ink); font-weight: 650; margin-left: 2px; }
 /* Read by screen readers, not shown. */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
@@ -1105,15 +1119,16 @@ dialog.gallery::backdrop { background: rgba(14, 10, 12, .82); }
 /* Places you've been, on a globe (profile) */
 .places-map { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .places-map .globe { max-width: 400px; }
-.places-map .hint { text-align: center; margin: 0; }
+.places-map .hint { text-align: center; margin: 0; text-wrap: balance; }
 
 /* Places you've stayed (profile) */
 .stays-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.stays-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; padding: 12px 0; border-top: 1px solid var(--line); }
+.stays-list li { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 14px 0; border-top: 1px solid var(--line); }
 .stays-list li:first-child { border-top: 0; padding-top: 0; }
-.stays-list li > div:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 220px; }
-.stays-list .row { gap: 6px; flex-wrap: wrap; }
-.taste-grid p { margin: 2px 0 0; }
+.stay-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stay-text b { font-size: 17px; font-weight: 650; }
+.stay-from { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.linkbtn.small { font-size: 14px; }
 
 /* Connected accounts (sign in once) */
 .connect-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
@@ -1399,4 +1414,123 @@ a.place:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .local-expert { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); }
 @media (max-width: 600px) {
   .been-top { flex-wrap: wrap; }
+}
+
+/* =====================================================================
+   You (profile): who you are up top, then two columns on wide screens
+   (taste and places; the rest beside them) and one column on phones.
+   ===================================================================== */
+.profile { display: flex; flex-direction: column; gap: 22px; }
+.profile.bleed { width: min(1080px, calc(100vw - 40px)); }
+@media (max-width: 999px) { .profile.bleed { width: min(680px, calc(100vw - 40px)); } }
+.profile-hero { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 24px 44px; align-items: center; }
+@media (max-width: 999px) { .profile-hero { grid-template-columns: 1fr; } }
+.profile-id { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px 20px; align-items: center; }
+.profile-who { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.profile-who .hint { font-size: 15.5px; }
+.profile-bio { margin: 4px 0 0; font-style: italic; font-size: 17px; color: var(--ink); }
+.profile-actions { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; }
+.profile-grid { display: flex; flex-direction: column; gap: 22px; }
+/* On phones the two columns melt into one, in each spot's order. */
+.profile-col { display: contents; }
+.pslot { display: flex; flex-direction: column; min-width: 0; }
+.pslot:empty { display: none; }
+.pslot > * { flex: 1 1 auto; }
+@media (min-width: 1000px) {
+  .profile-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); align-items: start; }
+  .profile-col { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+}
+.profile-grid .card { scroll-margin-top: 96px; }
+
+/* Places you've been, by year */
+.tripyear { display: flex; flex-direction: column; gap: 4px; }
+.tripyear .eyebrow { margin: 0; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+.triprow { display: flex; flex-direction: column; gap: 6px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.triprow:last-child { border-bottom: 0; }
+.triprow-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px 14px; flex-wrap: wrap; }
+.triprow-title { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.triprow-title a { font: 400 21px/1.25 var(--font-display); color: var(--ink); text-decoration: none; }
+.triprow-title a:hover { color: var(--accent); }
+.triprow-actions { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; margin-top: 2px; }
+.triprow-actions .linkbtn { font-size: 14.5px; }
+.linkbtn.quiet { color: var(--muted); text-decoration-color: var(--line); }
+.triprow .ptc { margin-top: 4px; padding: 12px 14px; border-radius: var(--r-ctl); background: var(--sunk); }
+.triprow .ptc select { background: var(--surface); }
+.stars { display: inline-flex; gap: 0; margin-right: -4px; }
+.star { border: 0; background: none; padding: 2px 4px; font-size: 21px; line-height: 1; color: var(--line); cursor: pointer; }
+.star.on { color: var(--warm); }
+.star:disabled { cursor: progress; }
+@media (hover: hover) {
+  .stars:hover .star:not(:disabled) { color: var(--warm); }
+  .stars .star:hover ~ .star { color: var(--line); }
+}
+.star:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 6px; }
+/* Fingers need bigger stars. */
+@media (pointer: coarse) { .star { padding: 7px 5px; font-size: 23px; } }
+
+/* Account: a few links, at the end */
+.account-card { gap: 12px; }
+.account-links { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 20px; }
+.account-links a, .account-links .linkbtn { font-size: 15px; }
+dialog.sheet.wide { width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; }
+
+/* =====================================================================
+   Home: why Pylos. The same Saturday in Lisbon, planned for three
+   example travelers, each stop with the reason it's theirs.
+   ===================================================================== */
+.made4u {
+  display: grid; grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr); grid-template-areas: "head demo" "more demo";
+  gap: 26px 52px; padding: clamp(28px, 4.2vw, 56px); border-radius: 28px; background: var(--hero); color: var(--hero-ink);
+}
+/* The words meet in the middle beside the example, however tall it is. */
+.made4u-head { grid-area: head; align-self: end; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.made4u-demo { grid-area: demo; align-self: center; }
+.made4u-more { grid-area: more; align-self: start; display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+@media (max-width: 900px) {
+  .made4u { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "demo" "more"; }
+}
+.made4u-head h2 { font-size: clamp(28px, 3.5vw, 38px); line-height: 1.12; }
+.made4u-head .lede { color: var(--hero-soft); font-size: 18px; }
+.made4u .eyebrow { color: var(--hero-soft); }
+.made4u-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.made4u-steps li { display: flex; gap: 14px; align-items: flex-start; }
+.made4u-num { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); color: var(--ink); font: 400 15px/1 var(--font-display); }
+.made4u-steps li > span:last-child { display: flex; flex-direction: column; gap: 1px; padding-top: 3px; }
+.made4u-steps b { font: 400 18px/1.25 var(--font-display); }
+.made4u-steps span span { color: var(--hero-soft); font-size: 16px; }
+.made4u-more > .row { gap: 12px 20px; }
+.made4u-more > .row > .btn { flex: none; width: auto; padding: 0 28px; }
+.made4u-more > .row > .linkbtn { color: var(--hero-ink); }
+
+.made4u-demo { background: var(--surface); color: var(--ink); border-radius: 22px; padding: 8px; display: flex; flex-direction: column; min-width: 0; box-shadow: 0 30px 60px -34px rgba(40, 52, 30, .55); }
+.made4u-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; background: var(--sunk); padding: 4px; border-radius: 16px; }
+.made4u-tabs button { border: 0; background: transparent; border-radius: 12px; padding: 10px 12px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 2px; color: var(--muted); font: inherit; min-width: 0; }
+.made4u-tabs button b { font: 400 17px/1.2 var(--font-display); color: var(--ink); }
+.made4u-tabs button span { font-size: 14px; line-height: 1.25; }
+.made4u-tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(22, 27, 46, .12); }
+.made4u-tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.made4u-panel { padding: 18px 16px 12px; display: flex; flex-direction: column; gap: 12px; }
+.made4u-panel-head { display: flex; flex-direction: column; gap: 6px; }
+.made4u-learned { margin: 0; font-size: 16px; color: var(--muted); }
+.made4u-tag { display: none; margin: 0; font: 400 19px/1.25 var(--font-display); color: var(--ink); }
+.made4u-learned b { color: var(--ink); font-weight: 650; }
+.made4u-day { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.made4u-day li { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+.made4u-day li:first-child { border-top: 0; padding-top: 4px; }
+.made4u-time { font: 400 14px/1.7 var(--font-display); letter-spacing: .05em; color: var(--muted); }
+.made4u-day li.stay .made4u-time { font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); line-height: 2.1; }
+.made4u-stop { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.made4u-stop b { font-weight: 650; font-size: 17px; line-height: 1.3; }
+.made4u-why { font-size: 15.5px; line-height: 1.4; color: var(--muted); }
+.made4u-for { display: inline-block; font: 400 10.5px/1 var(--font-display); letter-spacing: .12em; text-transform: uppercase; background: var(--ochre); color: var(--ink); padding: 4px 8px 3px; border-radius: 999px; margin-right: 6px; vertical-align: 2px; }
+.made4u-note { font-size: 13.5px; }
+@media (max-width: 600px) {
+  .made4u { padding: 28px 18px 24px; border-radius: 24px; gap: 24px; }
+  .made4u-more > .row > .btn { width: 100%; }
+  .made4u-tabs button { padding: 9px 6px; align-items: center; text-align: center; }
+  .made4u-tabs button b { font-size: 15.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .made4u-tabs button span { display: none; }
+  .made4u-tag { display: block; }
+  .made4u-panel { padding: 16px 10px 10px; }
+  .made4u-day li { grid-template-columns: 46px minmax(0, 1fr); gap: 10px; }
 }

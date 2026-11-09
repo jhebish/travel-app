@@ -32,3 +32,4 @@ export * from "./habits";
 export * from "./readOnly";
 export * from "./pastStays";
 export * from "./placeSuggest";
+export * from "./madeForYou";

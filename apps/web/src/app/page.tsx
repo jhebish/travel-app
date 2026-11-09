@@ -19,6 +19,7 @@ import { TripCard } from "@/components/community";
 import { DaysSlider } from "@/components/DaysSlider";
 import { useDaysPlan } from "@/components/useDaysPlan";
 import { ItineraryPreview, previewFromItinerary } from "@/components/ItineraryPreview";
+import { MadeForYou } from "@/components/MadeForYou";
 import { HomeLoop } from "@/components/pages";
 import { RankNudge } from "@/components/RankNudge";
 import { useMe } from "@/components/useMe";
@@ -43,6 +44,9 @@ interface ForYou {
   member: boolean;
   signedIn: boolean;
 }
+
+/** Trending places shown before "Show all". */
+const TRENDING_FIRST = 8;
 
 const planDest = (d: Destination, days = d.sampleDays) => planHref(d.kind === "region" ? d.name : `${d.name}, ${d.country}`, { multi: d.kind === "region", days });
 
@@ -142,6 +146,7 @@ export default function Browse() {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [sampleBusy, setSampleBusy] = useState(false);
   const [forYou, setForYou] = useState<ForYou | null>(null);
+  const [allTrending, setAllTrending] = useState(false);
   const requested = useRef(new Set<string>());
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -221,7 +226,6 @@ export default function Browse() {
     return shown.map((d) => ({ key: d.key, name: d.name, sub: d.country, lat: d.lat, lng: d.lng, heat: d.score / max }));
   }, [shown]);
   const current = dests?.find((d) => d.key === selected) ?? null;
-  const signedOut = me !== undefined && !me.user;
   const member = !!forYou?.member;
 
   return (
@@ -307,7 +311,7 @@ export default function Browse() {
           <p className="hint">In season this month, named on 2026 trend lists, or popular on Pylos.</p>
         </div>
         <div className="destgrid">
-          {shown.map((d) => (
+          {(allTrending || tag !== "All" ? shown : shown.slice(0, TRENDING_FIRST)).map((d) => (
             <button key={d.key} type="button" className={`destcard${d.key === selected ? " on" : ""}`} onClick={() => choose(d.key, true)}>
               <span className="eyebrow">
                 <span aria-hidden="true">{flag(d.countryCode)}</span> {d.kind === "region" ? `${d.country} · several stops` : d.country}
@@ -320,20 +324,15 @@ export default function Browse() {
             </button>
           ))}
         </div>
+        {tag === "All" && shown.length > TRENDING_FIRST && (
+          <button type="button" className="btn ghost sm" style={{ alignSelf: "flex-start" }} onClick={() => setAllTrending(!allTrending)}>
+            {allTrending ? "Show fewer" : `Show all ${shown.length} places`}
+          </button>
+        )}
       </section>
 
-      {(signedOut || (me?.user?.isGuest && !member)) && (
-        <aside className="cta signup">
-          <span className="eyebrow">Free account</span>
-          <h2>Let your past trips plan the next one</h2>
-          <p className="lede">Log the places you&apos;ve been and what you loved. Pylos learns your taste, predicts where you&apos;ll love next, and plans it in seconds, with the places locals actually go.</p>
-          <div className="row">
-            <Link className="btn" href="/login?next=/profile">
-              Sign in
-            </Link>
-          </div>
-        </aside>
-      )}
+      {/* Why Pylos: it plans from what you've already loved, not the same list for everyone. */}
+      <MadeForYou state={!me?.user || me.user.isGuest ? "out" : member && forYou?.picks.length ? "known" : "learning"} />
     </div>
   );
 }

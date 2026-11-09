@@ -5,6 +5,7 @@ import { Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import { api } from "../../src/api";
 import { useAuth } from "../../src/auth";
 import { Globe } from "../../src/Globe";
+import { MadeForYouCard } from "../../src/MadeForYou";
 import { FONT, useTheme } from "../../src/theme";
 import { Badge, Button, Card, Chip, Eyebrow, H1, H2, Loading, P, Screen, Status, Text } from "../../src/ui";
 
@@ -15,6 +16,9 @@ interface ForYou {
   member: boolean;
   signedIn: boolean;
 }
+
+/** Trending places shown before "Show all". */
+const TRENDING_FIRST = 8;
 
 const where = (d: Pick<BrowseDestination, "kind" | "country">) => (d.kind === "region" ? `Several stops · ${d.country}` : d.country);
 
@@ -29,6 +33,7 @@ export default function Browse() {
   const [tag, setTag] = useState<DestinationTag | "All">("All");
   const [selected, setSelected] = useState<string | null>(null);
   const [forYou, setForYou] = useState<ForYou | null>(null);
+  const [allTrending, setAllTrending] = useState(false);
   // A finger is turning the globe: the page holds still meanwhile.
   const [turning, setTurning] = useState(false);
 
@@ -171,7 +176,7 @@ export default function Browse() {
             </P>
           </View>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-            {shown.map((d) => (
+            {(allTrending || tag !== "All" ? shown : shown.slice(0, TRENDING_FIRST)).map((d) => (
               <Pressable
                 key={d.key}
                 accessibilityRole="button"
@@ -203,17 +208,14 @@ export default function Browse() {
               </Pressable>
             ))}
           </View>
+          {tag === "All" && shown.length > TRENDING_FIRST ? (
+            <Button ghost title={allTrending ? "Show fewer" : `Show all ${shown.length} places`} onPress={() => setAllTrending(!allTrending)} />
+          ) : null}
         </View>
       ) : null}
 
-      {guest && !member ? (
-        <Card style={{ backgroundColor: t.hero, borderColor: t.hero }}>
-          <Eyebrow>Free account</Eyebrow>
-          <H2>Let your past trips plan the next one</H2>
-          <P>Log the places you&apos;ve been and what you loved. Pylos learns your taste, predicts where you&apos;ll love next, and plans it in seconds, with the places locals actually go.</P>
-          <Button title="Sign in" onPress={() => router.push("/login")} />
-        </Card>
-      ) : null}
+      {/* Why Pylos: it plans from what you've already loved, not the same list for everyone. */}
+      <MadeForYouCard state={guest ? "out" : member && forYou?.picks.length ? "known" : "learning"} onStart={() => router.push("/you")} />
     </Screen>
   );
 }

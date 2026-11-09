@@ -2,6 +2,7 @@
 import { SIGNAL_SOURCE_LABELS, countryName, stayWhen, type PastStay } from "@travel/core";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { IconDown, IconUp } from "./icons";
 
 /** "Lisbon, Portugal · May 2025 · 2 stays" */
 const stayLine = (s: PastStay) =>
@@ -52,27 +53,45 @@ export function StaysList({ version = 0 }: { version?: number }) {
         <h2>
           Places you&apos;ve stayed <span className="hint tabnum">· {stays.length}</span>
         </h2>
-        <p className="hint">From your calendar, email and photos. Mark the ones you loved and the ones that weren&apos;t for you: hotel picks follow them.</p>
+        <p className="hint">Every hotel you&apos;ve stayed in, found in your calendar, email and photos. Thumbs up the ones you loved: hotel picks follow them.</p>
       </div>
       <ul className="stays-list">
         {shown.map((s) => (
           <li key={s.ids[0]}>
-            <div>
+            <div className="stay-text">
               <b>{s.name}</b>
               <span className="hint">{stayLine(s)}</span>
-              <small className="hint">{s.sources.map((x) => SIGNAL_SOURCE_LABELS[x] ?? x).join(", ")}</small>
+              <span className="stay-from">
+                <small className="hint">{s.sources.map((x) => SIGNAL_SOURCE_LABELS[x] ?? x).join(", ")}</small>
+                <button type="button" className="linkbtn danger small" disabled={busy === s.ids[0]} onClick={() => remove(s)}>
+                  Remove
+                </button>
+              </span>
             </div>
-            <div className="row">
-              <button type="button" className="btn ghost sm" aria-pressed={s.liked === true} disabled={busy === s.ids[0]} onClick={() => rate(s, s.liked === true ? null : true)}>
-                {s.liked === true ? "♥ Loved it" : "Loved it"}
+            <span className="item-thumbs" role="group" aria-label={`How was ${s.name}`}>
+              <button
+                type="button"
+                className="iconbtn up"
+                aria-pressed={s.liked === true}
+                aria-label="Loved it"
+                title="Loved it"
+                disabled={busy === s.ids[0]}
+                onClick={() => rate(s, s.liked === true ? null : true)}
+              >
+                <IconUp />
               </button>
-              <button type="button" className="btn ghost sm" aria-pressed={s.liked === false} disabled={busy === s.ids[0]} onClick={() => rate(s, s.liked === false ? null : false)}>
-                Not for me
+              <button
+                type="button"
+                className="iconbtn down"
+                aria-pressed={s.liked === false}
+                aria-label="Not for me"
+                title="Not for me"
+                disabled={busy === s.ids[0]}
+                onClick={() => rate(s, s.liked === false ? null : false)}
+              >
+                <IconDown />
               </button>
-              <button type="button" className="linkbtn danger" disabled={busy === s.ids[0]} onClick={() => remove(s)}>
-                Remove
-              </button>
-            </div>
+            </span>
           </li>
         ))}
       </ul>

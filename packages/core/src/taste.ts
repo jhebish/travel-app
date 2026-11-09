@@ -134,7 +134,7 @@ export const TASTE_TOOL = {
         type: "array",
         items: { type: "string" },
         description:
-          "Up to 4 short lines in the second person on how they travel, read from the past trips' places, months and lengths and from HOW THEY TRAVEL: the kinds of places they choose (big cities, coast, islands, mountains, small towns), the regions they favour, when and for how long they go, whether they go back to favourites or always somewhere new. Don't repeat the counts. E.g. 'You pick coastal towns over big capitals.'",
+          "Up to 4 short lines in the second person on how they travel, read from the past trips' places, months and lengths and from HOW THEY TRAVEL: the kinds of places they choose (big cities, coast, islands, mountains, small towns), the regions they favour, the pace and kind of trip they take. They're shown beside the HOW THEY TRAVEL facts, so don't restate those (counts, months, trip lengths, places they went back to): say what they add up to. E.g. 'You pick coastal towns over big capitals.'",
       },
       next: {
         type: "array",
