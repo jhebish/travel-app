@@ -128,7 +128,7 @@ function Login() {
   return (
     <div className="card login">
       <div className="head">
-        <Mark width={76} tight className="card-mark" />
+        <Mark width={68} tight className="card-mark" />
         <h1>{sentTo ? "Check your email" : "Sign in"}</h1>
         <p className="lede">
           {sentTo ? (

@@ -4,7 +4,7 @@ import { Mark } from "@/components/Mark";
 export default function SharedTripNotFound() {
   return (
     <div className="card lost">
-      <Mark width={132} tight className="lost-mark" />
+      <Mark width={116} tight className="lost-mark" />
       <div className="head">
         <span className="eyebrow">Link turned off</span>
         <h1>This trip isn’t shared anymore</h1>

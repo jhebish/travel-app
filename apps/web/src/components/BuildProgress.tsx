@@ -117,7 +117,7 @@ export function BuildProgress({ state, destination }: { state: BuildState; desti
         <div className="bar-walk">
           {/* The winged sandal walks the bar as the trip comes together. */}
           <span className="walker" style={{ left: `${pct}%`, transform: `translateX(-${pct}%)` }} aria-hidden="true">
-            <Mark width={40} tight cut="mid" />
+            <Mark width={36} tight cut="mid" />
           </span>
           <div className="bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Trip progress">
             <span style={{ width: `${pct}%` }} />

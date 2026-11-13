@@ -217,13 +217,13 @@ function Story({ dto }: { dto: RecapDTO }) {
 }
 
 function StoryFooter({ width }: { width: number }) {
-  const sandal = 96;
+  const sandal = 88; // twice the capitals' height, toe just under the baseline
   const word = 16 + 178;
   const site = 124;
   const gap = 32;
   return (
     <div style={{ position: "absolute", left: S.pad, bottom: 88, width, height: 60, display: "flex", alignItems: "center" }}>
-      <div style={{ display: "flex", width: sandal }}>{ogMarkSvg(sandal, C.ink, C.warm)}</div>
+      <div style={{ display: "flex", width: sandal, marginBottom: 16 }}>{ogMarkSvg(sandal, C.ink, C.warm)}</div>
       <div style={{ width: 178, marginLeft: 16, fontFamily: OG_DISPLAY, fontSize: 44, letterSpacing: 9, color: C.ink }}>PYLOS</div>
       <div style={{ display: "flex", marginLeft: gap, marginRight: gap }}>{ogWave(width - sandal - word - site - gap * 2, 3)}</div>
       <div style={{ width: site, display: "flex", justifyContent: "flex-end", fontStyle: "italic", fontSize: 40, color: C.muted }}>pylos.ai</div>

@@ -424,7 +424,7 @@ td { padding: 10px 8px; border-bottom: 1px solid var(--line); text-align: right;
 @keyframes sheen { from { background-position: 120% 0; } to { background-position: -120% 0; } }
 .build-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; color: var(--muted); margin-top: -8px; }
 /* The winged sandal walks along the top of the progress bar, its wing beating. */
-.bar-walk { position: relative; padding-top: 24px; }
+.bar-walk { position: relative; padding-top: 30px; }
 .walker { position: absolute; top: 0; color: var(--ink); line-height: 0; transition: left .25s ease-out, transform .25s ease-out; }
 .walker .mark { display: block; animation: walk-step .9s ease-in-out infinite; transform-origin: 50% 100%; }
 .walker .mark-wing { transform-box: fill-box; transform-origin: 96% 88%; animation: walk-flap .45s ease-in-out infinite alternate; }
@@ -579,10 +579,14 @@ h3 { font-size: 20px; }
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='12' viewBox='0 0 28 12'%3E%3Cpath d='M0 11 C6 11 8 9 8 6 C8 3 10.5 1 14 1 C17.5 1 19.5 3 19.5 5.2 C19.5 8 22.5 11 28 11 M19.5 5.2 C19.5 7.2 18 8.2 16.4 8.2 C15 8.2 14.2 7.3 14.2 6.2 C14.2 5.2 15 4.6 15.9 4.6' fill='none' stroke='black' stroke-width='1.25' stroke-linecap='round'/%3E%3C/svg%3E") repeat-x left center / 28px 12px;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='12' viewBox='0 0 28 12'%3E%3Cpath d='M0 11 C6 11 8 9 8 6 C8 3 10.5 1 14 1 C17.5 1 19.5 3 19.5 5.2 C19.5 8 22.5 11 28 11 M19.5 5.2 C19.5 7.2 18 8.2 16.4 8.2 C15 8.2 14.2 7.3 14.2 6.2 C14.2 5.2 15 4.6 15.9 4.6' fill='none' stroke='black' stroke-width='1.25' stroke-linecap='round'/%3E%3C/svg%3E") repeat-x left center / 28px 12px;
 }
-/* The signature: the winged sandal beside PYLOS in tracked inscription capitals. */
-.brand { display: inline-flex; align-items: center; gap: 12px; font-size: 24px; line-height: 1; text-transform: uppercase; }
-.brand .mark { flex: none; display: block; }
-.brand-word { letter-spacing: 0.16em; margin-right: -0.16em; padding-top: 2px; }
+/*
+  The signature: the winged sandal beside PYLOS in tracked inscription capitals. The mark is sized
+  from the wordmark, so the two keep their proportion at any size: the drawing stands twice the
+  capitals' height, its toe resting just under the baseline, 0.4em from the P.
+*/
+.brand { display: inline-flex; align-items: flex-end; gap: 0.35em; font-size: 24px; line-height: 1; text-transform: uppercase; }
+.brand .mark { flex: none; display: block; width: auto; height: 1.5em; margin-bottom: -0.055em; }
+.brand-word { letter-spacing: 0.16em; margin-right: -0.16em; }
 /* Footer: the wordmark and the links every page needs (about, privacy, terms, contact). */
 .sitefoot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); }
 .sitefoot-word { font: 400 14px var(--font-display); letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink); }
@@ -861,8 +865,7 @@ html, body { overflow-x: clip; }
   .topbar .nav, .topbar .account { display: none; }
   .topbar-start, .topbar-end { flex: 0 1 auto; min-width: 0; }
   .topbar-start { margin-right: auto; }
-  .brand { font-size: 21px; gap: 10px; }
-  .brand .mark { width: 50px; height: auto; }
+  .brand { font-size: 21px; }
   .plan-cta { min-height: 38px; padding: 0 16px; font-size: 12px; letter-spacing: 0.12em; }
   .me-label { display: none; }
   .tabbar {

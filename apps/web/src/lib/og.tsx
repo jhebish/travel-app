@@ -365,13 +365,13 @@ function Frame({ art, children }: { art: ReactElement; children: ReactNode }) {
 }
 
 function Footer() {
-  const sandal = 64; // the mark, cropped to the drawing (2:1)
+  const sandal = 60; // the mark, cropped to the drawing: twice the capitals' height, toe just under the baseline
   const word = 12 + 118; // a gap, then "PYLOS" at 30px, tracked
   const site = 82; // "pylos.ai" at 28px italic
   const gap = 28;
   return (
     <div style={{ position: "absolute", left: MARGIN, top: FOOT.y, width: W - MARGIN * 2, height: FOOT.h, display: "flex", alignItems: "center" }}>
-      <div style={{ display: "flex", width: sandal }}>{markSvg(sandal, C.ink, C.warm)}</div>
+      <div style={{ display: "flex", width: sandal, marginBottom: 11 }}>{markSvg(sandal, C.ink, C.warm)}</div>
       <div style={{ width: 118, marginLeft: 12, fontFamily: DISPLAY, fontSize: 30, letterSpacing: 6, color: C.ink }}>PYLOS</div>
       <div style={{ display: "flex", marginLeft: gap, marginRight: gap }}>{wave(W - MARGIN * 2 - sandal - word - site - gap * 2)}</div>
       <div style={{ width: site, display: "flex", justifyContent: "flex-end", fontStyle: "italic", fontSize: 28, color: C.muted }}>pylos.ai</div>
@@ -737,8 +737,8 @@ function arch({ center, star = C.ochre }: { center: "star" | "globe" | "mark"; s
 // ---------------------------------------------------------------------------
 // The mark
 // ---------------------------------------------------------------------------
-/** The drawing's centre and width on the mark's 200 square (full cut; the other cuts are within 1%). */
-const MARK_MID = { x: 101, y: 103, w: 148 };
+/** The tilted drawing's centre, width and height on the mark's 200 square (full cut; the other cuts are within 3%). */
+const MARK_MID = { x: 100, y: 100, w: 133, h: 96 };
 
 /** The mark as SVG elements, its drawing centred on (cx, cy) and `width` wide. */
 function markGroup(cx: number, cy: number, width: number, ink: string, wing: string, cut?: MarkCut) {
@@ -756,9 +756,9 @@ function markGroup(cx: number, cy: number, width: number, ink: string, wing: str
   );
 }
 
-/** The mark on its own, cropped to the drawing (about 2:1): for beside the wordmark. */
+/** The mark on its own, cropped to the drawing (about 7:5): for beside the wordmark. */
 function markSvg(width: number, ink: string, wing: string) {
-  const h = Math.round(width / 2);
+  const h = Math.round((width * MARK_MID.h) / MARK_MID.w);
   return (
     <svg width={width} height={h} viewBox={`0 0 ${width} ${h}`}>
       {markGroup(width / 2, h / 2, width * 0.94, ink, wing)}
@@ -772,7 +772,7 @@ function medallion(cx: number, cy: number, R: number) {
     <g>
       <circle cx={cx} cy={cy} r={R} fill={C.surface} stroke={C.warm} strokeOpacity="0.55" strokeWidth="2" />
       <circle cx={cx} cy={cy} r={R - 12} fill="none" stroke={C.pistachioLine} strokeWidth="1.5" strokeDasharray="2 7" strokeLinecap="round" />
-      {markGroup(cx, cy + 4, R * 1.5, C.ink, C.warm, "full")}
+      {markGroup(cx, cy, R * 1.3, C.ink, C.warm, "full")}
     </g>
   );
 }
@@ -813,7 +813,7 @@ export function appleIconImage(): ImageResponse {
     (
       <div style={{ width: s, height: s, display: "flex", backgroundColor: BRAND.teal }}>
         <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
-          {markGroup(s / 2, s / 2 + 2, s * 0.68, BRAND.cream, BRAND.goldLight, "full")}
+          {markGroup(s / 2, s / 2, s * 0.66, BRAND.cream, BRAND.goldLight, "full")}
         </svg>
       </div>
     ),
