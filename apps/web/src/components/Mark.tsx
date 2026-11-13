@@ -1,8 +1,9 @@
 import { MARK_CUTS, MARK_FRAME, MARK_SOLE, MARK_VIEWBOX, MARK_VIEWBOX_TIGHT, MARK_WING, markCut, type MarkCut } from "@travel/core";
 
 /**
- * The Pylos mark: a winged Greek sandal. The sandal takes the text colour, so it follows the theme;
- * the wing is gold (--warm). `tight` crops to the drawing (about 2:1) for lockups beside the wordmark.
+ * The Pylos mark: a winged Greek sandal, tilted mid-stride. The sandal takes the text colour, so it
+ * follows the theme; the wing is gold (--warm). `tight` crops to the drawing (about 7:5) for lockups
+ * beside the wordmark.
  */
 export function Mark({
   width,

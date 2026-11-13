@@ -38,7 +38,7 @@ export function Nav() {
         <div className="topbar-row">
           <div className="topbar-start">
             <Link href="/" className="brand">
-              <Mark width={60} tight cut="full" />
+              <Mark width={50} tight cut="full" />
               <span className="brand-word">Pylos</span>
             </Link>
           </div>

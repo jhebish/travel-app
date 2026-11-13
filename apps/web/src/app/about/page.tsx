@@ -11,7 +11,7 @@ export default function AboutPage() {
   return (
     <article className="card legal about">
       <header className="head">
-        <Mark width={96} tight className="card-mark" />
+        <Mark width={84} tight className="card-mark" />
         <h1>Trips planned the local way</h1>
         <p className="lede">
           Pylos builds day-by-day itineraries around the cafés, restaurants, neighborhoods and places to stay that locals actually recommend, then learns your taste so every

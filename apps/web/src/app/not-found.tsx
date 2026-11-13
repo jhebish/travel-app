@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Not found · Pylos" };
 export default function NotFound() {
   return (
     <div className="card lost">
-      <Mark width={132} tight className="lost-mark" />
+      <Mark width={116} tight className="lost-mark" />
       <div className="head">
         <span className="eyebrow">Page not found</span>
         <h1>This road doesn’t lead anywhere</h1>

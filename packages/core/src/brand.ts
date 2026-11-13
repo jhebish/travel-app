@@ -1,17 +1,24 @@
 /**
  * The Pylos mark: a Greek T-strap sandal with a gold wing at the ankle, after Hermes' talaria.
  *
- * Drawn on a 200×200 square (`MARK_FRAME` centres it). The sandal is ink on light grounds and
- * cream on dark or teal ones; the wing is always gold. Three cuts keep it legible as it shrinks:
- * `full` (about 80px and up), `mid` (about 40–80px) and `tiny` (favicons, about 32px and under).
+ * The sandal is drawn flat and `MARK_FRAME` tilts it 14° (heel up, toe down, mid-stride) and centres
+ * it on a 200×200 square. The sandal is ink on light grounds and cream on dark or teal ones; the
+ * wing is always gold. Three cuts keep it legible as it shrinks: `full` (about 80px and up), `mid`
+ * (about 40–80px) and `tiny` (favicons, about 32px and under).
  *
- * The static favicon (apps/web/src/app/icon.svg) and the mobile app's icon PNGs are drawn from
- * these same paths; regenerate them if the mark changes.
+ * Beside the wordmark (see `.brand` in the web app's globals.css): the drawing stands twice the
+ * capitals' height, its toe resting just under the baseline, 0.4em from the P.
+ *
+ * The static favicon (apps/web/src/app/icon.svg), the email lockup (apps/web/public/email/) and the
+ * mobile app's icon PNGs are drawn from these same paths; regenerate them if the mark changes.
  */
 export const MARK_VIEWBOX = "0 0 200 200";
-/** Just the drawing, for lockups beside the wordmark: about 2:1, every cut fits. */
-export const MARK_VIEWBOX_TIGHT = "18 62 162 80";
-export const MARK_FRAME = "translate(100 100) scale(0.899) translate(-93.7 -121.5)";
+/** Just the drawing, for lockups beside the wordmark: about 7:5, every cut fits. */
+export const MARK_VIEWBOX_TIGHT = "27 47.5 143 103";
+/** How far the sandal leans, in degrees clockwise: the heel lifts and the toe points down. */
+export const MARK_TILT = 14;
+/** Tilts the flat drawing and centres the full cut on (100, 100), 133 wide and 96 tall. */
+export const MARK_FRAME = `translate(100 100) scale(0.899) translate(-60.75 -142.3) rotate(${MARK_TILT})`;
 
 export const MARK_SOLE =
   "M38 152 C38 146 42 143 50 143 L156 146 C167 146.5 175 149 177 153 C178 157 174 159 166 159 L48 161 C42 161 38 158 38 152 Z";
