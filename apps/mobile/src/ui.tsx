@@ -107,27 +107,29 @@ export function Badge({ text, tone = "plain" }: { text: string; tone?: "season" 
   );
 }
 
-export function Button({ title, onPress, disabled, ghost, danger }: { title: string; onPress: () => void; disabled?: boolean; ghost?: boolean; danger?: boolean }) {
+/** `ghost`: a small outlined button; `wide`: the same look, full width (e.g. "Continue with Google"). */
+export function Button({ title, onPress, disabled, ghost, danger, wide }: { title: string; onPress: () => void; disabled?: boolean; ghost?: boolean; danger?: boolean; wide?: boolean }) {
   const t = useTheme();
+  const outline = ghost || wide;
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => ({
-        backgroundColor: ghost ? t.surface : t.btn,
+        backgroundColor: outline ? t.surface : t.btn,
         borderColor: danger ? t.bad : t.line,
-        borderWidth: ghost ? 1 : 0,
-        minHeight: ghost ? 40 : 54,
+        borderWidth: outline ? 1 : 0,
+        minHeight: wide ? 50 : ghost ? 40 : 54,
         justifyContent: "center",
-        paddingHorizontal: ghost ? 16 : 22,
+        paddingHorizontal: outline ? 16 : 22,
         borderRadius: 999,
         alignItems: "center",
-        alignSelf: ghost ? "flex-start" : "stretch",
+        alignSelf: ghost && !wide ? "flex-start" : "stretch",
         opacity: disabled ? 0.5 : pressed ? 0.8 : 1,
       })}
     >
-      {ghost ? (
+      {outline ? (
         <Text style={{ color: danger ? t.bad : t.ink, fontWeight: "500", fontSize: 16 }}>{title}</Text>
       ) : (
         <Text style={{ color: t.btnInk, fontFamily: FONT.display, fontSize: 15, letterSpacing: 2, textTransform: "uppercase" }}>{title}</Text>

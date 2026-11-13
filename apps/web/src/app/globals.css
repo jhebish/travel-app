@@ -606,6 +606,10 @@ h3 { font-size: 20px; }
 .login-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 18px; }
 .login-links .linkbtn:disabled { color: var(--faint); text-decoration: none; cursor: default; }
 .login .lede b { font-weight: 600; color: var(--ink); }
+/* "Continue with Google" above the email form, split from it by an "or" rule. */
+.btn.ghost.wide { width: 100%; min-height: 50px; }
+.or-rule { display: flex; align-items: center; gap: 12px; margin: 0; color: var(--muted); font: 400 12.5px var(--font-display); letter-spacing: 0.16em; text-transform: uppercase; }
+.or-rule::before, .or-rule::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 /* The mark heading a card (sign in), and the lost-page card. */
 .card-mark { color: var(--ink); margin-bottom: 2px; }
 .lost { align-items: center; text-align: center; padding-block: 40px 34px; }

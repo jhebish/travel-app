@@ -83,6 +83,9 @@ importers:
       expo-updates:
         specifier: 58.0.21
         version: 58.0.21(expo@58.0.23)(react-native@0.88.1(@babel/core@7.26.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.88.1(@babel/core@7.26.0))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
+      expo-web-browser:
+        specifier: 58.0.8
+        version: 58.0.8(expo@58.0.23)(react-native@0.88.1(@babel/core@7.26.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.88.1(@babel/core@7.26.0))(@types/react@19.3.0)(react@19.3.0))
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -2482,6 +2485,12 @@ packages:
     peerDependenciesMeta:
       expo-dev-client:
         optional: true
+
+  expo-web-browser@58.0.8:
+    resolution: {integrity: sha512-x/+50mE/F9QtZtCqLEW+fry82IesI1DBKpN2jy8zUnN1bt1J7wGzs3vq5f3riiBVMFEPnajrGVaTKk7CKE1xKw==}
+    peerDependencies:
+      expo: '*'
+      react-native: '*'
 
   expo@58.0.23:
     resolution: {integrity: sha512-FRpmfd1mdjWS9bRSMoZkwpF8ugbN+w6BDtNs+DYEio7rdSguTJ6fs/gaeWSeN60AJAbz80Uj36AMWtpHkShG0g==}
@@ -6730,6 +6739,11 @@ snapshots:
       resolve-from: 5.0.0
     transitivePeerDependencies:
       - supports-color
+
+  expo-web-browser@58.0.8(expo@58.0.23)(react-native@0.88.1(@babel/core@7.26.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.88.1(@babel/core@7.26.0))(@types/react@19.3.0)(react@19.3.0)):
+    dependencies:
+      expo: 58.0.23(@babel/core@7.26.0)(@expo/dom-webview@58.0.2)(@expo/metro-runtime@58.0.17)(expo-router@58.0.30)(react-dom@19.3.0(react@19.3.0))(react-native-worklets@0.13.1(@babel/core@7.26.0)(@react-native/metro-config@0.88.1(@babel/core@7.26.0))(react-native@0.88.1(@babel/core@7.26.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.88.1(@babel/core@7.26.0))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0))(react-native@0.88.1(@babel/core@7.26.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.88.1(@babel/core@7.26.0))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(typescript@6.0.3)
+      react-native: 0.88.1(@babel/core@7.26.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.88.1(@babel/core@7.26.0))(@types/react@19.3.0)(react@19.3.0)
 
   expo@58.0.23(@babel/core@7.26.0)(@expo/dom-webview@58.0.2)(@expo/metro-runtime@58.0.17)(expo-router@58.0.30)(react-dom@19.3.0(react@19.3.0))(react-native-worklets@0.13.1(@babel/core@7.26.0)(@react-native/metro-config@0.88.1(@babel/core@7.26.0))(react-native@0.88.1(@babel/core@7.26.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.88.1(@babel/core@7.26.0))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0))(react-native@0.88.1(@babel/core@7.26.0)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.88.1(@babel/core@7.26.0))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(typescript@6.0.3):
     dependencies:

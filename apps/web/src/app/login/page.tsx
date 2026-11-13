@@ -1,17 +1,16 @@
 "use client";
 import { useRouter, useSearchParams } from "next/navigation";
+import { signInProviders } from "@travel/core";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { Mark } from "@/components/Mark";
 import { safeNext } from "@/lib/safe-next";
-import { supabaseBrowser } from "@/lib/supabase/browser";
+import { supabaseBrowser, supabasePublicKey, supabaseUrl } from "@/lib/supabase/browser";
 
 /** Supabase sends 6-digit codes by default; projects can set up to 10. */
 const CODE_MIN = 6;
 const CODE_MAX = 10;
 /** Supabase won't send another email to the same address within a minute. */
 const RESEND_AFTER = 60;
-/** Google sign-in needs the Google provider switched on in Supabase first; until then the button would lead to an error page. */
-const GOOGLE = process.env.NEXT_PUBLIC_GOOGLE_SIGNIN === "1";
 
 /**
  * How the code is checked depends on how it was sent: a guest attaching an email to their
@@ -28,11 +27,23 @@ function Login() {
   const [sentTo, setSentTo] = useState<{ email: string; kind: CodeKind } | null>(null);
   const [busy, setBusy] = useState(false);
   const [wait, setWait] = useState(0);
-  const [msg, setMsg] = useState<{ text: string; err?: boolean } | null>(
-    params.get("error") ? { text: "That sign-in link didn't work or has expired. Send yourself a new one below.", err: true } : null,
-  );
+  const [msg, setMsg] = useState<{ text: string; err?: boolean } | null>(() => {
+    const failed = params.get("error");
+    if (failed === "google") return { text: "Google sign-in didn't finish. Try again, or use your email.", err: true };
+    return failed ? { text: "That sign-in link didn't work or has expired. Send yourself a new one below.", err: true } : null;
+  });
+  /** Shown once Google is switched on in Supabase (see signInProviders). */
+  const [google, setGoogle] = useState(false);
   const codeRef = useRef<HTMLInputElement>(null);
   const sb = supabaseBrowser();
+
+  useEffect(() => {
+    let live = true;
+    void signInProviders(supabaseUrl(), supabasePublicKey()).then((on) => live && setGoogle(on.has("google")));
+    return () => {
+      live = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (wait <= 0) return;
@@ -82,12 +93,37 @@ function Login() {
     router.refresh();
   }
 
-  async function google() {
-    await sb.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` },
-    });
+  /**
+   * Off to Google and back to /auth/callback. A guest adds Google to their guest account so their
+   * trips come along, as with email. If Supabase won't add it (manual linking off), this signs in
+   * instead; if that Google account already has a Pylos account, the callback comes back here
+   * with ?google=1 to sign in to that one.
+   */
+  async function continueWithGoogle(addToGuest = true) {
+    setBusy(true);
+    setMsg(null);
+    const back = (link: boolean) => `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}${link ? "&link=1" : ""}`;
+    if (addToGuest) {
+      const { data: current } = await sb.auth.getUser();
+      if (current.user?.is_anonymous) {
+        const { error } = await sb.auth.linkIdentity({ provider: "google", options: { redirectTo: back(true) } });
+        if (!error) return;
+      }
+    }
+    const { error } = await sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: back(false) } });
+    if (error) {
+      setBusy(false);
+      setMsg({ text: "Google sign-in isn't available right now. Use your email instead.", err: true });
+    }
   }
+
+  // Back from the callback: that Google account already has a Pylos account, so sign in to it.
+  const retryGoogle = params.get("google") === "1";
+  useEffect(() => {
+    if (retryGoogle) void continueWithGoogle(false);
+    // Once, on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retryGoogle]);
 
   return (
     <div className="card login">
@@ -104,6 +140,16 @@ function Login() {
           )}
         </p>
       </div>
+      {!sentTo && google && (
+        <>
+          <button type="button" className="btn ghost wide" disabled={busy} onClick={() => void continueWithGoogle()}>
+            Continue with Google
+          </button>
+          <p className="or-rule" aria-hidden="true">
+            or
+          </p>
+        </>
+      )}
       {!sentTo ? (
         <form
           className="stack"
@@ -173,11 +219,6 @@ function Login() {
             </button>
           </div>
         </form>
-      )}
-      {!sentTo && GOOGLE && (
-        <button className="btn ghost" onClick={google}>
-          Continue with Google
-        </button>
       )}
       <p className={`status${msg?.err ? " err" : ""}`} role="status" aria-live="polite">
         {msg?.text}

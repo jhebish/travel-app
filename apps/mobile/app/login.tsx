@@ -1,10 +1,12 @@
+import { signInProviders } from "@travel/core";
 import { useEffect, useState } from "react";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
-import { TextInput } from "react-native";
+import { Platform, TextInput, View } from "react-native";
+import { continueWithGoogle } from "../src/googleSignIn";
 import { supabase } from "../src/supabase";
-import { useTheme } from "../src/theme";
-import { Button, Card, H1, Label, P, Screen, Status } from "../src/ui";
+import { FONT, useTheme } from "../src/theme";
+import { Button, Card, H1, Label, P, Screen, Status, Text } from "../src/ui";
 
 /** Supabase sends 6-digit codes by default; projects can set up to 10. */
 const CODE_MIN = 6;
@@ -23,7 +25,18 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [wait, setWait] = useState(0);
   const [msg, setMsg] = useState<{ text: string; err?: boolean } | null>(null);
+  /** Shown once Google is switched on in Supabase. Not in the web preview, which can't finish it. */
+  const [googleOn, setGoogleOn] = useState(false);
   const input = { backgroundColor: t.bg, borderColor: t.line, borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 16, color: t.ink };
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    let live = true;
+    void signInProviders(process.env.EXPO_PUBLIC_SUPABASE_URL ?? "", process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "").then((on) => live && setGoogleOn(on.has("google")));
+    return () => {
+      live = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (wait <= 0) return;
@@ -70,6 +83,15 @@ export default function Login() {
     router.replace("/");
   }
 
+  async function withGoogle() {
+    setBusy(true);
+    setMsg(null);
+    const outcome = await continueWithGoogle();
+    setBusy(false);
+    if (outcome === "signed-in") router.replace("/");
+    else if (outcome === "failed") setMsg({ text: "Google sign-in didn't finish. Try again, or use your email.", err: true });
+  }
+
   return (
     <Screen>
       <Card>
@@ -79,6 +101,16 @@ export default function Login() {
         </P>
         {!sentTo ? (
           <>
+            {googleOn && (
+              <>
+                <Button wide title="Continue with Google" disabled={busy} onPress={() => void withGoogle()} />
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                  <View style={{ flex: 1, height: 1, backgroundColor: t.line }} />
+                  <Text style={{ color: t.muted, fontFamily: FONT.display, fontSize: 12.5, letterSpacing: 2, textTransform: "uppercase" }}>or</Text>
+                  <View style={{ flex: 1, height: 1, backgroundColor: t.line }} />
+                </View>
+              </>
+            )}
             <Label>Email</Label>
             <TextInput style={input} value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" placeholderTextColor={t.muted} placeholder="you@example.com" />
             <Button title={busy ? "Sending…" : "Email me a code"} disabled={busy || !email.includes("@")} onPress={() => void send(email.trim())} />

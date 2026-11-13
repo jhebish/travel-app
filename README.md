@@ -78,7 +78,7 @@ You need: Node 20+, pnpm 10, a Supabase project, an Anthropic API key, a Google 
 
 - **Email codes:** Sign In / Providers → Email: enabled. Each sign-in email carries a code and a button, and the sign-in pages ask for the code, so the templates must include `{{ .Token }}`: paste the branded ones from `supabase/templates` (its README lists them).
   - Send through your own SMTP (**Emails → SMTP Settings**): Supabase's built-in sender allows a couple of emails an hour and won't let you edit templates. Pylos uses Resend (`smtp.resend.com`, port 465, user `resend`) from `Pylos <team@pylos.ai>`, connected with Resend's Supabase integration; pylos.ai's DNS has Resend's DKIM, `send` and `_dmarc` records.
-- **Google (web, optional):** Providers → Google: add your Google OAuth client id and secret.
+- **Google (optional):** in Google Cloud → APIs & Services → Credentials, create an OAuth client ID of type *Web application* with the redirect URI `https://YOUR-PROJECT.supabase.co/auth/v1/callback`, then paste its client ID and secret into Sign In / Providers → Google and switch it on. The site and the app show "Continue with Google" by themselves once it's on (they read Supabase's public auth settings). Also turn on **Allow manual linking** there, so a guest who continues with Google keeps their trips.
 - **URL Configuration:** Site URL = your deployed web URL. Add these Redirect URLs:
   - `https://YOUR-APP/auth/callback` and `http://localhost:3000/auth/callback` (web)
   - `pylos://**` and `tripplanner://**` (the phone app's own links) and `exp://**` (while testing in Expo Go)
