@@ -5,8 +5,11 @@ import {
   STAY_STYLES,
   STAY_TIERS,
   airbnbSearchUrl,
+  DAY_PART_LABELS,
   buildIcs,
   dateSpan,
+  dayPartHeads,
+  dayTitle,
   fitText,
   googleMapsDayUrl,
   guestsFor,
@@ -39,10 +42,13 @@ import {
   IconBookmark,
   IconCalendar,
   IconCar,
+  IconDawn,
   IconDown,
+  IconDusk,
   IconGlobe,
   IconLock,
   IconMap,
+  IconMidday,
   IconPeople,
   IconPhone,
   IconRefresh,
@@ -396,6 +402,7 @@ export function TripView({
   const it = trip.itinerary;
   const dIdx = Math.min(day, it.days.length - 1);
   const d = it.days[dIdx]!;
+  const dayParts = dayPartHeads(d.stops.map((s) => s.time));
   const city = trip.destination;
   /** On a multi-city trip, a day's places belong to that day's city. */
   const dayCity = d.city ? `${d.city}, ${city}` : city;
@@ -896,7 +903,7 @@ export function TripView({
             tabIndex={i === dIdx ? 0 : -1}
             onClick={() => pickDay(i)}
           >
-            {x.label}
+            {dayTitle(x.label)}
             {x.city && <small className="tab-city">{x.city}</small>}
           </button>
         ))}
@@ -947,7 +954,7 @@ export function TripView({
             {busy?.kind === "day" ? (
               <span className="thinking">
                 <span className="dot" />
-                Rebuilding {d.label.toLowerCase()}
+                Rebuilding {dayTitle(d.label)}
               </span>
             ) : (
               <div className="row">
@@ -966,11 +973,20 @@ export function TripView({
         <ol className="timeline">
           {d.stops.map((s, si) => {
             const k = `${dIdx}-${si}`;
+            // Dawn, Midday, Dusk: each part of the day is headed once, and the morning is tinted rose.
+            const { part, head } = dayParts[si]!;
+            const partEnd = !!part && dayParts[si + 1]?.part !== part;
             const v = trip.votes[k] ?? 0;
             const leg = d.stops[si + 1] ? legBetween(s, d.stops[si + 1]!) : null;
             const swapping = busy?.kind === "swap" && busy.key === k;
             return (
-              <li key={`${s.name}-${si}`} className={`tl-item${s.locked ? " locked" : ""}`}>
+              <li key={`${s.name}-${si}`} className={`tl-item${s.locked ? " locked" : ""}${part ? ` tl-${part}` : ""}${head ? " tl-part-start" : ""}${partEnd ? " tl-part-end" : ""}`}>
+                {head && (
+                  <span className="tl-part">
+                    {head === "dawn" ? <IconDawn /> : head === "midday" ? <IconMidday /> : <IconDusk />}
+                    {DAY_PART_LABELS[head]}
+                  </span>
+                )}
                 <div className="tl-rail">
                   <span className="tl-node" aria-label={`Stop ${si + 1}${s.locked ? ", locked" : ""}`}>
                     {si + 1}

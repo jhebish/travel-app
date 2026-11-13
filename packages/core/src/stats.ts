@@ -28,14 +28,15 @@ export interface TravelStats {
   next: { level: TravelLevel; countriesToGo: number } | null;
 }
 
+/** By countries visited. The ladder ends in the Odyssey: from wayfarer to one who has seen it all and come home. */
 export const TRAVEL_LEVELS: TravelLevel[] = [
   { name: "Homebody", min: 0 },
   { name: "Day-tripper", min: 1 },
   { name: "Explorer", min: 3 },
-  { name: "Voyager", min: 8 },
-  { name: "Globetrotter", min: 15 },
-  { name: "Nomad", min: 30 },
-  { name: "Legend", min: 50 },
+  { name: "Wayfarer", min: 8 },
+  { name: "Voyager", min: 15 },
+  { name: "Navigator", min: 30 },
+  { name: "Odyssean", min: 50 },
 ];
 
 /** Distinct countries and cities from someone's places. Cities are counted per country. */

@@ -2,7 +2,8 @@
 import type { CommunityTrip, ProfileDTO } from "@travel/core";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Avatar, FollowButton, LevelBadge, PlaceChip, StatsRow, TripCard } from "@/components/community";
+import { CoinCollection } from "@/components/Coins";
+import { Avatar, FollowButton, LevelBadge, StatsRow, TripCard } from "@/components/community";
 import { LocalExpertLine } from "@/components/Friends";
 import { useMe } from "@/components/useMe";
 import { api } from "@/lib/api";
@@ -63,12 +64,10 @@ export default function ProfilePage({ params }: { params: { handle: string } }) 
           </p>
         ) : (
           <>
-            <p className="hint">{countries.length} {countries.length === 1 ? "country" : "countries"}</p>
-            <div className="chips">
-              {p.places.map((x) => (
-                <PlaceChip key={x.id} place={x} />
-              ))}
-            </div>
+            <p className="hint">
+              {countries.length} {countries.length === 1 ? "country" : "countries"}, a coin for every city: bronze for a first visit, silver for a second, gold from the third.
+            </p>
+            <CoinCollection places={p.places} first={24} />
           </>
         )}
       </section>

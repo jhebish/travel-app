@@ -124,6 +124,20 @@ export const IconSun = () => (
     <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
   </svg>
 );
+/* The three parts of a day in the itinerary: the sun on the horizon, the sun overhead, the moon. */
+export const IconDawn = () => (
+  <svg {...base}>
+    <path d="M3 18h18" />
+    <path d="M7 18a5 5 0 0 1 10 0" />
+    <path d="M12 9V6.5M5.3 12.3 3.6 10.6M18.7 12.3l1.7-1.7" />
+  </svg>
+);
+export const IconMidday = IconSun;
+export const IconDusk = () => (
+  <svg {...base}>
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+  </svg>
+);
 export const IconPhotos = () => (
   <svg {...base}>
     <rect x="3" y="6" width="14" height="13" rx="2" />

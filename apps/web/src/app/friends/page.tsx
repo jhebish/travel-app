@@ -47,7 +47,7 @@ function Friends({ joined }: { joined: boolean }) {
     return (
       <div className="empty">
         <b>No trips from friends yet</b>
-        <span className="hint">Follow people to see the trips they share.</span>
+        <span className="hint">Calm seas for now. Follow people to see the trips they share.</span>
         <Link href="/friends?tab=people">Find people</Link>
         {!joined && <Link href="/profile">Create your profile</Link>}
       </div>
@@ -104,7 +104,7 @@ function Top() {
       ) : !data.trips.length ? (
         <div className="empty">
           <b>{city ? `No public trips for ${city} yet` : "No public trips yet"}</b>
-          <span className="hint">Build one and set it to Everyone from its Share menu to be the first.</span>
+          <span className="hint">Uncharted waters. Build one and set it to Everyone from its Share menu to be the first.</span>
           <Link href={city ? planHref(city) : "/plan"}>Plan a trip</Link>
         </div>
       ) : (
