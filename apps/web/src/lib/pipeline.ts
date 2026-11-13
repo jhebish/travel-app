@@ -10,6 +10,7 @@ import {
   OUTLINE_TOOL,
   OutlineSchema,
   blendWeights,
+  dayTitle,
   buildHotelPromptForAreas,
   buildOutlinePrompt,
   buildPlanDayPrompt,
@@ -630,7 +631,7 @@ async function planSingle(req: TripRequest, { eff, lists, history, rebuildUntil,
     );
     const day: DayOut = { label: d.label || `Day ${i + 1}`, theme: balanced.theme || data.theme || d.theme, stops: balanced.stops };
     emit({ type: "day", index: i, day });
-    tick(`${day.label} planned`);
+    tick(`${dayTitle(day.label)} planned`);
     return day;
   });
   const hotelJob = req.stay.on
@@ -801,7 +802,7 @@ async function planMulti(req: TripRequest, { eff, lists, history, rebuildUntil, 
       stops: balanced.stops,
     };
     emit({ type: "day", index: i, day });
-    tick(`${day.label} planned`);
+    tick(`${dayTitle(day.label)} planned`);
     return day;
   });
 

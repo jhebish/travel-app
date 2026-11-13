@@ -18,6 +18,7 @@ import {
   MARK_SOLE,
   MARK_WING,
   monthsLabel,
+  romanNumeral,
   type CommunityTrip,
   type Destination,
   type Itinerary,
@@ -609,12 +610,12 @@ function arrow(tier: Tier) {
   );
 }
 
-// One-place trips: the first days, "Day 1 · Tascas and tiles".
+// One-place trips: the first days, "Day I · Tascas and tiles".
 const THEMES_GAP = 26;
 const THEME_ROW = 44;
 
 function Themes({ themes }: { themes: string[] }) {
-  const label = 84; // a fixed width, so the themes line up
+  const label = 104; // a fixed width, so the themes line up (wide enough for DAY III)
   const dot = 28;
   const f: Fit = { size: 30, face: "body", width: COL.w - 26 - 16 - label - dot };
   return (
@@ -624,7 +625,7 @@ function Themes({ themes }: { themes: string[] }) {
           <svg width="26" height="26" viewBox="0 0 26 26">
             <path d={octagram(13, 13, 12)} fill={CYCLE[i % CYCLE.length]} stroke={C.clayLine} strokeWidth="1.2" strokeLinejoin="round" />
           </svg>
-          <div style={{ width: label, marginLeft: 16, fontFamily: DISPLAY, fontSize: 22, letterSpacing: 3, color: C.teal }}>{`DAY ${i + 1}`}</div>
+          <div style={{ width: label, marginLeft: 16, fontFamily: DISPLAY, fontSize: 22, letterSpacing: 3, color: C.teal }}>{`DAY ${romanNumeral(i + 1)}`}</div>
           <div style={{ width: dot, display: "flex", justifyContent: "center", fontSize: 30, color: C.muted }}>·</div>
           <div style={{ fontSize: 30, color: C.ink, whiteSpace: "nowrap" }}>{fitLines(theme, f, 1)[0]}</div>
         </div>

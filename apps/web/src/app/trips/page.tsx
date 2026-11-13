@@ -84,7 +84,7 @@ export default function TripsPage() {
           ) : !trips.length ? (
             <div className="empty">
               <b>{filter === "all" ? "No trips yet" : filter === "saved" ? "Nothing saved yet" : "Nothing rated yet"}</b>
-              <span className="meta">{filter === "all" ? <>Build one on the <Link href="/plan">Plan</Link> page and it will appear here.</> : "Open a trip and use the stars or Save button."}</span>
+              <span className="meta">{filter === "all" ? <>Every odyssey starts with one. Build yours on the <Link href="/plan">Plan</Link> page and it will appear here.</> : "Open a trip and use the stars or Save button."}</span>
             </div>
           ) : (
             <ul className="list">

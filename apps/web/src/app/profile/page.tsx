@@ -21,6 +21,7 @@ import { PicksForFriendsSwitch, YourPicks } from "@/components/Friends";
 import { QuickLog, type PresetTrip } from "@/components/QuickLog";
 import { RankEntry } from "@/components/Rank";
 import { RankNudge } from "@/components/RankNudge";
+import { CoinCollection } from "@/components/Coins";
 import { PlacesMap } from "@/components/PlacesMap";
 import { StaysList } from "@/components/Stays";
 import { TasteCard, kindFromName, useTaste } from "@/components/taste";
@@ -350,6 +351,16 @@ function ProfileEditor() {
                 </p>
               )}
               <PlacesMap version={places.map((p) => p.id).join(",")} />
+
+              {places.length > 0 && (
+                <div className="stack" style={{ gap: 12 }}>
+                  <div className="head">
+                    <h3 className="eyebrow">Your coins</h3>
+                    <p className="hint">Every city strikes its own. Bronze for a first visit, silver for a second, gold from the third.</p>
+                  </div>
+                  <CoinCollection places={places} />
+                </div>
+              )}
 
               <QuickLog
                 preset={alreadyLogged ? null : preset}

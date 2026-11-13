@@ -1541,3 +1541,76 @@ dialog.sheet.wide { width: min(560px, calc(100vw - 32px)); max-height: calc(100d
   .made4u-panel { padding: 16px 10px 10px; }
   .made4u-day li { grid-template-columns: 46px minmax(0, 1fr); gap: 10px; }
 }
+
+/* =====================================================================================
+   The Odyssey layer: small touches from the poem, kept quiet.
+   ===================================================================================== */
+
+/*
+  Dawn, Midday, Dusk. Each part of a day in the itinerary is headed once, and the morning carries
+  a faint rose tint, after Homer's "rosy-fingered Dawn".
+*/
+.tl-part { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font: 400 12.5px/1 var(--font-display); letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+.tl-part svg { width: 17px; height: 17px; flex: none; color: var(--warm); }
+.tl-part::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.tl-item.tl-part-start:not(:first-child) { margin-top: 6px; }
+.tl-item.tl-dawn { background: color-mix(in srgb, var(--clay) 40%, transparent); margin-inline: -14px; padding-inline: 14px; }
+.tl-item.tl-dawn.tl-part-start { border-top-left-radius: 16px; border-top-right-radius: 16px; padding-top: 14px; }
+.tl-item.tl-dawn.tl-part-end { border-bottom-left-radius: 16px; border-bottom-right-radius: 16px; padding-bottom: 6px; margin-bottom: 14px; }
+.tl-item.tl-dawn .tl-part::after { background: var(--clay-line); opacity: .4; }
+.tl-item.tl-dawn.tl-part-end .tl-line { display: none; }
+
+/*
+  The trip-building bar is the Pylos wave filling in from the left, the sandal walking along it.
+*/
+.bar.wave {
+  --wave: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='12' viewBox='0 -0.5 28 13'%3E%3Cpath d='M0 11 C6 11 8 9 8 6 C8 3 10.5 1 14 1 C17.5 1 19.5 3 19.5 5.2 C19.5 8 22.5 11 28 11 M19.5 5.2 C19.5 7.2 18 8.2 16.4 8.2 C15 8.2 14.2 7.3 14.2 6.2 C14.2 5.2 15 4.6 15.9 4.6' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round'/%3E%3C/svg%3E");
+  height: 16px; border-radius: 0; background: none; overflow: visible;
+}
+.bar.wave::before {
+  content: ""; position: absolute; inset: 0;
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  -webkit-mask: var(--wave) repeat-x left center / 37.33px 16px; mask: var(--wave) repeat-x left center / 37.33px 16px;
+}
+.bar.wave > span {
+  border-radius: 0; background: var(--accent);
+  -webkit-mask: var(--wave) repeat-x left center / 37.33px 16px; mask: var(--wave) repeat-x left center / 37.33px 16px;
+}
+
+/*
+  City coins: every Greek city struck its own coin, so every city someone has been to has one.
+  Bronze for a first visit, silver for a second, gold from the third.
+*/
+.coinbox { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.coins { list-style: none; margin: 0; padding: 0; width: 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 18px 6px; }
+.coin-link { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; text-decoration: none; color: var(--ink); border-radius: 12px; }
+.coin {
+  --coin: var(--clay); --coin-rim: var(--clay-line);
+  position: relative; width: 72px; height: 72px; margin-bottom: 6px; display: grid; place-items: center;
+  border-radius: 50% 48% 51% 49% / 49% 51% 48% 52%;
+  background: radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--coin) 50%, var(--surface)), var(--coin) 64%);
+  border: 1.5px solid var(--coin-rim);
+  box-shadow: 0 1px 2px rgba(59, 45, 54, .14), inset 0 0 0 3px color-mix(in srgb, var(--coin) 78%, var(--coin-rim));
+  color: var(--ink); transform: rotate(var(--turn, 0deg)); transition: transform .2s ease;
+}
+.coin::before { content: ""; position: absolute; inset: 6px; border-radius: inherit; border: 1.2px dotted var(--coin-rim); opacity: .75; }
+.coin svg { width: 28px; height: 28px; margin-top: -11px; }
+.coin-legend { position: absolute; left: 0; right: 0; bottom: 13px; font: 400 9.5px/1 var(--font-display); letter-spacing: 0.18em; text-indent: 0.18em; }
+.coin.silver { --coin: var(--lavender); --coin-rim: #a59bb5; }
+.coin.gold { --coin: var(--ochre); --coin-rim: var(--warm); }
+.coin-name { font-size: 15.5px; line-height: 1.2; overflow-wrap: anywhere; }
+.coin-when { font-size: 13.5px; line-height: 1.2; color: var(--muted); font-style: italic; min-height: 1.2em; }
+@media (hover: hover) { .coin-link:hover .coin { transform: rotate(0deg) translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { .coin { transition: none; } }
+@media (prefers-color-scheme: dark) { .coin.silver { --coin-rim: #7d748c; } }
+
+/*
+  Stars in the dark theme: a faint scatter with the stars Odysseus steers by when he leaves
+  Calypso's island (the Bear, Orion, the Pleiades and Bootes).
+*/
+@media (prefers-color-scheme: dark) {
+  body {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='900' viewBox='0 0 1200 900'%3E%3Cg fill='%23f3ebe4'%3E%3Ccircle cx='42' cy='585' r='1.0' opacity='0.4'/%3E%3Ccircle cx='338' cy='565' r='1.0' opacity='0.4'/%3E%3Ccircle cx='614' cy='164' r='1.0' opacity='0.32'/%3E%3Ccircle cx='1071' cy='330' r='1.2' opacity='0.4'/%3E%3Ccircle cx='1122' cy='698' r='0.8' opacity='0.4'/%3E%3Ccircle cx='265' cy='504' r='0.9' opacity='0.32'/%3E%3Ccircle cx='715' cy='26' r='0.7' opacity='0.2'/%3E%3Ccircle cx='39' cy='716' r='0.7' opacity='0.2'/%3E%3Ccircle cx='342' cy='149' r='0.8' opacity='0.2'/%3E%3Ccircle cx='750' cy='671' r='1.0' opacity='0.32'/%3E%3Ccircle cx='1100' cy='662' r='1.2' opacity='0.48'/%3E%3Ccircle cx='1119' cy='179' r='1.2' opacity='0.32'/%3E%3Ccircle cx='1051' cy='359' r='0.7' opacity='0.26'/%3E%3Ccircle cx='778' cy='414' r='1.2' opacity='0.2'/%3E%3Ccircle cx='1113' cy='535' r='0.8' opacity='0.26'/%3E%3Ccircle cx='22' cy='623' r='0.9' opacity='0.4'/%3E%3Ccircle cx='167' cy='891' r='1.2' opacity='0.26'/%3E%3Ccircle cx='192' cy='819' r='1.0' opacity='0.26'/%3E%3Ccircle cx='806' cy='350' r='0.9' opacity='0.2'/%3E%3Ccircle cx='351' cy='41' r='0.9' opacity='0.2'/%3E%3Ccircle cx='249' cy='380' r='0.7' opacity='0.2'/%3E%3Ccircle cx='879' cy='254' r='0.7' opacity='0.26'/%3E%3Ccircle cx='767' cy='186' r='0.9' opacity='0.2'/%3E%3Ccircle cx='655' cy='339' r='0.7' opacity='0.4'/%3E%3Ccircle cx='659' cy='674' r='0.9' opacity='0.2'/%3E%3Ccircle cx='870' cy='602' r='0.9' opacity='0.32'/%3E%3Ccircle cx='470' cy='419' r='1.0' opacity='0.32'/%3E%3Ccircle cx='1040' cy='329' r='0.8' opacity='0.26'/%3E%3Ccircle cx='204' cy='643' r='0.9' opacity='0.32'/%3E%3Ccircle cx='239' cy='841' r='0.7' opacity='0.26'/%3E%3Ccircle cx='217' cy='536' r='0.9' opacity='0.4'/%3E%3Ccircle cx='606' cy='566' r='0.9' opacity='0.26'/%3E%3Ccircle cx='653' cy='506' r='1.0' opacity='0.26'/%3E%3Ccircle cx='1086' cy='498' r='1.2' opacity='0.48'/%3E%3Ccircle cx='881' cy='298' r='0.7' opacity='0.26'/%3E%3Ccircle cx='277' cy='390' r='1.2' opacity='0.2'/%3E%3Ccircle cx='917' cy='583' r='1.0' opacity='0.4'/%3E%3Ccircle cx='1030' cy='342' r='1.2' opacity='0.26'/%3E%3Ccircle cx='361' cy='759' r='0.9' opacity='0.4'/%3E%3Ccircle cx='40' cy='348' r='0.8' opacity='0.4'/%3E%3Ccircle cx='658' cy='206' r='1.0' opacity='0.48'/%3E%3Ccircle cx='989' cy='608' r='0.8' opacity='0.2'/%3E%3Ccircle cx='710' cy='529' r='0.9' opacity='0.4'/%3E%3Ccircle cx='77' cy='646' r='1.2' opacity='0.48'/%3E%3Ccircle cx='123' cy='582' r='1.2' opacity='0.32'/%3E%3Ccircle cx='992' cy='77' r='0.7' opacity='0.2'/%3E%3Ccircle cx='401' cy='851' r='1.2' opacity='0.48'/%3E%3Ccircle cx='246' cy='48' r='0.9' opacity='0.2'/%3E%3Ccircle cx='489' cy='554' r='1.2' opacity='0.2'/%3E%3Ccircle cx='1081' cy='320' r='1.0' opacity='0.4'/%3E%3Ccircle cx='280' cy='122' r='0.7' opacity='0.32'/%3E%3Ccircle cx='169' cy='362' r='1.2' opacity='0.32'/%3E%3Ccircle cx='354' cy='307' r='0.8' opacity='0.4'/%3E%3Ccircle cx='71' cy='450' r='0.8' opacity='0.2'/%3E%3Ccircle cx='413' cy='354' r='0.7' opacity='0.48'/%3E%3Ccircle cx='380' cy='495' r='0.7' opacity='0.4'/%3E%3Ccircle cx='155' cy='150' r='0.7' opacity='0.2'/%3E%3Ccircle cx='41' cy='846' r='1.0' opacity='0.32'/%3E%3Ccircle cx='1160' cy='101' r='0.7' opacity='0.2'/%3E%3Ccircle cx='1105' cy='754' r='1.0' opacity='0.2'/%3E%3Ccircle cx='18' cy='95' r='1.2' opacity='0.48'/%3E%3Ccircle cx='277' cy='606' r='0.9' opacity='0.32'/%3E%3Ccircle cx='220' cy='206' r='0.7' opacity='0.2'/%3E%3Ccircle cx='1156' cy='846' r='0.7' opacity='0.48'/%3E%3Ccircle cx='107' cy='111' r='0.8' opacity='0.2'/%3E%3Ccircle cx='880' cy='283' r='1.0' opacity='0.32'/%3E%3Ccircle cx='230' cy='648' r='0.8' opacity='0.48'/%3E%3Ccircle cx='484' cy='246' r='1.0' opacity='0.2'/%3E%3Ccircle cx='520' cy='428' r='0.8' opacity='0.4'/%3E%3Ccircle cx='1012' cy='443' r='0.7' opacity='0.32'/%3E%3Ccircle cx='382' cy='163' r='1.2' opacity='0.2'/%3E%3Ccircle cx='68' cy='685' r='1.0' opacity='0.2'/%3E%3Ccircle cx='111' cy='817' r='1.2' opacity='0.2'/%3E%3Ccircle cx='323' cy='411' r='0.7' opacity='0.48'/%3E%3Ccircle cx='654' cy='626' r='0.7' opacity='0.4'/%3E%3Ccircle cx='833' cy='160' r='1.2' opacity='0.26'/%3E%3Ccircle cx='563' cy='88' r='0.8' opacity='0.2'/%3E%3Ccircle cx='144' cy='745' r='0.9' opacity='0.2'/%3E%3Ccircle cx='146' cy='182' r='0.8' opacity='0.4'/%3E%3Ccircle cx='1096' cy='687' r='0.9' opacity='0.26'/%3E%3Ccircle cx='994' cy='65' r='1.0' opacity='0.2'/%3E%3Ccircle cx='133' cy='552' r='0.8' opacity='0.4'/%3E%3Ccircle cx='647' cy='410' r='0.8' opacity='0.48'/%3E%3Ccircle cx='169' cy='560' r='1.2' opacity='0.26'/%3E%3Ccircle cx='660' cy='568' r='1.0' opacity='0.32'/%3E%3Ccircle cx='1071' cy='476' r='0.9' opacity='0.32'/%3E%3Ccircle cx='951' cy='559' r='0.7' opacity='0.48'/%3E%3Ccircle cx='842' cy='569' r='1.0' opacity='0.2'/%3E%3Ccircle cx='207' cy='438' r='1.0' opacity='0.48'/%3E%3Ccircle cx='807' cy='583' r='0.9' opacity='0.4'/%3E%3Ccircle cx='1078' cy='278' r='0.8' opacity='0.48'/%3E%3Ccircle cx='94' cy='846' r='0.9' opacity='0.4'/%3E%3Ccircle cx='559' cy='29' r='1.2' opacity='0.48'/%3E%3Ccircle cx='416' cy='602' r='1.2' opacity='0.2'/%3E%3Ccircle cx='687' cy='136' r='1.2' opacity='0.26'/%3E%3Ccircle cx='64' cy='266' r='1.2' opacity='0.4'/%3E%3Ccircle cx='318' cy='38' r='1.0' opacity='0.2'/%3E%3Ccircle cx='598' cy='59' r='1.0' opacity='0.4'/%3E%3Ccircle cx='1096' cy='492' r='0.7' opacity='0.4'/%3E%3Ccircle cx='714' cy='709' r='0.8' opacity='0.4'/%3E%3Ccircle cx='1189' cy='223' r='0.7' opacity='0.32'/%3E%3Ccircle cx='856' cy='778' r='0.9' opacity='0.48'/%3E%3Ccircle cx='46' cy='287' r='0.7' opacity='0.2'/%3E%3Ccircle cx='654' cy='747' r='1.2' opacity='0.32'/%3E%3Ccircle cx='1026' cy='192' r='1.0' opacity='0.2'/%3E%3Ccircle cx='736' cy='488' r='0.9' opacity='0.26'/%3E%3Ccircle cx='664' cy='687' r='1.2' opacity='0.32'/%3E%3Ccircle cx='1044' cy='124' r='0.7' opacity='0.26'/%3E%3Ccircle cx='767' cy='275' r='0.7' opacity='0.2'/%3E%3Ccircle cx='300' cy='293' r='1.2' opacity='0.32'/%3E%3Cpath d='M150 190L214 178' stroke='%23f3ebe4' stroke-width='.8' opacity='.17'/%3E%3Cpath d='M214 178L226 224' stroke='%23f3ebe4' stroke-width='.8' opacity='.17'/%3E%3Cpath d='M226 224L166 238' stroke='%23f3ebe4' stroke-width='.8' opacity='.17'/%3E%3Cpath d='M166 238L150 190' stroke='%23f3ebe4' stroke-width='.8' opacity='.17'/%3E%3Cpath d='M214 178L284 156' stroke='%23f3ebe4' stroke-width='.8' opacity='.17'/%3E%3Cpath d='M284 156L338 132' stroke='%23f3ebe4' stroke-width='.8' opacity='.17'/%3E%3Cpath d='M338 132L398 142' stroke='%23f3ebe4' stroke-width='.8' opacity='.17'/%3E%3Ccircle cx='150' cy='190' r='1.35' opacity='0.62'/%3E%3Ccircle cx='214' cy='178' r='1.35' opacity='0.62'/%3E%3Ccircle cx='226' cy='224' r='1.35' opacity='0.62'/%3E%3Ccircle cx='166' cy='238' r='1.35' opacity='0.62'/%3E%3Ccircle cx='284' cy='156' r='1.35' opacity='0.62'/%3E%3Ccircle cx='338' cy='132' r='1.35' opacity='0.62'/%3E%3Ccircle cx='398' cy='142' r='1.8' opacity='0.8' fill='%23dcb56d'/%3E%3Cpath d='M822 330L846 402' stroke='%23f3ebe4' stroke-width='.8' opacity='.17'/%3E%3Cpath d='M902 318L880 390' stroke='%23f3ebe4' stroke-width='.8' opacity='.17'/%3E%3Cpath d='M846 402L863 396' stroke='%23f3ebe4' stroke-width='.8' opacity='.17'/%3E%3Cpath d='M863 396L880 390' stroke='%23f3ebe4' stroke-width='.8' opacity='.17'/%3E%3Cpath d='M846 402L812 474' stroke='%23f3ebe4' stroke-width='.8' opacity='.17'/%3E%3Cpath d='M880 390L908 462' stroke='%23f3ebe4' stroke-width='.8' opacity='.17'/%3E%3Cpath d='M822 330L862 290' stroke='%23f3ebe4' stroke-width='.8' opacity='.17'/%3E%3Cpath d='M902 318L862 290' stroke='%23f3ebe4' stroke-width='.8' opacity='.17'/%3E%3Ccircle cx='822' cy='330' r='1.8' opacity='0.8' fill='%23dcb56d'/%3E%3Ccircle cx='902' cy='318' r='1.35' opacity='0.62'/%3E%3Ccircle cx='846' cy='402' r='1.35' opacity='0.62'/%3E%3Ccircle cx='863' cy='396' r='1.35' opacity='0.62'/%3E%3Ccircle cx='880' cy='390' r='1.35' opacity='0.62'/%3E%3Ccircle cx='812' cy='474' r='1.35' opacity='0.62'/%3E%3Ccircle cx='908' cy='462' r='1.8' opacity='0.8' fill='%23dcb56d'/%3E%3Ccircle cx='862' cy='290' r='1.35' opacity='0.62'/%3E%3Cpath d='M1010 740L1034 668' stroke='%23f3ebe4' stroke-width='.8' opacity='.17'/%3E%3Cpath d='M1034 668L1000 612' stroke='%23f3ebe4' stroke-width='.8' opacity='.17'/%3E%3Cpath d='M1000 612L1052 604' stroke='%23f3ebe4' stroke-width='.8' opacity='.17'/%3E%3Cpath d='M1052 604L1078 658' stroke='%23f3ebe4' stroke-width='.8' opacity='.17'/%3E%3Cpath d='M1078 658L1034 668' stroke='%23f3ebe4' stroke-width='.8' opacity='.17'/%3E%3Ccircle cx='1010' cy='740' r='1.8' opacity='0.8' fill='%23dcb56d'/%3E%3Ccircle cx='1034' cy='668' r='1.35' opacity='0.62'/%3E%3Ccircle cx='1000' cy='612' r='1.35' opacity='0.62'/%3E%3Ccircle cx='1052' cy='604' r='1.35' opacity='0.62'/%3E%3Ccircle cx='1078' cy='658' r='1.35' opacity='0.62'/%3E%3Ccircle cx='608' cy='612' r='1.05' opacity='.6'/%3E%3Ccircle cx='620' cy='604' r='1.05' opacity='.6'/%3E%3Ccircle cx='631' cy='611' r='1.05' opacity='.6'/%3E%3Ccircle cx='624' cy='622' r='1.05' opacity='.6'/%3E%3Ccircle cx='612' cy='626' r='1.05' opacity='.6'/%3E%3Ccircle cx='637' cy='600' r='1.05' opacity='.6'/%3E%3Ccircle cx='600' cy='601' r='1.05' opacity='.6'/%3E%3C/g%3E%3C/svg%3E");
+    background-size: 1200px 900px;
+  }
+}

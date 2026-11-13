@@ -10,8 +10,8 @@ export default function NotFound() {
       <Mark width={116} tight className="lost-mark" />
       <div className="head">
         <span className="eyebrow">Page not found</span>
-        <h1>This road doesn’t lead anywhere</h1>
-        <p className="lede">The link may be mistyped, or the page has moved on.</p>
+        <h1>Blown off course</h1>
+        <p className="lede">This page isn’t on the map. The link may be mistyped, or the page has moved on.</p>
       </div>
       <div className="lost-actions">
         <Link className="btn" href="/">

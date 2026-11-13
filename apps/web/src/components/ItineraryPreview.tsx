@@ -1,5 +1,5 @@
 "use client";
-import type { Itinerary, Stop } from "@travel/core";
+import { dayTitle, type Itinerary, type Stop } from "@travel/core";
 import { PlaceThumb } from "./PlacePhoto";
 
 export interface PreviewDay {
@@ -43,7 +43,7 @@ export function ItineraryPreview({
           <li key={i} className={d.stops ? "ready" : "pending"}>
             <div className="preview-dayhead">
               <span className="eyebrow">
-                {d.label}
+                {dayTitle(d.label)}
                 {d.city ? ` · ${d.city}` : ""}
               </span>
               <b>{d.theme}</b>
