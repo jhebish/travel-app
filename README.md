@@ -76,12 +76,12 @@ You need: Node 20+, pnpm 10, a Supabase project, an Anthropic API key, a Google 
 
 ### 2. Sign-in (Supabase → Authentication)
 
-- **Email links:** Sign In / Providers → Email: enabled. People sign in by clicking the link in Supabase's default email; no template change is needed.
-  - Supabase's built-in email sender is heavily rate-limited (a few emails per hour). Before launch, add your own sender under **Emails → SMTP Settings** (Resend, Postmark, SendGrid…). Once you have SMTP you can also add `{{ .Token }}` to the Magic Link template, and the app's "enter the code" box will work too.
+- **Email codes:** Sign In / Providers → Email: enabled. Each sign-in email carries a code and a button, and the sign-in pages ask for the code, so the templates must include `{{ .Token }}`: paste the branded ones from `supabase/templates` (its README lists them).
+  - Send through your own SMTP (**Emails → SMTP Settings**): Supabase's built-in sender allows a couple of emails an hour and won't let you edit templates. Pylos uses Resend (`smtp.resend.com`, port 465, user `resend`) from `Pylos <team@pylos.ai>`, connected with Resend's Supabase integration; pylos.ai's DNS has Resend's DKIM, `send` and `_dmarc` records.
 - **Google (web, optional):** Providers → Google: add your Google OAuth client id and secret.
 - **URL Configuration:** Site URL = your deployed web URL. Add these Redirect URLs:
   - `https://YOUR-APP/auth/callback` and `http://localhost:3000/auth/callback` (web)
-  - `tripplanner://**` (mobile app) and `exp://**` (mobile, while testing in Expo Go)
+  - `pylos://**` and `tripplanner://**` (the phone app's own links) and `exp://**` (while testing in Expo Go)
 
 - **Guest access:** Sign In / Providers → turn on **Allow anonymous sign-ins**. Visitors then use the app without signing in; each browser or phone gets a private guest account, and signing in later keeps their trips.
 

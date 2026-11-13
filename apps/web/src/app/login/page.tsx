@@ -10,11 +10,6 @@ const CODE_MIN = 6;
 const CODE_MAX = 10;
 /** Supabase won't send another email to the same address within a minute. */
 const RESEND_AFTER = 60;
-/**
- * The branded emails (supabase/templates) carry a code; Supabase's built-in email only has a link.
- * Set NEXT_PUBLIC_SIGNIN_CODES=1 once custom SMTP and those templates are in place.
- */
-const CODES = process.env.NEXT_PUBLIC_SIGNIN_CODES === "1";
 /** Google sign-in needs the Google provider switched on in Supabase first; until then the button would lead to an error page. */
 const GOOGLE = process.env.NEXT_PUBLIC_GOOGLE_SIGNIN === "1";
 
@@ -71,7 +66,7 @@ function Login() {
     setSentTo({ email: addr, kind });
     setCode("");
     setWait(RESEND_AFTER);
-    if (CODES) setTimeout(() => codeRef.current?.focus(), 50);
+    setTimeout(() => codeRef.current?.focus(), 50);
   }
 
   async function verify(token: string) {
@@ -100,13 +95,9 @@ function Login() {
         <Mark width={76} tight className="card-mark" />
         <h1>{sentTo ? "Check your email" : "Sign in"}</h1>
         <p className="lede">
-          {sentTo && CODES ? (
+          {sentTo ? (
             <>
               We sent a code to <b>{sentTo.email}</b>. Enter it here, or tap the button in the email to sign in on that device.
-            </>
-          ) : sentTo ? (
-            <>
-              We sent a sign-in link to <b>{sentTo.email}</b>. Open it in this browser to finish signing in.
             </>
           ) : (
             "Optional. Signing in keeps your trips and source mix across devices and browsers."
@@ -128,7 +119,7 @@ function Login() {
             <input id="email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <button className="btn" disabled={busy || !email.includes("@")}>
-            {busy ? "Sending…" : CODES ? "Email me a code" : "Email me a sign-in link"}
+            {busy ? "Sending…" : "Email me a code"}
           </button>
         </form>
       ) : (
@@ -139,39 +130,35 @@ function Login() {
             void verify(code);
           }}
         >
-          {CODES && (
-            <>
-            <div className="field">
-              <label className="label" htmlFor="code">
-                Code
-              </label>
-              <input
-                id="code"
-                ref={codeRef}
-                className="code-input"
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={CODE_MAX}
-                placeholder="••••••"
-                required
-                value={code}
-                onChange={(e) => {
-                  const v = e.target.value.replace(/\D/g, "").slice(0, CODE_MAX);
-                  setCode(v);
-                  // A pasted or autofilled code signs straight in.
-                  if (v.length >= CODE_MIN && v.length - code.length > 1) void verify(v);
-                }}
-              />
-            </div>
-            <button className="btn" disabled={busy || code.length < CODE_MIN}>
-              {busy ? "Checking…" : "Sign in"}
-            </button>
-            </>
-          )}
+          <div className="field">
+            <label className="label" htmlFor="code">
+              Code
+            </label>
+            <input
+              id="code"
+              ref={codeRef}
+              className="code-input"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={CODE_MAX}
+              placeholder="••••••"
+              required
+              value={code}
+              onChange={(e) => {
+                const v = e.target.value.replace(/\D/g, "").slice(0, CODE_MAX);
+                setCode(v);
+                // A pasted or autofilled code signs straight in.
+                if (v.length >= CODE_MIN && v.length - code.length > 1) void verify(v);
+              }}
+            />
+          </div>
+          <button className="btn" disabled={busy || code.length < CODE_MIN}>
+            {busy ? "Checking…" : "Sign in"}
+          </button>
           <div className="login-links">
             <button type="button" className="linkbtn" disabled={busy || wait > 0} onClick={() => void send(sentTo.email)}>
-              {wait > 0 ? `Send another in ${wait}s` : CODES ? "Send a new code" : "Send another link"}
+              {wait > 0 ? `Send another in ${wait}s` : "Send a new code"}
             </button>
             <button
               type="button"
